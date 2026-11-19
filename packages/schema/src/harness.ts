@@ -156,7 +156,8 @@ export const Question = Schema.Struct({
 export interface Question extends Schema.Schema.Type<typeof Question> {}
 export const Request = Schema.Struct({
   id: Schema.String,
-  kind: Schema.Literals(["permission", "question", "unsupported"]),
+  // "plan" asks the user to approve a plan the agent proposes before it starts the work.
+  kind: Schema.Literals(["permission", "plan", "question", "unsupported"]),
   title: Schema.String,
   detail: Schema.String,
   questions: Schema.Array(Question),

@@ -253,7 +253,7 @@ describe.skipIf(!cli)("Claude Code CLI contract", () => {
       })
       await service.prompt(planning.id, { id: "contract-plan", text: PLAN_SCENARIO, delivery: "queue" })
       await until(() => service.read(planning.id).requests.length === 1)
-      expect(service.read(planning.id).requests[0]).toMatchObject({ title: "ExitPlanMode", detail: PLAN })
+      expect(service.read(planning.id).requests[0]).toMatchObject({ kind: "plan", title: "ExitPlanMode", detail: PLAN })
       service.answer(planning.id, { request: service.read(planning.id).requests[0]!.id, allow: true, answers: {} })
       await until(() => service.read(planning.id).run.state === "ready")
       expect(service.read(planning.id).run.permissionMode).toBe("default")

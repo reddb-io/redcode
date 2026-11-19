@@ -3246,7 +3246,7 @@ export type HarnessLogin = {
 
 export type HarnessRequest = {
   id: string
-  kind: "permission" | "question" | "unsupported"
+  kind: "permission" | "plan" | "question" | "unsupported"
   title: string
   detail: string
   questions: Array<HarnessQuestion>

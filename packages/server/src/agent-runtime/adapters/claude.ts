@@ -126,6 +126,7 @@ function events(input: AgentRuntimeEventInput): AgentRuntimeEvent[] {
         key: string(value.request_id),
         title: string(request.tool_name) || string(request.subtype),
         detail: requestDetail(string(request.tool_name), requestInput, questions.length > 0),
+        plan: string(request.tool_name) === "ExitPlanMode",
         questions,
         // Plan approvals and questions always need the user.
         session: request.subtype === "can_use_tool" && request.requires_user_interaction !== true && !questions.length,

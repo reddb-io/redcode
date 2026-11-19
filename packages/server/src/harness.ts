@@ -466,9 +466,11 @@ export async function createHarnesses(
               id: runtimeEvent.key,
               kind: runtimeEvent.questions.length
                 ? "question"
-                : runtimeEvent.supported
-                  ? "permission"
-                  : "unsupported",
+                : runtimeEvent.plan
+                  ? "plan"
+                  : runtimeEvent.supported
+                    ? "permission"
+                    : "unsupported",
               title: runtimeEvent.title,
               detail: runtimeEvent.detail,
               questions: runtimeEvent.questions,

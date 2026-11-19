@@ -813,7 +813,7 @@ test("claude: shows a proposed plan and records leaving plan mode once it is app
     const run = await service.open({ driver: "claude", directory: AbsolutePath.make(tmp.path), permissionMode: "plan" })
     await service.prompt(run.id, { id: "plan-input", text: "plan", delivery: "queue" })
     await until(() => service.read(run.id).requests.length === 1)
-    expect(service.read(run.id).requests[0]).toMatchObject({ kind: "permission", detail: "# Plan\n\n1. Ship it" })
+    expect(service.read(run.id).requests[0]).toMatchObject({ kind: "plan", detail: "# Plan\n\n1. Ship it" })
     expect(service.read(run.id).run.permissionMode).toBe("plan")
     service.answer(run.id, { request: "claude-plan", allow: true, answers: {} })
     await until(() => service.read(run.id).run.state === "ready")
