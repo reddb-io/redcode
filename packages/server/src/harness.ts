@@ -627,6 +627,7 @@ export async function createHarnesses(
       connection.started = Date.now()
     }
     db.query("UPDATE prompt SET status='admitted' WHERE id=?").run(prompt.id)
+    event(id, "input", prompt.text)
     const result = await agentRuntime(run.driver).prompt({
       prompt,
       run,

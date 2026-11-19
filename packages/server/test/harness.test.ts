@@ -847,6 +847,12 @@ for (const driver of ["codex", "claude"] as const) {
       service.answer(run.id, { request: request.id, allow: true, answers: {}, session: true })
       await until(() => service.read(run.id).run.state === "ready")
       expect(service.read(run.id).events.some((event) => event.text === "fixture response")).toBe(true)
+      // Each delivered instruction opens its turn in the output, before the agent's reply.
+      const events = service.read(run.id).events
+      expect(events.findIndex((event) => event.kind === "input" && event.text === "permission")).toBeLessThan(
+        events.findIndex((event) => event.text === "fixture response"),
+      )
+      expect(events.find((event) => event.kind === "input")).toMatchObject({ kind: "input", text: "permission" })
       // The provider keeps allowing matching calls itself; Claude's grant stays in the native session.
       expect(await Bun.file(path.join(tmp.path, "wire.jsonl")).text()).toContain(
         driver === "codex"

@@ -129,6 +129,13 @@ export default function AgentHarnesses(props: { server: ServerConnection.Any }) 
   }
   let inspectorElement: HTMLElement | undefined
   let requestsElement: HTMLElement | undefined
+  let outputElement: HTMLElement | undefined
+  // New output stays in view while the reader is at the end; a reader who scrolled up keeps their place.
+  let followOutput = true
+  const revealOutput = () =>
+    queueMicrotask(() => {
+      if (followOutput && outputElement) outputElement.scrollTop = outputElement.scrollHeight
+    })
   let openElement: HTMLButtonElement | undefined
   const focusInspector = () => {
     if (!inspectorElement?.isConnected) return
@@ -520,16 +527,27 @@ export default function AgentHarnesses(props: { server: ServerConnection.Any }) 
                       {language.t("harness.output")}
                     </summary>
                     <div
+                      ref={(element) => {
+                        outputElement = element
+                        followOutput = true
+                      }}
                       role="log"
                       tabIndex={0}
                       aria-label={language.t("harness.output")}
                       class="max-h-96 overflow-auto rounded border border-v2-border-base p-3"
+                      onScroll={(event) => {
+                        const element = event.currentTarget
+                        followOutput = element.scrollHeight - element.scrollTop - element.clientHeight < 24
+                      }}
                     >
                       <Key each={result().events} by="cursor">
                         {(event) => (
                           <span
+                            ref={revealOutput}
                             class={
-                              event().kind === "text"
+                              event().kind === "input"
+                                ? "my-2 block whitespace-pre-wrap break-words border-l-2 border-v2-border-base pl-2 font-medium first:mt-0"
+                                : event().kind === "text"
                                 ? "whitespace-pre-wrap break-words"
                                 : event().kind === "reasoning"
                                   ? "block whitespace-pre-wrap break-words italic text-ink-muted"
@@ -978,11 +996,13 @@ export default function AgentHarnesses(props: { server: ServerConnection.Any }) 
                           )}
                         </For>
                         <Show when={provider.driver === "claude" && provider.installed}>
-                          <p>
-                            {language.t("harness.claudeSignIn", {
-                              command: `${provider.executable} auth login`,
-                            })}
-                          </p>
+                          <Show when={!provider.authenticated}>
+                            <p>
+                              {language.t("harness.claudeSignIn", {
+                                command: `${provider.executable} auth login`,
+                              })}
+                            </p>
+                          </Show>
                           <Show when={provider.home}>
                             {(home) => (
                               <p class="text-ink-muted">{language.t("harness.claudeConfigDir", { path: home() })}</p>
