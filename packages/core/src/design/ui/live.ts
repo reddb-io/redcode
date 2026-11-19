@@ -8,7 +8,7 @@
  * canvas and streaming clients work unchanged. Both functions are serialized on their own into their pages.
  */
 
-export type LiveDevice = "microphone" | "camera"
+export type LiveDevice = "microphone" | "camera" | "location"
 
 /**
  * Runs in the trusted page: answers the frame's device requests while it shows the design. `frame` names the
@@ -16,10 +16,15 @@ export type LiveDevice = "microphone" | "camera"
  * while one is off a request for it waits, and turning it off ends every track of it the frame was given.
  */
 export function liveHost(frame: (device: LiveDevice) => Window | null | undefined, on = true) {
-  const state = { microphone: on, camera: on }
-  const waiting = { microphone: new Set<MessagePort>(), camera: new Set<MessagePort>() }
-  const open = { microphone: new Set<(ended: boolean) => void>(), camera: new Set<(ended: boolean) => void>() }
+  const state = { microphone: on, camera: on, location: on }
+  const waiting = { microphone: new Set<MessagePort>(), camera: new Set<MessagePort>(), location: new Set<MessagePort>() }
+  const open = {
+    microphone: new Set<(ended: boolean) => void>(),
+    camera: new Set<(ended: boolean) => void>(),
+    location: new Set<(ended: boolean) => void>(),
+  }
   const capture = (device: LiveDevice, port: MessagePort) => {
+    if (device === "location") return locate(port)
     // Browsers offer no device to a page outside a secure context, such as one opened over plain http on the LAN.
     if (!navigator.mediaDevices) {
       port.postMessage({ error: "NotSupportedError" })
@@ -49,6 +54,42 @@ export function liveHost(frame: (device: LiveDevice) => Window | null | undefine
         port.postMessage({ error: error instanceof DOMException ? error.name : "NotAllowedError" })
         port.close()
       })
+  }
+  /** Follows the computer's position for the frame until it stops or the presenter turns location off. */
+  const locate = (port: MessagePort) => {
+    if (!navigator.geolocation) {
+      port.postMessage({ positionError: { code: 2, message: "Location is unavailable" } })
+      return port.close()
+    }
+    const watch = navigator.geolocation.watchPosition(
+      (position) =>
+        port.postMessage({
+          position: {
+            coords: {
+              latitude: position.coords.latitude,
+              longitude: position.coords.longitude,
+              accuracy: position.coords.accuracy,
+              altitude: position.coords.altitude,
+              altitudeAccuracy: position.coords.altitudeAccuracy,
+              heading: position.coords.heading,
+              speed: position.coords.speed,
+            },
+            timestamp: position.timestamp,
+          },
+        }),
+      (error) => port.postMessage({ positionError: { code: error.code, message: error.message } }),
+      { enableHighAccuracy: true },
+    )
+    const stop = (ended: boolean) => {
+      open.location.delete(stop)
+      navigator.geolocation.clearWatch(watch)
+      if (ended) port.postMessage("ended")
+      port.close()
+    }
+    open.location.add(stop)
+    port.onmessage = (message) => {
+      if (message.data === "stop") stop(false)
+    }
   }
   const forwardAudio = (stream: MediaStream, port: MessagePort) => {
     const context = new AudioContext()
@@ -87,7 +128,12 @@ export function liveHost(frame: (device: LiveDevice) => Window | null | undefine
   }
   addEventListener("message", (event) => {
     const device: unknown = event.data?.type === "design:media" ? event.data.device : undefined
-    if ((device !== "microphone" && device !== "camera") || !event.ports[0] || event.source !== frame(device)) return
+    if (
+      (device !== "microphone" && device !== "camera" && device !== "location") ||
+      !event.ports[0] ||
+      event.source !== frame(device)
+    )
+      return
     if (state[device]) return capture(device, event.ports[0])
     waiting[device].add(event.ports[0])
   })
@@ -104,7 +150,7 @@ export function liveHost(frame: (device: LiveDevice) => Window | null | undefine
     },
     /** Forgets the frame's requests and captures; the page calls it when the frame loads another document. */
     release: () => {
-      for (const device of ["microphone", "camera"] as const) {
+      for (const device of ["microphone", "camera", "location"] as const) {
         for (const port of waiting[device]) port.close()
         waiting[device].clear()
         stopAll(device, false)
@@ -113,8 +159,37 @@ export function liveHost(frame: (device: LiveDevice) => Window | null | undefine
   }
 }
 
-/** Runs first in the design's frame: getUserMedia for audio or video asks the trusted page. */
+/**
+ * Runs first in the design's frame: getUserMedia for audio or video asks the trusted page, and so does the real
+ * location, which the simulated device (./device) reaches through `__redcodeLocation` when no place is simulated.
+ */
 export function liveFrame() {
+  Object.defineProperty(window, "__redcodeLocation", {
+    value: {
+      watch: (success: PositionCallback, failure: PositionErrorCallback) => {
+        const channel = new MessageChannel()
+        const fail = (code: number, message: string) =>
+          failure({ code, message, PERMISSION_DENIED: 1, POSITION_UNAVAILABLE: 2, TIMEOUT: 3 } as GeolocationPositionError)
+        channel.port1.onmessage = (event) => {
+          if (event.data === "ended") return fail(2, "The presenter turned location off")
+          if (event.data?.positionError) return fail(event.data.positionError.code, event.data.positionError.message)
+          if (event.data?.position) {
+            const coords = event.data.position.coords
+            success({
+              coords: { ...coords, toJSON: () => coords },
+              timestamp: event.data.position.timestamp,
+              toJSON: () => event.data.position,
+            } as GeolocationPosition)
+          }
+        }
+        parent.postMessage({ type: "design:media", device: "location" }, "*", [channel.port2])
+        return () => {
+          channel.port1.postMessage("stop")
+          channel.port1.close()
+        }
+      },
+    },
+  })
   const devices = navigator.mediaDevices ?? {}
   if (!navigator.mediaDevices) Object.defineProperty(navigator, "mediaDevices", { value: devices })
   /** One track of a device, rebuilt from what the trusted page forwards. */

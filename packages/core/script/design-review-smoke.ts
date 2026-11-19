@@ -428,6 +428,27 @@ try {
     )
   })
   const preview = page.frameLocator("#preview")
+  // The simulated device reaches the prototype through the browser's own APIs, and vibration comes back to the panel.
+  const online = () => preview.locator("body").evaluate(() => navigator.onLine)
+  const settle = async (expected: boolean) => {
+    for (let attempt = 0; attempt < 20 && (await online()) !== expected; attempt++)
+      await new Promise((resolve) => setTimeout(resolve, 100))
+    assert.equal(await online(), expected)
+  }
+  await page.evaluate(() => {
+    const network = document.querySelector("#review")!.shadowRoot!.querySelector<HTMLSelectElement>("#device-network")!
+    network.value = "offline"
+    network.dispatchEvent(new Event("change"))
+  })
+  await settle(false)
+  await preview.locator("body").evaluate(() => navigator.vibrate(120))
+  await page.waitForFunction(
+    () => document.querySelector("#review")!.shadowRoot!.querySelector("#device-status")?.textContent?.includes("120 ms"),
+  )
+  await page.evaluate(() =>
+    document.querySelector("#review")!.shadowRoot!.querySelector<HTMLButtonElement>("#device-reset")!.click(),
+  )
+  await settle(true)
   await preview.locator("#counter").click()
   assert.equal(await preview.locator("#counter").textContent(), "Clicks: 1")
   await page.evaluate(() => {

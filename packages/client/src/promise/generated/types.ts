@@ -602,6 +602,22 @@ export type DesignBrief = {
 
 export type DesignDecision = { id: string; text: string; revision?: string; feedback?: string }
 
+export type DesignDeviceState = {
+  battery?: { level: number | "Infinity" | "-Infinity" | "NaN"; charging: boolean }
+  network?: "online" | "slow" | "offline"
+  location?: {
+    latitude: number | "Infinity" | "-Infinity" | "NaN"
+    longitude: number | "Infinity" | "-Infinity" | "NaN"
+    accuracy?: number | "Infinity" | "-Infinity" | "NaN"
+  }
+  orientation?: {
+    alpha: number | "Infinity" | "-Infinity" | "NaN"
+    beta: number | "Infinity" | "-Infinity" | "NaN"
+    gamma: number | "Infinity" | "-Infinity" | "NaN"
+  }
+  clock?: string
+}
+
 export type DesignTarget = { path: string; role: string }
 
 export type DesignSystemDescription = string | { [x: string]: JsonValue }
@@ -616,7 +632,7 @@ export type DesignSystem = {
 
 export type DesignComponent = { root: string; file: string; name: string; props?: string }
 
-export type DesignLive = { microphone?: boolean; camera?: boolean; origins?: Array<string> }
+export type DesignLive = { microphone?: boolean; camera?: boolean; location?: boolean; origins?: Array<string> }
 
 export type DesignRound = {
   number: number
@@ -1824,6 +1840,7 @@ export type DesignParamContext = {
 
 export type DesignScenario = {
   params?: DesignParamValues
+  device?: DesignDeviceState
   id: string
   name: string
   variant?: string
@@ -8282,6 +8299,21 @@ export type SessionDesignUpdateInput = {
     readonly questions?: ReadonlyArray<string>
     readonly scenarios?: ReadonlyArray<{
       readonly params?: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+      readonly device?: {
+        readonly battery?: { readonly level: number | "Infinity" | "-Infinity" | "NaN"; readonly charging: boolean }
+        readonly network?: "online" | "slow" | "offline"
+        readonly location?: {
+          readonly latitude: number | "Infinity" | "-Infinity" | "NaN"
+          readonly longitude: number | "Infinity" | "-Infinity" | "NaN"
+          readonly accuracy?: number | "Infinity" | "-Infinity" | "NaN"
+        }
+        readonly orientation?: {
+          readonly alpha: number | "Infinity" | "-Infinity" | "NaN"
+          readonly beta: number | "Infinity" | "-Infinity" | "NaN"
+          readonly gamma: number | "Infinity" | "-Infinity" | "NaN"
+        }
+        readonly clock?: string
+      }
       readonly id: string
       readonly name: string
       readonly variant?: string
@@ -8361,6 +8393,21 @@ export type SessionDesignUpdateInput = {
     readonly questions?: ReadonlyArray<string>
     readonly scenarios?: ReadonlyArray<{
       readonly params?: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+      readonly device?: {
+        readonly battery?: { readonly level: number | "Infinity" | "-Infinity" | "NaN"; readonly charging: boolean }
+        readonly network?: "online" | "slow" | "offline"
+        readonly location?: {
+          readonly latitude: number | "Infinity" | "-Infinity" | "NaN"
+          readonly longitude: number | "Infinity" | "-Infinity" | "NaN"
+          readonly accuracy?: number | "Infinity" | "-Infinity" | "NaN"
+        }
+        readonly orientation?: {
+          readonly alpha: number | "Infinity" | "-Infinity" | "NaN"
+          readonly beta: number | "Infinity" | "-Infinity" | "NaN"
+          readonly gamma: number | "Infinity" | "-Infinity" | "NaN"
+        }
+        readonly clock?: string
+      }
       readonly id: string
       readonly name: string
       readonly variant?: string
@@ -8440,6 +8487,21 @@ export type SessionDesignUpdateInput = {
     readonly questions?: ReadonlyArray<string>
     readonly scenarios?: ReadonlyArray<{
       readonly params?: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+      readonly device?: {
+        readonly battery?: { readonly level: number | "Infinity" | "-Infinity" | "NaN"; readonly charging: boolean }
+        readonly network?: "online" | "slow" | "offline"
+        readonly location?: {
+          readonly latitude: number | "Infinity" | "-Infinity" | "NaN"
+          readonly longitude: number | "Infinity" | "-Infinity" | "NaN"
+          readonly accuracy?: number | "Infinity" | "-Infinity" | "NaN"
+        }
+        readonly orientation?: {
+          readonly alpha: number | "Infinity" | "-Infinity" | "NaN"
+          readonly beta: number | "Infinity" | "-Infinity" | "NaN"
+          readonly gamma: number | "Infinity" | "-Infinity" | "NaN"
+        }
+        readonly clock?: string
+      }
       readonly id: string
       readonly name: string
       readonly variant?: string
@@ -8519,6 +8581,21 @@ export type SessionDesignUpdateInput = {
     readonly questions?: ReadonlyArray<string>
     readonly scenarios?: ReadonlyArray<{
       readonly params?: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+      readonly device?: {
+        readonly battery?: { readonly level: number | "Infinity" | "-Infinity" | "NaN"; readonly charging: boolean }
+        readonly network?: "online" | "slow" | "offline"
+        readonly location?: {
+          readonly latitude: number | "Infinity" | "-Infinity" | "NaN"
+          readonly longitude: number | "Infinity" | "-Infinity" | "NaN"
+          readonly accuracy?: number | "Infinity" | "-Infinity" | "NaN"
+        }
+        readonly orientation?: {
+          readonly alpha: number | "Infinity" | "-Infinity" | "NaN"
+          readonly beta: number | "Infinity" | "-Infinity" | "NaN"
+          readonly gamma: number | "Infinity" | "-Infinity" | "NaN"
+        }
+        readonly clock?: string
+      }
       readonly id: string
       readonly name: string
       readonly variant?: string
@@ -8598,6 +8675,21 @@ export type SessionDesignUpdateInput = {
     readonly questions?: ReadonlyArray<string>
     readonly scenarios?: ReadonlyArray<{
       readonly params?: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+      readonly device?: {
+        readonly battery?: { readonly level: number | "Infinity" | "-Infinity" | "NaN"; readonly charging: boolean }
+        readonly network?: "online" | "slow" | "offline"
+        readonly location?: {
+          readonly latitude: number | "Infinity" | "-Infinity" | "NaN"
+          readonly longitude: number | "Infinity" | "-Infinity" | "NaN"
+          readonly accuracy?: number | "Infinity" | "-Infinity" | "NaN"
+        }
+        readonly orientation?: {
+          readonly alpha: number | "Infinity" | "-Infinity" | "NaN"
+          readonly beta: number | "Infinity" | "-Infinity" | "NaN"
+          readonly gamma: number | "Infinity" | "-Infinity" | "NaN"
+        }
+        readonly clock?: string
+      }
       readonly id: string
       readonly name: string
       readonly variant?: string
@@ -8677,6 +8769,21 @@ export type SessionDesignUpdateInput = {
     readonly questions?: ReadonlyArray<string>
     readonly scenarios?: ReadonlyArray<{
       readonly params?: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+      readonly device?: {
+        readonly battery?: { readonly level: number | "Infinity" | "-Infinity" | "NaN"; readonly charging: boolean }
+        readonly network?: "online" | "slow" | "offline"
+        readonly location?: {
+          readonly latitude: number | "Infinity" | "-Infinity" | "NaN"
+          readonly longitude: number | "Infinity" | "-Infinity" | "NaN"
+          readonly accuracy?: number | "Infinity" | "-Infinity" | "NaN"
+        }
+        readonly orientation?: {
+          readonly alpha: number | "Infinity" | "-Infinity" | "NaN"
+          readonly beta: number | "Infinity" | "-Infinity" | "NaN"
+          readonly gamma: number | "Infinity" | "-Infinity" | "NaN"
+        }
+        readonly clock?: string
+      }
       readonly id: string
       readonly name: string
       readonly variant?: string
@@ -8756,6 +8863,21 @@ export type SessionDesignUpdateInput = {
     readonly questions?: ReadonlyArray<string>
     readonly scenarios?: ReadonlyArray<{
       readonly params?: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+      readonly device?: {
+        readonly battery?: { readonly level: number | "Infinity" | "-Infinity" | "NaN"; readonly charging: boolean }
+        readonly network?: "online" | "slow" | "offline"
+        readonly location?: {
+          readonly latitude: number | "Infinity" | "-Infinity" | "NaN"
+          readonly longitude: number | "Infinity" | "-Infinity" | "NaN"
+          readonly accuracy?: number | "Infinity" | "-Infinity" | "NaN"
+        }
+        readonly orientation?: {
+          readonly alpha: number | "Infinity" | "-Infinity" | "NaN"
+          readonly beta: number | "Infinity" | "-Infinity" | "NaN"
+          readonly gamma: number | "Infinity" | "-Infinity" | "NaN"
+        }
+        readonly clock?: string
+      }
       readonly id: string
       readonly name: string
       readonly variant?: string
@@ -8835,6 +8957,21 @@ export type SessionDesignUpdateInput = {
     readonly questions?: ReadonlyArray<string>
     readonly scenarios?: ReadonlyArray<{
       readonly params?: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+      readonly device?: {
+        readonly battery?: { readonly level: number | "Infinity" | "-Infinity" | "NaN"; readonly charging: boolean }
+        readonly network?: "online" | "slow" | "offline"
+        readonly location?: {
+          readonly latitude: number | "Infinity" | "-Infinity" | "NaN"
+          readonly longitude: number | "Infinity" | "-Infinity" | "NaN"
+          readonly accuracy?: number | "Infinity" | "-Infinity" | "NaN"
+        }
+        readonly orientation?: {
+          readonly alpha: number | "Infinity" | "-Infinity" | "NaN"
+          readonly beta: number | "Infinity" | "-Infinity" | "NaN"
+          readonly gamma: number | "Infinity" | "-Infinity" | "NaN"
+        }
+        readonly clock?: string
+      }
       readonly id: string
       readonly name: string
       readonly variant?: string
@@ -8914,6 +9051,21 @@ export type SessionDesignUpdateInput = {
     readonly questions?: ReadonlyArray<string>
     readonly scenarios?: ReadonlyArray<{
       readonly params?: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+      readonly device?: {
+        readonly battery?: { readonly level: number | "Infinity" | "-Infinity" | "NaN"; readonly charging: boolean }
+        readonly network?: "online" | "slow" | "offline"
+        readonly location?: {
+          readonly latitude: number | "Infinity" | "-Infinity" | "NaN"
+          readonly longitude: number | "Infinity" | "-Infinity" | "NaN"
+          readonly accuracy?: number | "Infinity" | "-Infinity" | "NaN"
+        }
+        readonly orientation?: {
+          readonly alpha: number | "Infinity" | "-Infinity" | "NaN"
+          readonly beta: number | "Infinity" | "-Infinity" | "NaN"
+          readonly gamma: number | "Infinity" | "-Infinity" | "NaN"
+        }
+        readonly clock?: string
+      }
       readonly id: string
       readonly name: string
       readonly variant?: string
@@ -8993,6 +9145,21 @@ export type SessionDesignUpdateInput = {
     readonly questions?: ReadonlyArray<string>
     readonly scenarios?: ReadonlyArray<{
       readonly params?: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+      readonly device?: {
+        readonly battery?: { readonly level: number | "Infinity" | "-Infinity" | "NaN"; readonly charging: boolean }
+        readonly network?: "online" | "slow" | "offline"
+        readonly location?: {
+          readonly latitude: number | "Infinity" | "-Infinity" | "NaN"
+          readonly longitude: number | "Infinity" | "-Infinity" | "NaN"
+          readonly accuracy?: number | "Infinity" | "-Infinity" | "NaN"
+        }
+        readonly orientation?: {
+          readonly alpha: number | "Infinity" | "-Infinity" | "NaN"
+          readonly beta: number | "Infinity" | "-Infinity" | "NaN"
+          readonly gamma: number | "Infinity" | "-Infinity" | "NaN"
+        }
+        readonly clock?: string
+      }
       readonly id: string
       readonly name: string
       readonly variant?: string
@@ -9072,6 +9239,21 @@ export type SessionDesignUpdateInput = {
     readonly questions?: ReadonlyArray<string>
     readonly scenarios?: ReadonlyArray<{
       readonly params?: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+      readonly device?: {
+        readonly battery?: { readonly level: number | "Infinity" | "-Infinity" | "NaN"; readonly charging: boolean }
+        readonly network?: "online" | "slow" | "offline"
+        readonly location?: {
+          readonly latitude: number | "Infinity" | "-Infinity" | "NaN"
+          readonly longitude: number | "Infinity" | "-Infinity" | "NaN"
+          readonly accuracy?: number | "Infinity" | "-Infinity" | "NaN"
+        }
+        readonly orientation?: {
+          readonly alpha: number | "Infinity" | "-Infinity" | "NaN"
+          readonly beta: number | "Infinity" | "-Infinity" | "NaN"
+          readonly gamma: number | "Infinity" | "-Infinity" | "NaN"
+        }
+        readonly clock?: string
+      }
       readonly id: string
       readonly name: string
       readonly variant?: string
@@ -9151,6 +9333,21 @@ export type SessionDesignUpdateInput = {
     readonly questions?: ReadonlyArray<string>
     readonly scenarios?: ReadonlyArray<{
       readonly params?: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+      readonly device?: {
+        readonly battery?: { readonly level: number | "Infinity" | "-Infinity" | "NaN"; readonly charging: boolean }
+        readonly network?: "online" | "slow" | "offline"
+        readonly location?: {
+          readonly latitude: number | "Infinity" | "-Infinity" | "NaN"
+          readonly longitude: number | "Infinity" | "-Infinity" | "NaN"
+          readonly accuracy?: number | "Infinity" | "-Infinity" | "NaN"
+        }
+        readonly orientation?: {
+          readonly alpha: number | "Infinity" | "-Infinity" | "NaN"
+          readonly beta: number | "Infinity" | "-Infinity" | "NaN"
+          readonly gamma: number | "Infinity" | "-Infinity" | "NaN"
+        }
+        readonly clock?: string
+      }
       readonly id: string
       readonly name: string
       readonly variant?: string
@@ -9230,6 +9427,21 @@ export type SessionDesignUpdateInput = {
     readonly questions?: ReadonlyArray<string>
     readonly scenarios?: ReadonlyArray<{
       readonly params?: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+      readonly device?: {
+        readonly battery?: { readonly level: number | "Infinity" | "-Infinity" | "NaN"; readonly charging: boolean }
+        readonly network?: "online" | "slow" | "offline"
+        readonly location?: {
+          readonly latitude: number | "Infinity" | "-Infinity" | "NaN"
+          readonly longitude: number | "Infinity" | "-Infinity" | "NaN"
+          readonly accuracy?: number | "Infinity" | "-Infinity" | "NaN"
+        }
+        readonly orientation?: {
+          readonly alpha: number | "Infinity" | "-Infinity" | "NaN"
+          readonly beta: number | "Infinity" | "-Infinity" | "NaN"
+          readonly gamma: number | "Infinity" | "-Infinity" | "NaN"
+        }
+        readonly clock?: string
+      }
       readonly id: string
       readonly name: string
       readonly variant?: string
@@ -9309,6 +9521,21 @@ export type SessionDesignUpdateInput = {
     readonly questions?: ReadonlyArray<string>
     readonly scenarios?: ReadonlyArray<{
       readonly params?: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+      readonly device?: {
+        readonly battery?: { readonly level: number | "Infinity" | "-Infinity" | "NaN"; readonly charging: boolean }
+        readonly network?: "online" | "slow" | "offline"
+        readonly location?: {
+          readonly latitude: number | "Infinity" | "-Infinity" | "NaN"
+          readonly longitude: number | "Infinity" | "-Infinity" | "NaN"
+          readonly accuracy?: number | "Infinity" | "-Infinity" | "NaN"
+        }
+        readonly orientation?: {
+          readonly alpha: number | "Infinity" | "-Infinity" | "NaN"
+          readonly beta: number | "Infinity" | "-Infinity" | "NaN"
+          readonly gamma: number | "Infinity" | "-Infinity" | "NaN"
+        }
+        readonly clock?: string
+      }
       readonly id: string
       readonly name: string
       readonly variant?: string
@@ -9388,6 +9615,21 @@ export type SessionDesignUpdateInput = {
     readonly questions?: ReadonlyArray<string>
     readonly scenarios?: ReadonlyArray<{
       readonly params?: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+      readonly device?: {
+        readonly battery?: { readonly level: number | "Infinity" | "-Infinity" | "NaN"; readonly charging: boolean }
+        readonly network?: "online" | "slow" | "offline"
+        readonly location?: {
+          readonly latitude: number | "Infinity" | "-Infinity" | "NaN"
+          readonly longitude: number | "Infinity" | "-Infinity" | "NaN"
+          readonly accuracy?: number | "Infinity" | "-Infinity" | "NaN"
+        }
+        readonly orientation?: {
+          readonly alpha: number | "Infinity" | "-Infinity" | "NaN"
+          readonly beta: number | "Infinity" | "-Infinity" | "NaN"
+          readonly gamma: number | "Infinity" | "-Infinity" | "NaN"
+        }
+        readonly clock?: string
+      }
       readonly id: string
       readonly name: string
       readonly variant?: string
@@ -9467,6 +9709,21 @@ export type SessionDesignUpdateInput = {
     readonly questions?: ReadonlyArray<string>
     readonly scenarios?: ReadonlyArray<{
       readonly params?: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+      readonly device?: {
+        readonly battery?: { readonly level: number | "Infinity" | "-Infinity" | "NaN"; readonly charging: boolean }
+        readonly network?: "online" | "slow" | "offline"
+        readonly location?: {
+          readonly latitude: number | "Infinity" | "-Infinity" | "NaN"
+          readonly longitude: number | "Infinity" | "-Infinity" | "NaN"
+          readonly accuracy?: number | "Infinity" | "-Infinity" | "NaN"
+        }
+        readonly orientation?: {
+          readonly alpha: number | "Infinity" | "-Infinity" | "NaN"
+          readonly beta: number | "Infinity" | "-Infinity" | "NaN"
+          readonly gamma: number | "Infinity" | "-Infinity" | "NaN"
+        }
+        readonly clock?: string
+      }
       readonly id: string
       readonly name: string
       readonly variant?: string
@@ -9546,6 +9803,21 @@ export type SessionDesignUpdateInput = {
     readonly questions?: ReadonlyArray<string>
     readonly scenarios?: ReadonlyArray<{
       readonly params?: { readonly [x: string]: { readonly [x: string]: string | number | boolean } }
+      readonly device?: {
+        readonly battery?: { readonly level: number | "Infinity" | "-Infinity" | "NaN"; readonly charging: boolean }
+        readonly network?: "online" | "slow" | "offline"
+        readonly location?: {
+          readonly latitude: number | "Infinity" | "-Infinity" | "NaN"
+          readonly longitude: number | "Infinity" | "-Infinity" | "NaN"
+          readonly accuracy?: number | "Infinity" | "-Infinity" | "NaN"
+        }
+        readonly orientation?: {
+          readonly alpha: number | "Infinity" | "-Infinity" | "NaN"
+          readonly beta: number | "Infinity" | "-Infinity" | "NaN"
+          readonly gamma: number | "Infinity" | "-Infinity" | "NaN"
+        }
+        readonly clock?: string
+      }
       readonly id: string
       readonly name: string
       readonly variant?: string

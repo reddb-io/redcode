@@ -122,6 +122,8 @@ export function mountReview(host: HTMLElement, options: ReviewOptions) {
   const endpoint =
     options.endpoint ?? `${options.base.replace(/\/$/, "")}/api/session/${encodeURIComponent(options.sessionID)}/design`
   const state = {
+    /** The simulated device the preview runs on (./device); the reviewer sets it in the Params tab. */
+    simulated: {} as Design.DeviceState,
     canvas: {
       kind: "",
       fit: true,
@@ -492,7 +494,7 @@ main{grid-template-rows:minmax(0,1fr)}main>#inspector{display:none}
     <div id="param-fields"></div></div>
     <div class="section"><label><span data-copy="paramName">${copy.paramName}</span><input id="param-name" required maxlength="100"></label>
     <button type="button" id="param-save" data-copy="paramSave">${copy.paramSave}</button>
-    <p class="muted" data-copy="paramPublish">${copy.paramPublish}</p></div></div></section></aside></main></section><dialog id="board-dialog" style="width:95vw;height:90vh;max-width:1400px"><button id="board-close"><span data-copy="close">${copy.close}</span></button><iframe id="board-frame" title="${copy.whiteboard}" data-copy-title="whiteboard" sandbox="allow-scripts" style="height:calc(100% - 50px);width:100%"></iframe></dialog><dialog id="anti-slop-dialog" class="action-dialog" aria-labelledby="anti-slop-heading"><h2 id="anti-slop-heading" data-copy="runAntiSlop">${copy.runAntiSlop}</h2><p id="anti-slop-variant"></p><p data-copy="antiSlopScope">${copy.antiSlopScope}</p><label><span data-copy="antiSlopFocus">${copy.antiSlopFocus}</span><textarea id="anti-slop-text" maxlength="4000"></textarea></label><div class="row"><button type="button" id="cancel-anti-slop" data-copy="cancel">${copy.cancel}</button><button type="button" id="confirm-anti-slop" class="primary" data-copy="runAntiSlop">${copy.runAntiSlop}</button></div></dialog><dialog id="approve-dialog" class="action-dialog" aria-labelledby="approve-heading"><h2 id="approve-heading" data-copy="confirm">${copy.confirm}</h2><p id="approval-revision"></p><p data-copy="approvalScope">${copy.approvalScope}</p><label class="check"><input type="checkbox" id="approval-screenshot" checked><span data-copy="approvalScreenshot">${copy.approvalScreenshot}</span></label><div id="approval-review" hidden><p class="muted" data-copy="approvalReviewNotes">${copy.approvalReviewNotes}</p><ul id="approval-review-list"></ul></div><div id="approval-open" hidden><p class="muted" data-copy="approvalOpenNotes">${copy.approvalOpenNotes}</p><ul id="approval-open-list"></ul></div><div class="row"><button id="cancel-approve" data-copy="cancel">${copy.cancel}</button><button id="record-approve" data-copy="approvalRecordAll" hidden>${copy.approvalRecordAll}</button><button id="confirm-approve" class="primary" data-copy="approveAction">${copy.approveAction}</button></div></dialog><dialog id="variant-dialog" class="action-dialog" aria-labelledby="variant-heading"><form id="variant-form"><h2 id="variant-heading" data-copy="addVariant">${copy.addVariant}</h2><p data-copy="variantHint">${copy.variantHint}</p><label><span data-copy="variantPrompt">${copy.variantPrompt}</span><textarea id="variant-prompt" required></textarea></label><div class="row"><button type="button" id="cancel-variant" data-copy="cancel">${copy.cancel}</button><button type="submit" id="request-variant" class="primary" data-copy="requestVariant">${copy.requestVariant}</button></div></form></dialog><dialog id="operation-dialog" class="action-dialog" aria-labelledby="operation-heading"><form id="operation-form"><h2 id="operation-heading"></h2><p id="operation-subject"></p><p id="operation-hint"></p><label id="operation-name-field"><span data-copy="renameLabel">${copy.renameLabel}</span><input id="operation-name" maxlength="100"></label><label id="operation-text-field"><span data-copy="operationGuidance">${copy.operationGuidance}</span><textarea id="operation-text" maxlength="2000"></textarea></label><div class="row"><button type="button" id="cancel-operation" data-copy="cancel">${copy.cancel}</button><button type="submit" id="confirm-operation" class="primary"></button></div></form></dialog><dialog id="restore-dialog" class="action-dialog" aria-labelledby="restore-heading"><h2 id="restore-heading"></h2><div class="row"><button type="button" id="cancel-restore" data-copy="cancel">${copy.cancel}</button><button type="button" id="confirm-restore" class="primary" data-copy="restore">${copy.restore}</button></div></dialog><div id="status" role="status" aria-live="polite"></div>`
+    <p class="muted" data-copy="paramPublish">${copy.paramPublish}</p></div></div><details id="device-panel" class="fold"><summary><span data-copy="device">${copy.device}</span></summary><div class="fold-body"><p class="muted" data-copy="deviceHint">${copy.deviceHint}</p><label id="device-scenario-field" hidden><span data-copy="deviceScenario">${copy.deviceScenario}</span><select id="device-scenario"></select></label><label><span data-copy="deviceBattery">${copy.deviceBattery}</span><input id="device-battery" type="range" min="0" max="100" step="1" value="100"><output id="device-battery-value">100%</output></label><label class="check"><input type="checkbox" id="device-charging" checked><span data-copy="deviceCharging">${copy.deviceCharging}</span></label><label><span data-copy="deviceNetwork">${copy.deviceNetwork}</span><select id="device-network"><option value="online" data-copy="deviceOnline">${copy.deviceOnline}</option><option value="slow" data-copy="deviceSlow">${copy.deviceSlow}</option><option value="offline" data-copy="deviceOffline">${copy.deviceOffline}</option></select></label><div class="row"><label><span data-copy="deviceLatitude">${copy.deviceLatitude}</span><input id="device-latitude" type="number" min="-90" max="90" step="any" inputmode="decimal"></label><label><span data-copy="deviceLongitude">${copy.deviceLongitude}</span><input id="device-longitude" type="number" min="-180" max="180" step="any" inputmode="decimal"></label></div><label><span data-copy="deviceClock">${copy.deviceClock}</span><input id="device-clock" type="datetime-local"></label><label><span data-copy="deviceTiltForward">${copy.deviceTiltForward}</span><input id="device-beta" type="range" min="-90" max="90" step="5" value="0"></label><label><span data-copy="deviceTiltSide">${copy.deviceTiltSide}</span><input id="device-gamma" type="range" min="-90" max="90" step="5" value="0"></label><div class="row"><button type="button" id="device-shake" data-copy="deviceShake">${copy.deviceShake}</button><button type="button" id="device-reset" data-copy="deviceReset">${copy.deviceReset}</button></div><p id="device-status" class="muted" role="status" aria-live="polite"></p></div></details></section></aside></main></section><dialog id="board-dialog" style="width:95vw;height:90vh;max-width:1400px"><button id="board-close"><span data-copy="close">${copy.close}</span></button><iframe id="board-frame" title="${copy.whiteboard}" data-copy-title="whiteboard" sandbox="allow-scripts" style="height:calc(100% - 50px);width:100%"></iframe></dialog><dialog id="anti-slop-dialog" class="action-dialog" aria-labelledby="anti-slop-heading"><h2 id="anti-slop-heading" data-copy="runAntiSlop">${copy.runAntiSlop}</h2><p id="anti-slop-variant"></p><p data-copy="antiSlopScope">${copy.antiSlopScope}</p><label><span data-copy="antiSlopFocus">${copy.antiSlopFocus}</span><textarea id="anti-slop-text" maxlength="4000"></textarea></label><div class="row"><button type="button" id="cancel-anti-slop" data-copy="cancel">${copy.cancel}</button><button type="button" id="confirm-anti-slop" class="primary" data-copy="runAntiSlop">${copy.runAntiSlop}</button></div></dialog><dialog id="approve-dialog" class="action-dialog" aria-labelledby="approve-heading"><h2 id="approve-heading" data-copy="confirm">${copy.confirm}</h2><p id="approval-revision"></p><p data-copy="approvalScope">${copy.approvalScope}</p><label class="check"><input type="checkbox" id="approval-screenshot" checked><span data-copy="approvalScreenshot">${copy.approvalScreenshot}</span></label><div id="approval-review" hidden><p class="muted" data-copy="approvalReviewNotes">${copy.approvalReviewNotes}</p><ul id="approval-review-list"></ul></div><div id="approval-open" hidden><p class="muted" data-copy="approvalOpenNotes">${copy.approvalOpenNotes}</p><ul id="approval-open-list"></ul></div><div class="row"><button id="cancel-approve" data-copy="cancel">${copy.cancel}</button><button id="record-approve" data-copy="approvalRecordAll" hidden>${copy.approvalRecordAll}</button><button id="confirm-approve" class="primary" data-copy="approveAction">${copy.approveAction}</button></div></dialog><dialog id="variant-dialog" class="action-dialog" aria-labelledby="variant-heading"><form id="variant-form"><h2 id="variant-heading" data-copy="addVariant">${copy.addVariant}</h2><p data-copy="variantHint">${copy.variantHint}</p><label><span data-copy="variantPrompt">${copy.variantPrompt}</span><textarea id="variant-prompt" required></textarea></label><div class="row"><button type="button" id="cancel-variant" data-copy="cancel">${copy.cancel}</button><button type="submit" id="request-variant" class="primary" data-copy="requestVariant">${copy.requestVariant}</button></div></form></dialog><dialog id="operation-dialog" class="action-dialog" aria-labelledby="operation-heading"><form id="operation-form"><h2 id="operation-heading"></h2><p id="operation-subject"></p><p id="operation-hint"></p><label id="operation-name-field"><span data-copy="renameLabel">${copy.renameLabel}</span><input id="operation-name" maxlength="100"></label><label id="operation-text-field"><span data-copy="operationGuidance">${copy.operationGuidance}</span><textarea id="operation-text" maxlength="2000"></textarea></label><div class="row"><button type="button" id="cancel-operation" data-copy="cancel">${copy.cancel}</button><button type="submit" id="confirm-operation" class="primary"></button></div></form></dialog><dialog id="restore-dialog" class="action-dialog" aria-labelledby="restore-heading"><h2 id="restore-heading"></h2><div class="row"><button type="button" id="cancel-restore" data-copy="cancel">${copy.cancel}</button><button type="button" id="confirm-restore" class="primary" data-copy="restore">${copy.restore}</button></div></dialog><div id="status" role="status" aria-live="polite"></div>`
 
   for (const id of ["approve-dialog", "variant-dialog", "operation-dialog", "anti-slop-dialog"]) {
     const notice = document.createElement("p")
@@ -792,7 +794,7 @@ main{grid-template-rows:minmax(0,1fr)}main>#inspector{display:none}
     element("view-compare").setAttribute("aria-pressed", String(state.comparing))
     element<HTMLIFrameElement>("preview").contentWindow?.postMessage({ type: "design:variant", id: state.variant }, "*")
     const peer = element<HTMLIFrameElement>("peer-preview")
-    if (state.comparing && peer.srcdoc !== state.html) peer.srcdoc = state.html
+    if (state.comparing && peer.srcdoc !== framed(state.html)) peer.srcdoc = framed(state.html)
     if (!state.comparing) peer.removeAttribute("srcdoc")
     if (state.comparing) peer.contentWindow?.postMessage({ type: "design:variant", id: state.peer }, "*")
     drawScreens()
@@ -880,7 +882,7 @@ main{grid-template-rows:minmax(0,1fr)}main>#inspector{display:none}
             show()
             setTimeout(show, 500)
           }
-          mini.srcdoc = state.html
+          mini.srcdoc = framed(state.html)
           const button = document.createElement("button")
           button.type = "button"
           button.id = `screen-${item.id}`
@@ -1038,7 +1040,75 @@ main{grid-template-rows:minmax(0,1fr)}main>#inspector{display:none}
   }
   const paramComponents = () =>
     (state.revisionInfo?.document.controls ?? []).filter((item) => !item.variant || item.variant === state.variant)
+  /** The device panel shows the state the preview runs on and offers the scenarios that set one. */
+  const drawSimulated = () => {
+    const scenarios = (state.revisionInfo?.document.scenarios ?? []).filter(
+      (item) => item.device && (!item.variant || item.variant === state.variant),
+    )
+    element("device-scenario-field").hidden = !scenarios.length
+    const selected = input("device-scenario").value
+    element("device-scenario").replaceChildren(
+      new Option(copy.deviceDefault, ""),
+      ...scenarios.map((item) => new Option(item.name, item.id)),
+    )
+    input("device-scenario").value = scenarios.some((item) => item.id === selected) ? selected : ""
+    const current = state.simulated
+    input("device-battery").value = String(Math.round((current.battery?.level ?? 1) * 100))
+    element("device-battery-value").textContent = `${input("device-battery").value}%`
+    input("device-charging").checked = current.battery?.charging ?? true
+    input("device-network").value = current.network ?? "online"
+    input("device-latitude").value = current.location ? String(current.location.latitude) : ""
+    input("device-longitude").value = current.location ? String(current.location.longitude) : ""
+    input("device-clock").value = current.clock ?? ""
+    input("device-beta").value = String(current.orientation?.beta ?? 0)
+    input("device-gamma").value = String(current.orientation?.gamma ?? 0)
+  }
+  /** Gives the previews a new device state; they apply it live, and a reload starts from it. */
+  const setSimulated = (next: Design.DeviceState) => {
+    state.simulated = next
+    for (const id of ["preview", "peer-preview"])
+      element<HTMLIFrameElement>(id).contentWindow?.postMessage({ type: "design:device", state: next }, "*")
+    drawSimulated()
+  }
+  const readSimulated = (): Design.DeviceState => {
+    const latitude = Number.parseFloat(input("device-latitude").value)
+    const longitude = Number.parseFloat(input("device-longitude").value)
+    const beta = Number(input("device-beta").value)
+    const gamma = Number(input("device-gamma").value)
+    return {
+      battery: { level: Number(input("device-battery").value) / 100, charging: input("device-charging").checked },
+      network: input("device-network").value as "online" | "slow" | "offline",
+      ...(Math.abs(latitude) <= 90 && Math.abs(longitude) <= 180 ? { location: { latitude, longitude } } : {}),
+      ...(input("device-clock").value ? { clock: input("device-clock").value.slice(0, 19) } : {}),
+      ...(beta || gamma ? { orientation: { alpha: 0, beta, gamma } } : {}),
+    }
+  }
+  for (const id of [
+    "device-battery",
+    "device-charging",
+    "device-network",
+    "device-latitude",
+    "device-longitude",
+    "device-clock",
+    "device-beta",
+    "device-gamma",
+  ])
+    input(id).onchange = () => setSimulated(readSimulated())
+  input("device-battery").oninput = () =>
+    (element("device-battery-value").textContent = `${input("device-battery").value}%`)
+  input("device-scenario").onchange = () =>
+    setSimulated(
+      state.revisionInfo?.document.scenarios.find((item) => item.id === input("device-scenario").value)?.device ?? {},
+    )
+  element("device-reset").onclick = () => {
+    input("device-scenario").value = ""
+    element("device-status").textContent = ""
+    setSimulated({})
+  }
+  element("device-shake").onclick = () =>
+    element<HTMLIFrameElement>("preview").contentWindow?.postMessage({ type: "design:device-shake" }, "*")
   const drawParams = () => {
+    drawSimulated()
     const components = paramComponents()
     if (!components.some((item) => item.id === state.component)) state.component = components[0]?.id ?? ""
     element("params-empty").hidden = !!components.length
@@ -3411,8 +3481,8 @@ main{grid-template-rows:minmax(0,1fr)}main>#inspector{display:none}
     element<HTMLIFrameElement>("peer-preview").removeAttribute("srcdoc")
     // A capture belongs to the document that asked for it.
     devices?.release()
-    element<HTMLIFrameElement>("preview").srcdoc = html
-    if (keep && state.comparing) element<HTMLIFrameElement>("peer-preview").srcdoc = html
+    element<HTMLIFrameElement>("preview").srcdoc = framed(html)
+    if (keep && state.comparing) element<HTMLIFrameElement>("peer-preview").srcdoc = framed(html)
     input("revisions").value = revisionID
     // Restoring only means something for a revision that is no longer the latest one.
     element("restore").hidden = state.design?.revision === revisionID
@@ -4609,7 +4679,7 @@ main{grid-template-rows:minmax(0,1fr)}main>#inspector{display:none}
     for (const id of ["preview", ...(state.comparing ? ["peer-preview"] : [])]) {
       const frame = element<HTMLIFrameElement>(id)
       frame.removeAttribute("srcdoc")
-      frame.srcdoc = state.html
+      frame.srcdoc = framed(state.html)
     }
   }
   /** An operation carried out by a revision: nothing is left to retry, and notes follow a merge's kept variant. */
@@ -5039,6 +5109,12 @@ main{grid-template-rows:minmax(0,1fr)}main>#inspector{display:none}
       "*",
     )
   const message = (event: MessageEvent) => {
+    if (event.data?.type === "design:vibrate" && event.source === element<HTMLIFrameElement>("preview").contentWindow) {
+      const pattern = [event.data.pattern].flat().filter((item: unknown) => typeof item === "number")
+      element("device-status").textContent = `${copy.deviceVibrated}${pattern.length ? ` (${pattern.join(", ")} ms)` : ""}`
+      element<HTMLDetailsElement>("device-panel").open = true
+      return
+    }
     if (event.data?.type === "design:ready") {
       if (event.source === element<HTMLIFrameElement>("preview").contentWindow) loadingEvent({ type: "ready" })
       return
@@ -5555,6 +5631,10 @@ main{grid-template-rows:minmax(0,1fr)}main>#inspector{display:none}
     root.replaceChildren()
   }
   /** This page lost its sign-in. A reload signs in again where it can, or shows how to get back in. */
+  /** A preview document that starts on the simulated device, before the prototype's scripts read it. */
+  function framed(html: string) {
+    return `<script>window.__redcodeDevice=${JSON.stringify(state.simulated).replaceAll("<", "\\u003c")}</script>${html}`
+  }
   function denied() {
     if (!state.stopped) element("access").hidden = false
   }

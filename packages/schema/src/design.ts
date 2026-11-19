@@ -151,8 +151,42 @@ export const ParamContext = Schema.Struct({
 }).annotate({ identifier: "Design.ParamContext" })
 export interface ParamContext extends Schema.Schema.Type<typeof ParamContext> {}
 
+/**
+ * The simulated device a prototype runs on in the review and in the audit, read through the browser's own APIs.
+ * Absent fields keep the default: a charged, online device at the real time.
+ */
+export const DeviceState = Schema.Struct({
+  battery: Schema.Struct({
+    /** 0 to 1, as navigator.getBattery() reports it. */
+    level: Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 1 })),
+    charging: Schema.Boolean,
+  }).pipe(optional),
+  /** offline fails fetch and fires offline; slow delays fetch and reports a 3g connection. */
+  network: Schema.Literals(["online", "slow", "offline"]).pipe(optional),
+  location: Schema.Struct({
+    latitude: Schema.Number.check(Schema.isBetween({ minimum: -90, maximum: 90 })),
+    longitude: Schema.Number.check(Schema.isBetween({ minimum: -180, maximum: 180 })),
+    accuracy: Schema.Number.check(Schema.isGreaterThanOrEqualTo(0)).pipe(optional),
+  }).pipe(optional),
+  /** Degrees, as deviceorientation reports them. */
+  orientation: Schema.Struct({
+    alpha: Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 360 })),
+    beta: Schema.Number.check(Schema.isBetween({ minimum: -180, maximum: 180 })),
+    gamma: Schema.Number.check(Schema.isBetween({ minimum: -90, maximum: 90 })),
+  }).pipe(optional),
+  /** A local date and time such as 2026-11-19T23:30; Date and Date.now start from it and keep running. */
+  clock: Schema.String.check(Schema.isPattern(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/)).pipe(optional),
+}).annotate({
+  identifier: "Design.DeviceState",
+  description:
+    "The simulated device for prototyping apps: battery, network (online, slow, offline), location, tilt and clock. The prototype reads it through the standard APIs (navigator.getBattery, navigator.onLine and online/offline events, fetch, navigator.geolocation, deviceorientation and devicemotion, Date, navigator.vibrate), so write the prototype against those APIs instead of faking the state in fixtures. It needs no live grant: the reviewer changes it in the Params tab, and a scenario's device holds while that scenario is audited, so record states such as a low battery, no network or another city as scenarios with device.",
+})
+export interface DeviceState extends Schema.Schema.Type<typeof DeviceState> {}
+
 export const Scenario = Schema.Struct({
   params: ParamValues.pipe(optional),
+  /** The simulated device the scenario runs on, such as a low battery, no network or another city. */
+  device: DeviceState.pipe(optional),
   id: Schema.String,
   name: Schema.String,
   variant: Schema.String.pipe(optional),
@@ -228,6 +262,8 @@ export const Tweaks = Schema.Record(
 export const Live = Schema.Struct({
   microphone: Schema.Boolean.pipe(optional),
   camera: Schema.Boolean.pipe(optional),
+  /** The real location of the presenter's or reviewer's computer, when no simulated one is set. */
+  location: Schema.Boolean.pipe(optional),
   /** https or wss origins the design may connect to and load scripts from, such as wss://api.example.com. */
   origins: Schema.Array(
     Schema.String.check(Schema.isPattern(/^(https|wss):\/\/([a-z0-9-]+\.)+[a-z][a-z0-9-]*(:\d{1,5})?$/)),
@@ -237,7 +273,7 @@ export const Live = Schema.Struct({
 }).annotate({
   identifier: "Design.Live",
   description:
-    "Live capabilities for a deck or prototype whose own JavaScript needs the microphone, the camera or a network service, such as realtime speech or emotion analysis while presenting. Origins are lowercase https:// or wss:// scheme plus a domain name (and port), without a path. The user is asked to approve every new capability; record the full set you need in one update. Writing that JavaScript inside the design root is design work, not product implementation. Never put API keys or tokens in design files: have the deck ask the presenter for one at run time and keep it in memory. The devices are reached through navigator.mediaDevices.getUserMedia({audio:true}) and ({video:true}) only (the Web Speech API is unavailable); video arrives at about 640x480 and 30 fps from the default camera. While presenting, the presenter turns each device on (a button, or the M and C keys): until then getUserMedia waits, and turning one off ends its track. Show whether the deck is listening or watching, stop tracks when done, and handle an ended track, a refused device or a failed connection with a visible message. The HTML export keeps references to the granted origins and runs the deck as its own page.",
+    "Live capabilities for a deck or prototype whose own JavaScript needs the microphone, the camera, the real location or a network service, such as realtime speech or emotion analysis while presenting. Origins are lowercase https:// or wss:// scheme plus a domain name (and port), without a path. The user is asked to approve every new capability; record the full set you need in one update. Writing that JavaScript inside the design root is design work, not product implementation. Never put API keys or tokens in design files: have the deck ask the presenter for one at run time and keep it in memory. The devices are reached through navigator.mediaDevices.getUserMedia({audio:true}) and ({video:true}) only (the Web Speech API is unavailable); video arrives at about 640x480 and 30 fps from the default camera. Real location comes through navigator.geolocation. While presenting, the presenter turns each device on (a button, or the M, C and L keys): until then getUserMedia waits, and turning one off ends its track. Show whether the deck is listening or watching, stop tracks when done, and handle an ended track, a refused device or a failed connection with a visible message. The HTML export keeps references to the granted origins and runs the deck as its own page.",
 })
 export interface Live extends Schema.Schema.Type<typeof Live> {}
 

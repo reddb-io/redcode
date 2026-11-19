@@ -6,6 +6,9 @@ import { DesignPage } from "@opencode/core/design/ui/page"
 import { liveFrame } from "@opencode/core/design/ui/live"
 import { DesignExport } from "@opencode/core/design/export"
 import { DesignDocumentTool } from "@opencode/core/design/document-tool"
+import { simulate } from "@opencode/core/design/ui/device"
+import { Design } from "@opencode/schema/design"
+import { Schema } from "effect"
 
 const grant = { microphone: true, origins: ["wss://api.hume.ai", "https://api.hume.ai"] }
 const directive = (policy: string, name: string) => policy.split("; ").find((item) => item.startsWith(`${name} `))
@@ -59,6 +62,35 @@ describe("design live grant", () => {
     await fs.rm(directory, { recursive: true, force: true })
   })
 
+  test("every preview runs on the simulated device, granted or not", async () => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), "design-device-"))
+    await fs.writeFile(path.join(directory, "index.html"), `<main></main>`)
+    const revision = { id: "rev_device", document: { engine: "html", entry: "index.html", controls: [] } } as never
+    const html = await DesignPage.preview(revision, directory)
+    expect(html).toContain(`(${simulate.toString()})()`)
+    // The real-location bridge comes first, so the simulated geolocation can fall back to it.
+    const located = await DesignPage.preview(revision, directory, { location: true })
+    expect(located.indexOf(`(${liveFrame.toString()})()`)).toBeLessThan(located.indexOf(`(${simulate.toString()})()`))
+    await fs.rm(directory, { recursive: true, force: true })
+  })
+
+  test("takes a scenario's device state within the ranges the browser APIs report", () => {
+    const valid = Schema.is(Design.DeviceState)
+    expect(
+      valid({
+        battery: { level: 0.05, charging: false },
+        network: "offline",
+        location: { latitude: 48.85, longitude: 2.35 },
+        orientation: { alpha: 0, beta: 30, gamma: -15 },
+        clock: "2026-11-19T23:30",
+      }),
+    ).toBe(true)
+    expect(valid({ battery: { level: 5, charging: false } })).toBe(false)
+    expect(valid({ network: "5g" })).toBe(false)
+    expect(valid({ location: { latitude: 91, longitude: 0 } })).toBe(false)
+    expect(valid({ clock: "tomorrow" })).toBe(false)
+  })
+
   test("asks only for the devices and origins a grant adds", () => {
     expect(
       DesignDocumentTool.grants(
@@ -67,6 +99,7 @@ describe("design live grant", () => {
       ),
     ).toEqual(["camera", "https://cdn.example.com"])
     expect(DesignDocumentTool.grants({ camera: true }, { camera: false })).toEqual([])
+    expect(DesignDocumentTool.grants(undefined, { location: true })).toEqual(["location"])
   })
 
   test("tells the presentation page whether its slide gets the microphone", () => {
