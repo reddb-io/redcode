@@ -40,7 +40,7 @@ export interface ReviewOptions {
   deck?: typeof deck
   /** The preview area's loading, zero and error states from ./loading. */
   loading: typeof previewLoading
-  /** The microphone bridge from ./live for a design granted live use of it. */
+  /** The device bridge from ./live for a design granted live use of the microphone or camera. */
   live?: typeof liveHost
   /**
    * The review is shown beside the session it belongs to (the desktop pane, an app embed): the views that repeat
@@ -330,9 +330,9 @@ export function mountReview(host: HTMLElement, options: ReviewOptions) {
   const openNotes = () => (state.design?.notes ?? []).filter((note) => note.status === "open")
   const element = <T extends HTMLElement>(id: string) => root.getElementById(id) as T
   const input = (id: string) => element<HTMLInputElement>(id)
-  // Only the primary preview of a design granted the microphone gets one; comparison and minis never do.
-  const microphone = options.live?.(() =>
-    state.design?.live?.microphone ? element<HTMLIFrameElement>("preview").contentWindow : undefined,
+  // Only the primary preview of a design granted a device gets it; comparison and minis never do.
+  const devices = options.live?.((device) =>
+    state.design?.live?.[device] ? element<HTMLIFrameElement>("preview").contentWindow : undefined,
   )
   const key = () => `redcode:design:${endpoint}:${state.design?.id}:${state.revision}`
   const dismissedKey = () => `redcode:design:${endpoint}:${state.design?.id}:dismissed`
@@ -3410,7 +3410,7 @@ main{grid-template-rows:minmax(0,1fr)}main>#inspector{display:none}
     revealAfter(10000)
     element<HTMLIFrameElement>("peer-preview").removeAttribute("srcdoc")
     // A capture belongs to the document that asked for it.
-    microphone?.release()
+    devices?.release()
     element<HTMLIFrameElement>("preview").srcdoc = html
     if (keep && state.comparing) element<HTMLIFrameElement>("peer-preview").srcdoc = html
     input("revisions").value = revisionID

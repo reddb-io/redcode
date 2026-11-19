@@ -157,9 +157,11 @@ export function permissionPresentation(
   if (action === "design_live") {
     return {
       icon: "◉",
-      title: "Let this design use the microphone or network while it is shown",
+      title: "Let this design use devices or the network while it is shown",
       lines: [
-        ...source.resources.map((resource) => (resource === "microphone" ? "Microphone" : `Connect to ${String(resource)}`)),
+        ...source.resources.map((resource) =>
+          resource === "microphone" ? "Microphone" : resource === "camera" ? "Camera" : `Connect to ${String(resource)}`,
+        ),
         "Its own JavaScript runs in the review and while presenting.",
       ],
     }

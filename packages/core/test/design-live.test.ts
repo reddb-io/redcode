@@ -5,6 +5,7 @@ import { describe, expect, test } from "bun:test"
 import { DesignPage } from "@opencode/core/design/ui/page"
 import { liveFrame } from "@opencode/core/design/ui/live"
 import { DesignExport } from "@opencode/core/design/export"
+import { DesignDocumentTool } from "@opencode/core/design/document-tool"
 
 const grant = { microphone: true, origins: ["wss://api.hume.ai", "https://api.hume.ai"] }
 const directive = (policy: string, name: string) => policy.split("; ").find((item) => item.startsWith(`${name} `))
@@ -37,6 +38,7 @@ describe("design live grant", () => {
     const shim = `(${liveFrame.toString()})()`
     expect(await DesignPage.preview(revision, directory, grant)).toContain(shim)
     expect(await DesignPage.preview(revision, directory, { origins: grant.origins })).not.toContain(shim)
+    expect(await DesignPage.preview(revision, directory, { camera: true })).toContain(shim)
     const closed = await DesignPage.preview(revision, directory)
     expect(closed).not.toContain(shim)
     expect(closed).toContain(`content="${DesignPage.FRAME_CSP}"`)
@@ -57,9 +59,22 @@ describe("design live grant", () => {
     await fs.rm(directory, { recursive: true, force: true })
   })
 
+  test("asks only for the devices and origins a grant adds", () => {
+    expect(
+      DesignDocumentTool.grants(
+        { microphone: true, origins: ["wss://api.hume.ai"] },
+        { microphone: true, camera: true, origins: ["wss://api.hume.ai", "https://cdn.example.com"] },
+      ),
+    ).toEqual(["camera", "https://cdn.example.com"])
+    expect(DesignDocumentTool.grants({ camera: true }, { camera: false })).toEqual([])
+  })
+
   test("tells the presentation page whether its slide gets the microphone", () => {
     const options = (html: string) => html.match(/"microphone":(true|false)/)?.[1]
     expect(options(DesignPage.present("/design/session/ses/x", "des_live", "audience", undefined, grant))).toBe("true")
     expect(options(DesignPage.present("/design/session/ses/x", "des_live", "presenter"))).toBe("false")
+    expect(
+      DesignPage.present("/design/session/ses/x", "des_live", "presenter", undefined, { camera: true }),
+    ).toContain(`"camera":true`)
   })
 })

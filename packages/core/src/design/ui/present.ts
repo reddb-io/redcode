@@ -22,7 +22,9 @@ export interface PresentOptions {
   request?: (url: string, init?: RequestInit) => Promise<Response>
   /** The design was granted the microphone: the current slide gets it, the next-slide preview never does. */
   microphone?: boolean
-  /** The microphone bridge from ./live, passed in because this function is serialized on its own. */
+  /** The design was granted the camera, the same way. */
+  camera?: boolean
+  /** The device bridge from ./live, passed in because this function is serialized on its own. */
   live?: typeof liveHost
 }
 
@@ -55,37 +57,51 @@ export function mountPresent(host: HTMLElement, options: PresentOptions) {
     scope: wanted,
     /** The design and revision on screen, for the HTML export. */
     design: { name: "", revision: "" },
-    /** The microphone is on for the design's slide; the presenter turns it on. */
-    listening: false,
+    /** The devices on for the design's slide; the presenter turns them on. */
+    devices: { microphone: false, camera: false },
   }
   const frame = `position:absolute;left:0;top:0;width:${SLIDE.width}px;height:${SLIDE.height}px;border:0;transform-origin:0 0;background:#fff;opacity:0;transition:opacity .24s ease-out`
   // The slides stay out of sight until their frame has painted, so a window never shows a blank white box.
   const waiting = `.frame iframe[data-ready]{opacity:1}.loading{position:absolute;inset:0;z-index:1;display:grid;place-items:center;margin:0;padding:24px;text-align:center;color:#a8a8a8}.retry{margin-left:12px}@media(prefers-reduced-motion:reduce){.frame iframe{transition:none}}`
   host.innerHTML = presenter
-    ? `<style>html,body{margin:0;height:100%;background:#121212;color:#ececec;font:15px/1.5 system-ui,sans-serif;color-scheme:dark}.presenter{box-sizing:border-box;height:100%;padding:16px;display:grid;grid-template-columns:minmax(0,2fr) minmax(260px,1fr);grid-template-rows:auto minmax(0,1fr);gap:16px}header{grid-column:1/-1;display:flex;align-items:center;gap:12px;flex-wrap:wrap}.spacer{flex:1}.counter{font-weight:600;font-size:18px;font-variant-numeric:tabular-nums}.timer{font:600 28px/1 ui-monospace,monospace;font-variant-numeric:tabular-nums}button{font:inherit;color:inherit;background:#232323;border:1px solid #474747;border-radius:6px;padding:6px 12px;min-height:32px;cursor:pointer}button:disabled{opacity:.45;cursor:default}button:focus-visible{outline:2px solid #7cc4ff;outline-offset:2px}.frame{position:relative;overflow:hidden;background:#000;border-radius:6px;min-height:0}.frame iframe{${frame}}#upcoming{pointer-events:none}.side{display:grid;grid-template-rows:auto minmax(120px,32%) auto minmax(0,1fr);gap:8px;min-height:0}h2{margin:0;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:#a8a8a8}.notes{margin:0;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font-size:20px;line-height:1.5}.notes[data-empty]{color:#8a8a8a;font-size:15px}.end{position:absolute;inset:0;display:grid;place-items:center;margin:0;color:#8a8a8a}.status{grid-column:1/-1;margin:0}.sync{color:#ffd479;font-weight:600}@media(max-width:760px){.presenter{grid-template-columns:1fr;grid-template-rows:auto minmax(200px,1fr) auto}}${waiting}</style><div class="presenter"><header><span class="counter" id="counter" aria-live="polite">–</span><span class="timer" id="timer" role="timer" aria-label="${escape(copy.presentElapsed)}">0:00</span><button type="button" id="reset">${escape(copy.presentReset)}</button>${options.microphone ? `<button type="button" id="microphone" aria-pressed="false" aria-keyshortcuts="M">${escape(copy.presentMicrophoneOff)}</button>` : ""}<button type="button" id="export">${escape(copy.presentExport)}</button><span class="sync" id="sync" role="status" hidden>${escape(copy.presentSyncPaused)}</span><span class="spacer"></span><button type="button" id="previous">${escape(copy.presentPrevious)}</button><button type="button" id="next">${escape(copy.presentNext)}</button><button type="button" id="other">${escape(copy.audienceView)}</button></header><p class="status" id="status" role="alert" hidden></p><div class="frame" id="current-frame"><p class="loading" id="loading" role="status">${escape(copy.presentLoading)}</p><iframe id="slide" title="${escape(copy.presentTitle)}" sandbox="allow-scripts" allow=""></iframe></div><div class="side"><h2>${escape(copy.presentUpNext)}</h2><div class="frame" id="upcoming-frame"><iframe id="upcoming" title="${escape(copy.presentUpNext)}" sandbox="allow-scripts" allow="" tabindex="-1" aria-hidden="true"></iframe><p class="end" id="end" hidden>${escape(copy.presentEnd)}</p></div><h2>${escape(copy.presentNotes)}</h2><p class="notes" id="notes"></p></div></div>`
-    : `<style>html,body{margin:0;height:100%;overflow:hidden;background:#000;color:#fff;font:14px/1.4 system-ui,sans-serif;color-scheme:dark}.frame{position:fixed;inset:0;overflow:hidden}.frame iframe{${frame}}.hint,.sync{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);margin:0;padding:6px 14px;border-radius:999px;background:#000b;white-space:nowrap;pointer-events:none;transition:opacity .6s}.sync{top:16px;bottom:auto;background:#000d;color:#ffd479}.hint[data-hidden]{opacity:0}.status{position:fixed;inset:0;display:grid;place-items:center;margin:0;padding:24px;text-align:center}@media(prefers-reduced-motion:reduce){.hint{transition:none}}${waiting}</style><div class="frame" id="current-frame"><p class="loading" id="loading" role="status">${escape(copy.presentLoading)}</p><iframe id="slide" title="${escape(copy.presentTitle)}" sandbox="allow-scripts" allow=""></iframe></div><p class="hint" id="hint">${escape(options.microphone ? copy.presentHintMicrophone : copy.presentHint)}</p><p class="sync" id="sync" role="status" hidden>${escape(copy.presentSyncPaused)}</p><p class="status" id="status" role="alert" hidden></p>`
+    ? `<style>html,body{margin:0;height:100%;background:#121212;color:#ececec;font:15px/1.5 system-ui,sans-serif;color-scheme:dark}.presenter{box-sizing:border-box;height:100%;padding:16px;display:grid;grid-template-columns:minmax(0,2fr) minmax(260px,1fr);grid-template-rows:auto minmax(0,1fr);gap:16px}header{grid-column:1/-1;display:flex;align-items:center;gap:12px;flex-wrap:wrap}.spacer{flex:1}.counter{font-weight:600;font-size:18px;font-variant-numeric:tabular-nums}.timer{font:600 28px/1 ui-monospace,monospace;font-variant-numeric:tabular-nums}button{font:inherit;color:inherit;background:#232323;border:1px solid #474747;border-radius:6px;padding:6px 12px;min-height:32px;cursor:pointer}button:disabled{opacity:.45;cursor:default}button:focus-visible{outline:2px solid #7cc4ff;outline-offset:2px}.frame{position:relative;overflow:hidden;background:#000;border-radius:6px;min-height:0}.frame iframe{${frame}}#upcoming{pointer-events:none}.side{display:grid;grid-template-rows:auto minmax(120px,32%) auto minmax(0,1fr);gap:8px;min-height:0}h2{margin:0;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:#a8a8a8}.notes{margin:0;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font-size:20px;line-height:1.5}.notes[data-empty]{color:#8a8a8a;font-size:15px}.end{position:absolute;inset:0;display:grid;place-items:center;margin:0;color:#8a8a8a}.status{grid-column:1/-1;margin:0}.sync{color:#ffd479;font-weight:600}@media(max-width:760px){.presenter{grid-template-columns:1fr;grid-template-rows:auto minmax(200px,1fr) auto}}${waiting}</style><div class="presenter"><header><span class="counter" id="counter" aria-live="polite">–</span><span class="timer" id="timer" role="timer" aria-label="${escape(copy.presentElapsed)}">0:00</span><button type="button" id="reset">${escape(copy.presentReset)}</button>${options.microphone ? `<button type="button" id="microphone" aria-pressed="false" aria-keyshortcuts="M">${escape(copy.presentMicrophoneOff)}</button>` : ""}${options.camera ? `<button type="button" id="camera" aria-pressed="false" aria-keyshortcuts="C">${escape(copy.presentCameraOff)}</button>` : ""}<button type="button" id="export">${escape(copy.presentExport)}</button><span class="sync" id="sync" role="status" hidden>${escape(copy.presentSyncPaused)}</span><span class="spacer"></span><button type="button" id="previous">${escape(copy.presentPrevious)}</button><button type="button" id="next">${escape(copy.presentNext)}</button><button type="button" id="other">${escape(copy.audienceView)}</button></header><p class="status" id="status" role="alert" hidden></p><div class="frame" id="current-frame"><p class="loading" id="loading" role="status">${escape(copy.presentLoading)}</p><iframe id="slide" title="${escape(copy.presentTitle)}" sandbox="allow-scripts" allow=""></iframe></div><div class="side"><h2>${escape(copy.presentUpNext)}</h2><div class="frame" id="upcoming-frame"><iframe id="upcoming" title="${escape(copy.presentUpNext)}" sandbox="allow-scripts" allow="" tabindex="-1" aria-hidden="true"></iframe><p class="end" id="end" hidden>${escape(copy.presentEnd)}</p></div><h2>${escape(copy.presentNotes)}</h2><p class="notes" id="notes"></p></div></div>`
+    : `<style>html,body{margin:0;height:100%;overflow:hidden;background:#000;color:#fff;font:14px/1.4 system-ui,sans-serif;color-scheme:dark}.frame{position:fixed;inset:0;overflow:hidden}.frame iframe{${frame}}.hint,.sync{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);margin:0;padding:6px 14px;border-radius:999px;background:#000b;white-space:nowrap;pointer-events:none;transition:opacity .6s}.sync{top:16px;bottom:auto;background:#000d;color:#ffd479}.hint[data-hidden]{opacity:0}.status{position:fixed;inset:0;display:grid;place-items:center;margin:0;padding:24px;text-align:center}@media(prefers-reduced-motion:reduce){.hint{transition:none}}${waiting}</style><div class="frame" id="current-frame"><p class="loading" id="loading" role="status">${escape(copy.presentLoading)}</p><iframe id="slide" title="${escape(copy.presentTitle)}" sandbox="allow-scripts" allow=""></iframe></div><p class="hint" id="hint">${escape([copy.presentHint, ...(options.microphone ? [copy.presentHintMicrophone] : []), ...(options.camera ? [copy.presentHintCamera] : [])].join(" · "))}</p><p class="sync" id="sync" role="status" hidden>${escape(copy.presentSyncPaused)}</p><p class="status" id="status" role="alert" hidden></p>`
   const element = <T extends HTMLElement = HTMLElement>(id: string) => host.querySelector<T>(`#${id}`)!
   const slide = element<HTMLIFrameElement>("slide")
   const upcoming = presenter ? element<HTMLIFrameElement>("upcoming") : undefined
-  // The presenter turns the microphone on; every window of the show follows, so the audience's slide hears it too.
-  const microphone = options.microphone ? options.live?.(() => slide.contentWindow, false) : undefined
-  const microphoneChannel =
-    microphone && typeof BroadcastChannel === "function"
-      ? new BroadcastChannel(`redcode-design-microphone:${options.designID}`)
+  // The presenter turns each granted device on; every window of the show follows, so the audience's slide gets it too.
+  const granted = { microphone: options.microphone === true, camera: options.camera === true }
+  const devices =
+    granted.microphone || granted.camera
+      ? options.live?.((device) => (granted[device] ? slide.contentWindow : undefined), false)
       : undefined
-  const listen = (on: boolean, share: boolean) => {
-    state.listening = on
-    microphone?.set(on)
-    const button = host.querySelector<HTMLButtonElement>("#microphone")
+  const devicesChannel =
+    devices && typeof BroadcastChannel === "function"
+      ? new BroadcastChannel(`redcode-design-devices:${options.designID}`)
+      : undefined
+  const turn = (device: "microphone" | "camera", on: boolean, share: boolean) => {
+    if (!granted[device]) return
+    state.devices[device] = on
+    devices?.set(device, on)
+    const button = host.querySelector<HTMLButtonElement>(`#${device}`)
     if (button) {
       button.setAttribute("aria-pressed", String(on))
-      button.textContent = on ? copy.presentMicrophoneOn : copy.presentMicrophoneOff
+      button.textContent =
+        device === "microphone"
+          ? on
+            ? copy.presentMicrophoneOn
+            : copy.presentMicrophoneOff
+          : on
+            ? copy.presentCameraOn
+            : copy.presentCameraOff
     }
-    if (share) microphoneChannel?.postMessage({ on })
+    if (share) devicesChannel?.postMessage({ device, on })
   }
-  if (microphoneChannel)
-    microphoneChannel.onmessage = (event) => {
-      if (typeof event.data?.on === "boolean") listen(event.data.on, false)
+  if (devicesChannel)
+    devicesChannel.onmessage = (event) => {
+      const device = event.data?.device
+      if ((device === "microphone" || device === "camera") && typeof event.data.on === "boolean")
+        turn(device, event.data.on, false)
     }
   const channel =
     typeof BroadcastChannel === "function"
@@ -168,7 +184,7 @@ export function mountPresent(host: HTMLElement, options: PresentOptions) {
   for (const target of upcoming ? [slide, upcoming] : [slide])
     target.addEventListener("load", () => {
       // A capture belongs to the document that asked for it.
-      if (target === slide) microphone?.release()
+      if (target === slide) devices?.release()
       if (!target.srcdoc) return
       if (wanted) target.contentWindow?.postMessage({ type: "design:variant", id: wanted }, "*")
       setTimeout(() => shown(target), 3000)
@@ -263,9 +279,10 @@ export function mountPresent(host: HTMLElement, options: PresentOptions) {
       void fullscreen()
       return
     }
-    if (event.key.toLowerCase() === "m" && microphone) {
+    const device = event.key.toLowerCase() === "m" ? "microphone" : event.key.toLowerCase() === "c" ? "camera" : undefined
+    if (device && granted[device]) {
       event.preventDefault()
-      listen(!state.listening, true)
+      turn(device, !state.devices[device], true)
       return
     }
     if (event.key.toLowerCase() === "p" && !presenter) {
@@ -291,8 +308,8 @@ export function mountPresent(host: HTMLElement, options: PresentOptions) {
       tick()
     }
     element("other").onclick = other
-    if (microphone)
-      element("microphone").onclick = () => listen(!state.listening, true)
+    for (const device of ["microphone", "camera"] as const)
+      if (granted[device]) element(device).onclick = () => turn(device, !state.devices[device], true)
     element("export").onclick = () => void exportHTML()
   }
   if (!presenter) setTimeout(() => (element("hint").dataset.hidden = ""), 4000)

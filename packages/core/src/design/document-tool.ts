@@ -39,13 +39,14 @@ export function recorded(
 export function grants(current: Design.Live | undefined, next: Design.Live) {
   return [
     ...(next.microphone && !current?.microphone ? ["microphone"] : []),
+    ...(next.camera && !current?.camera ? ["camera"] : []),
     ...(next.origins ?? []).filter((origin) => !current?.origins?.includes(origin)),
   ]
 }
 
 /** The grant as the agent reads it back, with when it takes effect. */
 export function describeLive(live: Design.Live) {
-  const granted = [...(live.microphone ? ["microphone"] : []), ...(live.origins ?? [])]
+  const granted = [...(live.microphone ? ["microphone"] : []), ...(live.camera ? ["camera"] : []), ...(live.origins ?? [])]
   if (!granted.length) return "none"
   return `${granted.join(", ")}. Review and presentation pages opened or reloaded after the grant apply it; ask the user to reload one that was already open.`
 }

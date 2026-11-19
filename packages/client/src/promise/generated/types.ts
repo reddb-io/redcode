@@ -616,7 +616,7 @@ export type DesignSystem = {
 
 export type DesignComponent = { root: string; file: string; name: string; props?: string }
 
-export type DesignLive = { microphone?: boolean; origins?: Array<string> }
+export type DesignLive = { microphone?: boolean; camera?: boolean; origins?: Array<string> }
 
 export type DesignRound = {
   number: number
