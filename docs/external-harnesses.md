@@ -126,6 +126,10 @@ questions appear in the run's panel. Unsupported requests can be declined; the a
 support or silently approves them. Answers target a still-pending request on the owning process.
 Codex events from another thread/active turn are ignored.
 
+A decline can say why, so the agent changes course instead of stopping: Claude Code reads the reason
+with the declined call, including a declined plan; Codex's decline carries no text, so Redcode steers the
+reason into the turn that continues after it. The reason appears in the output as your input.
+
 A command or file approval can also be allowed for the rest of the session. The provider then stops
 asking for matching calls: Codex through its session approval cache, Claude through the rules Claude Code
 suggests for that call, kept to the native session and never written to the checkout's settings. Allowing

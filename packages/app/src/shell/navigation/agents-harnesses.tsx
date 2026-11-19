@@ -63,6 +63,7 @@ export default function AgentHarnesses(props: { server: ServerConnection.Any }) 
     promptID: uuid(),
     delivery: "queue" as "queue" | "steer",
     answers: {} as Record<string, string>,
+    declineMessages: {} as Record<string, string>,
     stopped: false,
     login: undefined as string | undefined,
   })
@@ -163,7 +164,10 @@ export default function AgentHarnesses(props: { server: ServerConnection.Any }) 
     if (runID === state.runID && state.inspecting) return focusInspector()
     const visible = state.inspecting
     batch(() => {
-      if (runID !== state.runID) setState("answers", reconcile({}))
+      if (runID !== state.runID) {
+        setState("answers", reconcile({}))
+        setState("declineMessages", reconcile({}))
+      }
       setState({
         ...(runID !== state.runID
           ? {
@@ -367,6 +371,16 @@ export default function AgentHarnesses(props: { server: ServerConnection.Any }) 
                                 </label>
                               )}
                             </Key>
+                            <label class="mt-2 block">
+                              {language.t("harness.declineMessage")}
+                              <input
+                                class={input({ size: "sm", class: "mt-1 w-full" })}
+                                value={state.declineMessages[request().id] ?? ""}
+                                onInput={(event) =>
+                                  setState("declineMessages", request().id, event.currentTarget.value)
+                                }
+                              />
+                            </label>
                             <div class="mt-3 flex gap-2">
                               <Show when={request().kind !== "unsupported"}>
                                 <Button
@@ -425,6 +439,9 @@ export default function AgentHarnesses(props: { server: ServerConnection.Any }) 
                                       request: request().id,
                                       allow: false,
                                       answers: {},
+                                      ...(state.declineMessages[request().id]?.trim()
+                                        ? { message: state.declineMessages[request().id] }
+                                        : {}),
                                     }),
                                   )
                                 }

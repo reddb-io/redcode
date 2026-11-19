@@ -944,6 +944,7 @@ export const dict = {
   "harness.decline": "Decline",
   "harness.output": "Harness output",
   "harness.instruction": "Instruction",
+  "harness.declineMessage": "Tell the agent why (optional)",
   "harness.attachImages": "Attach images",
   "harness.images": "Attached images",
   "harness.image": "Image {{index}}",

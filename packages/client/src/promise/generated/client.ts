@@ -4698,6 +4698,7 @@ export function make(options: ClientOptions) {
               allow: input["allow"],
               answers: input["answers"],
               session: input["session"],
+              message: input["message"],
             },
             successStatus: 200,
             declaredStatuses: [400, 401, 403, 409],

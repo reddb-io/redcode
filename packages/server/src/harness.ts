@@ -955,6 +955,8 @@ export async function createHarnesses(
       if (!connection || !item || run.state !== "waiting")
         throw new Error("Request is no longer pending on this harness")
       if (item.request.kind === "unsupported" && input.allow) throw new Error("Unsupported requests cannot be approved")
+      const message = input.message?.trim() ?? ""
+      if (input.allow && message) throw new Error("Only a decline can carry a message")
       if (
         item.request.kind === "question" &&
         input.allow &&
@@ -962,9 +964,22 @@ export async function createHarnesses(
       )
         throw new Error("Answer every question before submitting")
       if (input.session && !item.request.session) throw new Error("This request cannot be allowed for the session")
-      agentRuntime(run.driver).answer({ answer: input, item, wire: connection.wire })
+      const adapter = agentRuntime(run.driver)
+      adapter.answer({ answer: input, item, wire: connection.wire })
       connection.pending.delete(input.request)
       update(id, { state: connection.pending.size ? "waiting" : "running" })
+      if (!message) return
+      event(id, "input", message)
+      if (adapter.capabilities.declineMessage) return
+      return adapter
+        .prompt({
+          prompt: { id: crypto.randomUUID(), text: message },
+          run,
+          steer: true,
+          turn: connection.turn,
+          wire: connection.wire,
+        })
+        .then(() => undefined)
     },
     async resume(id: string) {
       const run = read(id)
