@@ -166,6 +166,23 @@ for await (const line of createInterface({ input: process.stdin })) {
       send({ method: "account/login/completed", params: { loginId: "fixture-login", success: true } })
     }
     if (value.method === "account/read") send({ id: value.id, result: { account: { type: "chatgpt" } } })
+    if (value.method === "account/rateLimits/read") {
+      const codex = {
+        limitId: "codex",
+        primary: { usedPercent: 20, windowDurationMins: 300, resetsAt: 1795132800 },
+        secondary: { usedPercent: 100, windowDurationMins: 10080, resetsAt: 1795184730 },
+      }
+      send({
+        id: value.id,
+        result: {
+          rateLimits: codex,
+          rateLimitsByLimitId: {
+            codex,
+            fable: { limitId: "fable", limitName: "Fable", primary: { usedPercent: 5, resetsAt: 1795132800 } },
+          },
+        },
+      })
+    }
     if (value.method === "model/list" && value.params.cursor && args.includes("models-error")) {
       send({ id: value.id, error: { code: -32000, message: "The model catalog is temporarily unavailable" } })
       continue

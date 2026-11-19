@@ -454,6 +454,9 @@ export async function createHarnesses(
           result.detail = `Could not load Codex models: ${error instanceof Error ? error.message : String(error)}`
           return undefined
         })
+        // Only a ChatGPT sign-in has usage windows; an API key reports none.
+        if (object(status.account).type === "chatgpt")
+          result.limits = await CodexRuntimeProtocol.limits(connection).catch(() => undefined)
       } finally {
         await connection.close()
       }

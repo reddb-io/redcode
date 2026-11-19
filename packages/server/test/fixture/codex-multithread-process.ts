@@ -27,6 +27,11 @@ for await (const line of createInterface({ input: process.stdin })) {
     send({ id: value.id, result: { account: { type: "chatgpt" } } })
     continue
   }
+  // Like a Codex release without usage windows.
+  if (value.method === "account/rateLimits/read") {
+    send({ id: value.id, error: { code: -32601, message: "Method not found" } })
+    continue
+  }
   if (value.method === "model/list") {
     send({ id: value.id, result: { data: [], nextCursor: null } })
     continue
