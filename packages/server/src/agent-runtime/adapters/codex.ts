@@ -18,6 +18,47 @@ const ModelPage = Schema.Struct({
   nextCursor: Schema.optional(Schema.NullOr(Schema.String)),
 })
 
+const RateLimitWindow = Schema.NullOr(
+  Schema.Struct({
+    usedPercent: Schema.Number,
+    windowDurationMins: Schema.optional(Schema.NullOr(Schema.Number)),
+    resetsAt: Schema.optional(Schema.NullOr(Schema.Number)),
+  }),
+)
+const RateLimitSnapshot = Schema.Struct({
+  limitId: Schema.optional(Schema.NullOr(Schema.String)),
+  limitName: Schema.optional(Schema.NullOr(Schema.String)),
+  primary: Schema.optional(RateLimitWindow),
+  secondary: Schema.optional(RateLimitWindow),
+})
+const RateLimits = Schema.Struct({
+  rateLimits: RateLimitSnapshot,
+  rateLimitsByLimitId: Schema.optional(Schema.NullOr(Schema.Record(Schema.String, RateLimitSnapshot))),
+})
+// Codex names its windows by length: five hours and a week.
+const LIMIT_WINDOWS: Record<number, "five_hour" | "seven_day"> = { 300: "five_hour", 10_080: "seven_day" }
+
+// A ChatGPT sign-in reports its usage windows; the `codex` bucket is the account's own, others are scoped to a model.
+async function limits(wire: Wire): Promise<Harness.Provider["limits"]> {
+  const value = Schema.decodeUnknownSync(RateLimits)(await wire.request("account/rateLimits/read", {}, "codex"))
+  return Object.values(value.rateLimitsByLimitId ?? { codex: value.rateLimits }).flatMap((snapshot) => {
+    const model = snapshot.limitId && snapshot.limitId !== "codex" ? snapshot.limitName || snapshot.limitId : undefined
+    return [snapshot.primary, snapshot.secondary].flatMap((window) => {
+      const kind = model ? "model" : LIMIT_WINDOWS[window?.windowDurationMins ?? 0]
+      return window && kind && window.resetsAt
+        ? [
+            {
+              window: kind,
+              ...(model ? { model } : {}),
+              used: window.usedPercent,
+              resetsAt: new Date(window.resetsAt * 1000).toISOString(),
+            },
+          ]
+        : []
+    })
+  })
+}
+
 async function initialize(wire: Wire, appVersion: string, experimental: boolean) {
   await wire.request(
     "initialize",
@@ -338,4 +379,4 @@ export const CodexAgentRuntime: AgentRuntimeAdapter = {
   },
 }
 
-export const CodexRuntimeProtocol = { initialize, models }
+export const CodexRuntimeProtocol = { initialize, models, limits }

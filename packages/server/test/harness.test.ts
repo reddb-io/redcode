@@ -150,7 +150,13 @@ test("Codex shares one initialized app-server while isolating native threads", a
   const service = await createHarnesses(path.join(tmp.path, "state"))
   try {
     const source = path.resolve(import.meta.dir, "fixture/codex-multithread-process.ts")
-    await service.configure({ driver: "codex", executable: await executable(tmp.path, "codex", false, source) })
+    const provider = await service.configure({
+      driver: "codex",
+      executable: await executable(tmp.path, "codex", false, source),
+    })
+    // A Codex release without usage windows still passes the check.
+    expect(provider).toMatchObject({ authenticated: true, limits: undefined })
+    expect(provider.detail).toBeUndefined()
     const first = await service.open({ driver: "codex", directory: AbsolutePath.make(tmp.path) })
     const second = await service.open({ driver: "codex", directory: AbsolutePath.make(tmp.path) })
     expect(first.nativeID).not.toBe(second.nativeID)
@@ -1328,7 +1334,14 @@ test("provider sign-in keeps Codex completion authoritative and leaves Claude si
   const inherited = process.env.CLAUDECODE
   process.env.CLAUDECODE = "1"
   try {
-    await service.configure({ driver: "codex", executable: await executable(tmp.path, "codex") })
+    // Codex names its windows by length; a model-scoped bucket keeps its name.
+    expect(
+      (await service.configure({ driver: "codex", executable: await executable(tmp.path, "codex") })).limits,
+    ).toEqual([
+      { window: "five_hour", used: 20, resetsAt: "2026-11-20T00:00:00.000Z" },
+      { window: "seven_day", used: 100, resetsAt: "2026-11-20T14:25:30.000Z" },
+      { window: "model", model: "Fable", used: 5, resetsAt: "2026-11-20T00:00:00.000Z" },
+    ])
     expect(
       await service.configure({ driver: "claude", executable: await executable(tmp.path, "claude") }),
     ).toMatchObject({

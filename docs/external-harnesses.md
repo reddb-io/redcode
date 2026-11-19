@@ -70,7 +70,9 @@ Claude's installation check lists the models its CLI offers on that host, read f
 handshake without a model request. Hooks and configured MCP servers stay off for that check. Leaving
 the model empty keeps Claude's own default. For a Claude subscription, the check also shows how much of
 each usage window is used and when it resets, as reported by the CLI. That report is experimental in
-Claude Code, so the check omits it when the CLI does not provide it.
+Claude Code, so the check omits it when the CLI does not provide it. For Codex signed in with ChatGPT,
+the check shows the same from Codex's own report: its five-hour and weekly windows, and any window
+scoped to a model.
 
 **Install with npm on this host** installs the official `@anthropic-ai/claude-code` or `@openai/codex`
 package. This explicit action needs Node.js/npm and permission for a global installation on that host.
