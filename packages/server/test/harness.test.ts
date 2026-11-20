@@ -1292,8 +1292,23 @@ test("Codex takes the run's effort, asks for its plan tool and maps its permissi
         .map((line) => JSON.parse(line))
     const cases = [
       [undefined, { approvalPolicy: "on-request", sandbox: "workspace-write" }],
+      ["plan", { approvalPolicy: "on-request", sandbox: "workspace-write" }],
       ["auto", { approvalPolicy: "on-request", sandbox: "workspace-write", approvalsReviewer: "auto_review" }],
-      ["bypassPermissions", { approvalPolicy: "never", sandbox: "danger-full-access" }],
+      [
+        "bypassPermissions",
+        {
+          approvalPolicy: {
+            granular: {
+              mcp_elicitations: true,
+              request_permissions: false,
+              rules: false,
+              sandbox_approval: false,
+              skill_approval: false,
+            },
+          },
+          sandbox: "danger-full-access",
+        },
+      ],
     ] as const
     for (const [permissionMode, expected] of cases) {
       const run = await service.open({
@@ -1307,9 +1322,16 @@ test("Codex takes the run's effort, asks for its plan tool and maps its permissi
       const start = (await frames()).findLast((frame) => frame.method === "thread/start")
       expect(start.params).toMatchObject(expected)
       // Codex leaves its plan tool off unless the thread asks for it.
-      expect(start.params.config).toEqual({ "tools.update_plan": { enabled: true } })
+      expect(start.params.config).toMatchObject({ "tools.update_plan.enabled": true })
       if (!permissionMode) expect(start.params.approvalsReviewer).toBeUndefined()
-      expect((await frames()).findLast((frame) => frame.method === "turn/start").params.effort).toBe("high")
+      const turn = (await frames()).findLast((frame) => frame.method === "turn/start").params
+      expect(turn.effort).toBe("high")
+      expect(turn.summary).toBe("auto")
+      // Every turn names its collaboration mode, with the model Codex reported, so leaving plan mode clears it.
+      expect(turn.collaborationMode).toEqual({
+        mode: permissionMode === "plan" ? "plan" : "default",
+        settings: { model: "fixture-model", reasoning_effort: "high" },
+      })
     }
   } finally {
     await service.dispose()
@@ -1512,8 +1534,8 @@ test("provider sign-in keeps Codex completion authoritative and leaves Claude si
     await until(() => service.loginStatus("codex").state === "complete")
     await expect(service.login("claude")).rejects.toThrow("claude auth login")
     await expect(
-      service.open({ driver: "codex", directory: AbsolutePath.make(tmp.path), permissionMode: "plan" }),
-    ).rejects.toThrow("codex has no plan permission mode")
+      service.open({ driver: "codex", directory: AbsolutePath.make(tmp.path), permissionMode: "acceptEdits" }),
+    ).rejects.toThrow("codex has no acceptEdits permission mode")
     expect(service.loginStatus("claude").state).toBe("failed")
     expect(service.list().runs).toHaveLength(0)
   } finally {
