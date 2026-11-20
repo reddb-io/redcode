@@ -5,14 +5,11 @@ import { brotliDecompressSync } from "node:zlib"
 import { OPENCODE_LOCAL } from "./version"
 
 export type AssetMap = Readonly<Record<string, string | Uint8Array>>
-type EncodedAssetMap = Readonly<Record<string, string>>
 
 export const load = Effect.fn("cli.app-assets.load")(function* () {
   const embedded = yield* Effect.tryPromise(() => import("virtual:opencode-app-assets")).pipe(Effect.option)
   if (Option.isSome(embedded) && (Object.keys(embedded.value.default).length > 0 || !OPENCODE_LOCAL))
-    return lazy(embedded.value.default, (key) =>
-      brotliDecompressSync(Buffer.from(embedded.value.default[key]!, "base64")),
-    )
+    return lazy(embedded.value.default, (key) => brotliDecompressSync(embedded.value.default[key]!()))
   if (!OPENCODE_LOCAL) return yield* Effect.fail(new Error("Web UI assets are missing from the CLI build"))
   return yield* sourceAssets()
 })
@@ -36,7 +33,7 @@ const sourceAssets = Effect.fnUntraced(function* () {
   return lazy(assets, (key) => readFileSync(assets[key]!))
 })
 
-function lazy(assets: EncodedAssetMap, load: (key: string) => Uint8Array): AssetMap {
+function lazy(assets: Readonly<Record<string, unknown>>, load: (key: string) => Uint8Array): AssetMap {
   // Immutable browser caching makes retaining decompressed copies in the server unnecessary.
   return new Proxy(
     {},

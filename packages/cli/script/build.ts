@@ -86,6 +86,16 @@ if (!rasterWorker.success) throw new AggregateError(rasterWorker.logs, "Unable t
 const rasterWorkerPath = "design-raster-worker.js"
 const photonWorkerPath = "photon-worker.js"
 const rasterWorkerSource = await rasterWorker.outputs[0].text()
+// Large content ships as embedded files rather than string literals: bytecode keeps a second copy of every
+// literal, so a string costs the executable twice its size.
+const embeddedDir = path.join(outdir, ".embedded")
+const appFiles = await Promise.all(
+  Object.entries(JSON.parse(appArchive) as Record<string, string>).map(async ([key, body], index) => {
+    const file = path.join(embeddedDir, "app", `${index}.br`)
+    await Bun.write(file, Buffer.from(body, "base64"))
+    return [key, file] as const
+  }),
+)
 const appAssetsPlugin: BunPlugin = {
   name: "opencode-app-assets",
   setup(build) {
@@ -95,8 +105,29 @@ const appAssetsPlugin: BunPlugin = {
     }))
     build.onLoad({ filter: /^opencode-app-assets$/, namespace: "opencode" }, () => ({
       loader: "js",
-      contents: `export default ${appArchive}`,
+      contents: [
+        'import { readFileSync } from "node:fs"',
+        ...appFiles.map(([, file], index) => `import a${index} from ${JSON.stringify(file)} with { type: "file" }`),
+        `export default {${appFiles.map(([key], index) => `${JSON.stringify(key)}: () => readFileSync(a${index})`).join(",")}}`,
+      ].join("\n"),
     }))
+  },
+}
+const largeTextPlugin: BunPlugin = {
+  name: "opencode-large-text",
+  setup(build) {
+    build.onLoad({ filter: /\.txt$/ }, async (args) => {
+      const source = Bun.file(args.path)
+      if (source.size < 256 * 1024) return { loader: "text", contents: await source.text() }
+      const file = path.join(embeddedDir, "text", `${path.relative(dir, args.path).replace(/[\\/:.]+/g, "-")}.bin`)
+      await Bun.write(file, source)
+      return {
+        loader: "js",
+        contents: `import { readFileSync } from "node:fs"
+import file from ${JSON.stringify(file)} with { type: "file" }
+export default readFileSync(file, "utf8")`,
+      }
+    })
   },
 }
 
@@ -150,7 +181,14 @@ export default { path: file, version: ${JSON.stringify(opencodePty.version)}, sh
       [photonWorkerPath]: 'import "../core/src/image/photon-worker.ts"',
     },
     tsconfig: "./tsconfig.json",
-    plugins: [appAssetsPlugin, solidPlugin, parcelWatcherPlugin, opencodePtyPlugin, simulationGraphPlugin],
+    plugins: [
+      appAssetsPlugin,
+      largeTextPlugin,
+      solidPlugin,
+      parcelWatcherPlugin,
+      opencodePtyPlugin,
+      simulationGraphPlugin,
+    ],
     external: ["node-gyp"],
     format: "esm",
     minify: true,
@@ -241,6 +279,7 @@ export default { path: file, version: ${JSON.stringify(opencodePty.version)}, sh
     await stagePathSearch(pathSearchDir, targetName(item).slice(`${binary}-`.length), path.join(outdir, name, "bin"))
   await verifyArtifact(path.join(outdir, name))
 }
+await rm(embeddedDir, { recursive: true, force: true })
 
 async function compileExecutable(item: (typeof allTargets)[number]) {
   const release = process.env.BUN_COMPILE_RELEASE
