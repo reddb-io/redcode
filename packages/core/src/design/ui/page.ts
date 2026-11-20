@@ -11,7 +11,7 @@ import { designFeed } from "./feed.js"
 import { previewLoading } from "./loading.js"
 import { params } from "./params.js"
 import { simulate } from "./device.js"
-import { liveFrame, liveHost } from "./live.js"
+import { liveAsk, liveAskFrame, liveFrame, liveHost } from "./live.js"
 import { mountPresent } from "./present.js"
 import { mountReview } from "./review.js"
 import { screens } from "./screens.js"
@@ -71,7 +71,7 @@ export function review(sessionID: string, endpoint: string, breakpoints?: readon
     shortcuts: embedded ? "scoped" : "global",
   }).replaceAll("<", "\\u003c")
   // The review's code builds preview documents holding </script, which would end this inline script early.
-  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Design · Redcode</title><link rel="icon" type="image/svg+xml" href="${appearance.favicon}"><style>${fonts}</style><style>html,body,#review{height:100%;margin:0}</style></head><body><div id="review"></div><script>${UNTICKET}(${mountReview.toString().replaceAll("</script", "<\\/script")})(document.getElementById("review"), Object.assign(${options}, { feed: ${designFeed.toString()}, viewports: ${viewports.toString()}, device: ${device.toString()}, stage: ${stage.toString()}, deck: ${deck.toString()}, loading: ${previewLoading.toString()}, live: ${liveHost.toString()} }))</script></body></html>`
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Design · Redcode</title><link rel="icon" type="image/svg+xml" href="${appearance.favicon}"><style>${fonts}</style><style>html,body,#review{height:100%;margin:0}</style></head><body><div id="review"></div><script>${UNTICKET}(${mountReview.toString().replaceAll("</script", "<\\/script")})(document.getElementById("review"), Object.assign(${options}, { feed: ${designFeed.toString()}, viewports: ${viewports.toString()}, device: ${device.toString()}, stage: ${stage.toString()}, deck: ${deck.toString()}, loading: ${previewLoading.toString()}, live: ${liveHost.toString()}, ask: ${liveAsk.toString()} }))</script></body></html>`
 }
 
 export function present(
@@ -90,8 +90,10 @@ export function present(
     microphone: grant?.microphone === true,
     camera: grant?.camera === true,
     location: grant?.location === true,
+    systemOne: grant?.systemOne === true,
+    transcription: grant?.transcription === true,
   }).replaceAll("<", "\\u003c")
-  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${reviewCopy.presentTitle} · Redcode</title><link rel="icon" type="image/svg+xml" href="${appearance.favicon}"></head><body><div id="present"></div><script>${UNTICKET}(${mountPresent.toString()})(document.getElementById("present"), Object.assign(${options}, { deck: ${deck.toString()}, stage: ${stage.toString()}, live: ${liveHost.toString()} }))</script></body></html>`
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${reviewCopy.presentTitle} · Redcode</title><link rel="icon" type="image/svg+xml" href="${appearance.favicon}"></head><body><div id="present"></div><script>${UNTICKET}(${mountPresent.toString()})(document.getElementById("present"), Object.assign(${options}, { deck: ${deck.toString()}, stage: ${stage.toString()}, live: ${liveHost.toString()}, ask: ${liveAsk.toString()} }))</script></body></html>`
 }
 
 /**
@@ -105,6 +107,6 @@ export async function preview(revision: Design.Revision, directory: string, gran
     grant?.origins,
   )
   const controls = JSON.stringify(revision.document.controls ?? []).replaceAll("<", "\\u003c")
-  return `<meta http-equiv="Content-Security-Policy" content="${livePolicy(FRAME_CSP, grant)}">${grant?.microphone || grant?.camera || grant?.location ? `<script>(${liveFrame.toString()})()</script>` : ""}<script>(${simulate.toString()})()</script>${revision.document.target === "presentation" ? `<script>(${slides.toString()})(${deck.toString()})</script>` : ""}<script>(${screens.toString()})()</script>${html}<script>(${params.toString()})(${controls});(${annotations.toString()})();(function(module,exports,define){${captureRuntime.replaceAll("</script", "<\\/script")}
+  return `<meta http-equiv="Content-Security-Policy" content="${livePolicy(FRAME_CSP, grant)}">${grant?.microphone || grant?.camera || grant?.location ? `<script>(${liveFrame.toString()})()</script>` : ""}${grant?.systemOne || grant?.transcription ? `<script>(${liveAskFrame.toString()})()</script>` : ""}<script>(${simulate.toString()})()</script>${revision.document.target === "presentation" ? `<script>(${slides.toString()})(${deck.toString()})</script>` : ""}<script>(${screens.toString()})()</script>${html}<script>(${params.toString()})(${controls});(${annotations.toString()})();(function(module,exports,define){${captureRuntime.replaceAll("</script", "<\\/script")}
 }).call(window);(${capture.toString()})(window.domtoimage?.toCanvas,${JSON.stringify(revision.id)});</script>`
 }

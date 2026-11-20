@@ -41,6 +41,8 @@ export function grants(current: Design.Live | undefined, next: Design.Live) {
     ...(next.microphone && !current?.microphone ? ["microphone"] : []),
     ...(next.camera && !current?.camera ? ["camera"] : []),
     ...(next.location && !current?.location ? ["location"] : []),
+    ...(next.systemOne && !current?.systemOne ? ["system-one"] : []),
+    ...(next.transcription && !current?.transcription ? ["transcription"] : []),
     ...(next.origins ?? []).filter((origin) => !current?.origins?.includes(origin)),
   ]
 }
@@ -49,6 +51,8 @@ export function grants(current: Design.Live | undefined, next: Design.Live) {
 export function describeLive(live: Design.Live) {
   const granted = [...(live.microphone ? ["microphone"] : []), ...(live.camera ? ["camera"] : []),
     ...(live.location ? ["location"] : []),
+    ...(live.systemOne ? ["System One"] : []),
+    ...(live.transcription ? ["transcription"] : []),
     ...(live.origins ?? [])]
   if (!granted.length) return "none"
   return `${granted.join(", ")}. Review and presentation pages opened or reloaded after the grant apply it; ask the user to reload one that was already open.`

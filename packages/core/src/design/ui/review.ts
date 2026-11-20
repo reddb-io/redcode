@@ -5,7 +5,7 @@ import type { viewports } from "./viewports.js"
 import type { device } from "./devices.js"
 import type { stage } from "./stage.js"
 import type { deck } from "./slides.js"
-import type { liveHost } from "./live.js"
+import type { liveAsk, liveHost } from "./live.js"
 import type { LoadingEvent, LoadingState, previewLoading } from "./loading.js"
 
 export interface ReviewOptions {
@@ -42,6 +42,8 @@ export interface ReviewOptions {
   loading: typeof previewLoading
   /** The device bridge from ./live for a design granted live use of the microphone or camera. */
   live?: typeof liveHost
+  /** The bridge from ./live to the user's own System One and dictation, for a design granted them. */
+  ask?: typeof liveAsk
   /**
    * The review is shown beside the session it belongs to (the desktop pane, an app embed): the views that repeat
    * that session's conversation (the agent's last reply, the round's message and the Activity transcript) are left
@@ -335,6 +337,14 @@ export function mountReview(host: HTMLElement, options: ReviewOptions) {
   // Only the primary preview of a design granted a device gets it; comparison and minis never do.
   const devices = options.live?.((device) =>
     state.design?.live?.[device] ? element<HTMLIFrameElement>("preview").contentWindow : undefined,
+  )
+  options.ask?.(
+    (service) => (state.design?.live?.[service] ? element<HTMLIFrameElement>("preview").contentWindow : undefined),
+    (service, body) =>
+      transport(
+        `${endpoint}/${encodeURIComponent(state.design?.id ?? "")}/live/${service === "systemOne" ? "decide" : "transcribe"}`,
+        { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) },
+      ),
   )
   const key = () => `redcode:design:${endpoint}:${state.design?.id}:${state.revision}`
   const dismissedKey = () => `redcode:design:${endpoint}:${state.design?.id}:dismissed`

@@ -341,6 +341,20 @@ const make = Effect.gen(function* () {
     return undefined
   })
 
+  /** One typed request to the selected System One outside a Session's reasoning, such as a live deck's. */
+  const ask = Effect.fn("Intelligence.ask")(function* (
+    state: unknown,
+    questions: Readonly<Record<string, Intelligence.Question>>,
+  ) {
+    const evaluator = (yield* settings.read()).evaluator
+    if (!evaluator)
+      return yield* new IntelligenceEvaluation.Error({ message: "Choose a System One model in Redcode settings first" })
+    const response = yield* transport.request(evaluator, "systemone", { model: evaluator.model, state, questions })
+    return yield* Schema.decodeUnknownEffect(Intelligence.Response)(response).pipe(
+      Effect.mapError(() => new IntelligenceEvaluation.Error({ message: "System One gave no typed answer" })),
+    )
+  })
+
   const history = Effect.fn("Intelligence.history")(function* (
     sessionID: string,
     options: {
@@ -492,6 +506,7 @@ const make = Effect.gen(function* () {
     request: transport.request,
     discover: transport.discover,
     probe: transport.probe,
+    ask,
     evaluate,
     history,
   }

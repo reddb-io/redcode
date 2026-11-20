@@ -1,9 +1,11 @@
 export * as Design from "./design.js"
 
 import { Schema } from "effect"
+import { Intelligence } from "./intelligence.js"
 import { Session } from "./session.js"
 import { SessionMessage } from "./session-message.js"
 import { optional } from "./schema.js"
+import { Voice } from "./voice.js"
 
 export const ID = Schema.String.check(Schema.isPattern(/^design_[a-zA-Z0-9_-]+$/)).pipe(Schema.brand("Design.ID"))
 export type ID = typeof ID.Type
@@ -264,6 +266,10 @@ export const Live = Schema.Struct({
   camera: Schema.Boolean.pipe(optional),
   /** The real location of the presenter's or reviewer's computer, when no simulated one is set. */
   location: Schema.Boolean.pipe(optional),
+  /** Questions to the user's System One (such as TypeSafe's Jev) through their saved Redcode connection. */
+  systemOne: Schema.Boolean.pipe(optional),
+  /** Speech to text through the user's saved Redcode dictation connection. */
+  transcription: Schema.Boolean.pipe(optional),
   /** https or wss origins the design may connect to and load scripts from, such as wss://api.example.com. */
   origins: Schema.Array(
     Schema.String.check(Schema.isPattern(/^(https|wss):\/\/([a-z0-9-]+\.)+[a-z][a-z0-9-]*(:\d{1,5})?$/)),
@@ -273,9 +279,24 @@ export const Live = Schema.Struct({
 }).annotate({
   identifier: "Design.Live",
   description:
-    "Live capabilities for a deck or prototype whose own JavaScript needs the microphone, the camera, the real location or a network service, such as realtime speech or emotion analysis while presenting. Origins are lowercase https:// or wss:// scheme plus a domain name (and port), without a path. The user is asked to approve every new capability; record the full set you need in one update. Writing that JavaScript inside the design root is design work, not product implementation. Never put API keys or tokens in design files: have the deck ask the presenter for one at run time and keep it in memory. The devices are reached through navigator.mediaDevices.getUserMedia({audio:true}) and ({video:true}) only (the Web Speech API is unavailable); video arrives at about 640x480 and 30 fps from the default camera. Real location comes through navigator.geolocation. While presenting, the presenter turns each device on (a button, or the M, C and L keys): until then getUserMedia waits, and turning one off ends its track. Show whether the deck is listening or watching, stop tracks when done, and handle an ended track, a refused device or a failed connection with a visible message. The HTML export keeps references to the granted origins and runs the deck as its own page.",
+    "Live capabilities for a deck or prototype whose own JavaScript needs the microphone, the camera, the real location or a network service, such as realtime speech or emotion analysis while presenting. Origins are lowercase https:// or wss:// scheme plus a domain name (and port), without a path. The user is asked to approve every new capability; record the full set you need in one update. Writing that JavaScript inside the design root is design work, not product implementation. Never put API keys or tokens in design files: have the deck ask the presenter for one at run time and keep it in memory. The devices are reached through navigator.mediaDevices.getUserMedia({audio:true}) and ({video:true}) only (the Web Speech API is unavailable); video arrives at about 640x480 and 30 fps from the default camera. Real location comes through navigator.geolocation. With systemOne or transcription granted, the deck reaches the user's own Redcode connections through window.redcode, so it needs no key: `await redcode.decide({ text, questions })` asks the System One model typed questions about the text, each `{ type: 'choice', instructions, criteria: { label: description } }` (answered `{ choice, probabilities, confidence }`), `{ type: 'score', instructions, criteria: [lowest, ..., highest] }` (answered `{ score, probabilities, confidence }`) or `{ type: 'noul', instructions }` (answered `{ noul }`, the probability of yes), at most 8 at once, keyed by short snake_case ids, in about a tenth of a second; `await redcode.transcribe(blob)` turns a recording into text; and `redcode.listen({ seconds, onText, onError })` transcribes the microphone (grant it too) in windows of a few seconds, skipping silence, until its `stop()`. window.redcode exists only while Redcode shows the deck, never in the HTML export, so check for it and say what is missing. While presenting, the presenter turns each device on (a button, or the M, C and L keys): until then getUserMedia waits, and turning one off ends its track. Show whether the deck is listening or watching, stop tracks when done, and handle an ended track, a refused device or a failed connection with a visible message. The HTML export keeps references to the granted origins and runs the deck as its own page.",
 })
 export interface Live extends Schema.Schema.Type<typeof Live> {}
+
+/** A live deck's System One questions about a text, answered with the user's saved connection. */
+export const LiveDecide = Schema.Struct({
+  text: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(8000)),
+  questions: Schema.Record(Schema.String.check(Schema.isPattern(/^[a-z][a-z0-9_]{0,39}$/)), Intelligence.Question).check(
+    Schema.makeFilter((questions) => Object.keys(questions).length >= 1 && Object.keys(questions).length <= 8, {
+      expected: "1 to 8 questions",
+    }),
+  ),
+}).annotate({ identifier: "Design.LiveDecide" })
+export interface LiveDecide extends Schema.Schema.Type<typeof LiveDecide> {}
+
+/** A live deck's recording to transcribe with the user's saved dictation connection. */
+export const LiveTranscribe = Schema.Struct({ audio: Voice.Audio }).annotate({ identifier: "Design.LiveTranscribe" })
+export interface LiveTranscribe extends Schema.Schema.Type<typeof LiveTranscribe> {}
 
 /** One browser review note. The user's words stay in text; the captured element context is separate. */
 export const FeedbackItem = Schema.Struct({

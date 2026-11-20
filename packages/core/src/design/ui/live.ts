@@ -272,3 +272,138 @@ export function liveFrame() {
     throw failed.reason
   }
 }
+
+export type LiveService = "systemOne" | "transcription"
+
+/**
+ * Runs in the trusted page: carries the frame's requests to the user's own Redcode connections, so the design never
+ * holds a key. `frame` names the window allowed to use a service, or nothing when the design was not granted it;
+ * `call` sends one request to the design's routes.
+ */
+export function liveAsk(
+  frame: (service: LiveService) => Window | null | undefined,
+  call: (service: LiveService, body: unknown) => Promise<Response>,
+) {
+  addEventListener("message", (event) => {
+    const service: unknown = event.data?.type === "design:ask" ? event.data.service : undefined
+    const port = event.ports[0]
+    if ((service !== "systemOne" && service !== "transcription") || !port || event.source !== frame(service)) return
+    void call(service, event.data.body)
+      .then(async (response) => {
+        const value: { message?: unknown } | undefined = await response.json().catch(() => undefined)
+        port.postMessage(
+          response.ok
+            ? { result: value }
+            : { error: typeof value?.message === "string" ? value.message : `Redcode answered ${response.status}` },
+        )
+      })
+      .catch(() => port.postMessage({ error: "Redcode could not be reached" }))
+      .finally(() => port.close())
+  })
+}
+
+/**
+ * Runs first in the design's frame: `window.redcode` asks System One about a text, transcribes a recording, and
+ * transcribes the microphone as the presenter speaks, all through the trusted page and the user's connections.
+ */
+export function liveAskFrame() {
+  const ask = (service: "systemOne" | "transcription", body: unknown) =>
+    new Promise<unknown>((resolve, reject) => {
+      const channel = new MessageChannel()
+      channel.port1.onmessage = (event) => {
+        channel.port1.close()
+        if (event.data?.error !== undefined) return reject(new Error(String(event.data.error)))
+        resolve(event.data?.result)
+      }
+      parent.postMessage({ type: "design:ask", service, body }, "*", [channel.port2])
+    })
+  /** 16 kHz mono 16-bit WAV, the recording dictation takes, as base64. */
+  const wav = (samples: Float32Array, rate: number) => {
+    const length = Math.floor((samples.length * 16000) / rate)
+    const view = new DataView(new ArrayBuffer(44 + length * 2))
+    const text = (offset: number, value: string) =>
+      [...value].forEach((character, index) => view.setUint8(offset + index, character.charCodeAt(0)))
+    text(0, "RIFF")
+    view.setUint32(4, 36 + length * 2, true)
+    text(8, "WAVE")
+    text(12, "fmt ")
+    view.setUint32(16, 16, true)
+    view.setUint16(20, 1, true)
+    view.setUint16(22, 1, true)
+    view.setUint32(24, 16000, true)
+    view.setUint32(28, 32000, true)
+    view.setUint16(32, 2, true)
+    view.setUint16(34, 16, true)
+    text(36, "data")
+    view.setUint32(40, length * 2, true)
+    for (const index of Array.from({ length }, (_, item) => item)) {
+      // Linear interpolation between the two nearest source samples.
+      const position = (index * rate) / 16000
+      const before = samples[Math.floor(position)] ?? 0
+      const after = samples[Math.min(samples.length - 1, Math.floor(position) + 1)] ?? before
+      const value = Math.max(-1, Math.min(1, before + (after - before) * (position - Math.floor(position))))
+      view.setInt16(44 + index * 2, value < 0 ? value * 0x8000 : value * 0x7fff, true)
+    }
+    const bytes = new Uint8Array(view.buffer)
+    const chunks = Array.from({ length: Math.ceil(bytes.length / 0x8000) }, (_, index) =>
+      String.fromCharCode(...bytes.subarray(index * 0x8000, (index + 1) * 0x8000)),
+    )
+    return btoa(chunks.join(""))
+  }
+  const transcribe = async (audio: Blob | Float32Array, sampleRate = 48000) => {
+    const decoded =
+      audio instanceof Float32Array
+        ? { samples: audio, rate: sampleRate }
+        : await new OfflineAudioContext(1, 1, 16000)
+            .decodeAudioData(await audio.arrayBuffer())
+            .then((buffer) => ({ samples: buffer.getChannelData(0), rate: buffer.sampleRate }))
+    const result = (await ask("transcription", { audio: wav(decoded.samples, decoded.rate) })) as { text: string }
+    return result.text
+  }
+  const decide = async (input: { text: string; questions: Record<string, unknown> }) =>
+    ((await ask("systemOne", input)) as { answers: Record<string, unknown> }).answers
+  const listen = (options: { seconds?: number; onText: (text: string) => void; onError?: (error: Error) => void }) => {
+    const state = { stopped: false, blocks: [] as Float32Array[], stop: () => {} }
+    const fail = (error: unknown) => options.onError?.(error instanceof Error ? error : new Error(String(error)))
+    void navigator.mediaDevices
+      .getUserMedia({ audio: true })
+      .then((stream) => {
+        if (state.stopped) return stream.getTracks().forEach((track) => track.stop())
+        const context = new AudioContext()
+        const processor = context.createScriptProcessor(4096, 1, 1)
+        processor.onaudioprocess = (event) => void state.blocks.push(event.inputBuffer.getChannelData(0).slice())
+        context.createMediaStreamSource(stream).connect(processor)
+        processor.connect(context.destination)
+        void context.resume()
+        const timer = setInterval(
+          () => {
+            const blocks = state.blocks.splice(0)
+            const samples = new Float32Array(blocks.reduce((total, block) => total + block.length, 0))
+            blocks.reduce((offset, block) => (samples.set(block, offset), offset + block.length), 0)
+            // Silence costs a request and transcribes to nothing.
+            const loudness = Math.sqrt(samples.reduce((total, sample) => total + sample * sample, 0) / (samples.length || 1))
+            if (loudness < 0.01) return
+            void transcribe(samples, context.sampleRate)
+              .then((text) => text.trim() && !state.stopped && options.onText(text.trim()))
+              .catch(fail)
+          },
+          Math.min(30, Math.max(2, options.seconds ?? 4)) * 1000,
+        )
+        const track = stream.getAudioTracks()[0]
+        track?.addEventListener("ended", () => fail(new Error("The microphone was turned off")))
+        state.stop = () => {
+          clearInterval(timer)
+          stream.getTracks().forEach((item) => item.stop())
+          void context.close()
+        }
+      })
+      .catch(fail)
+    return {
+      stop: () => {
+        state.stopped = true
+        state.stop()
+      },
+    }
+  }
+  Object.defineProperty(window, "redcode", { value: Object.freeze({ decide, transcribe, listen }) })
+}

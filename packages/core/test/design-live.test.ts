@@ -3,7 +3,7 @@ import path from "path"
 import os from "os"
 import { describe, expect, test } from "bun:test"
 import { DesignPage } from "@opencode/core/design/ui/page"
-import { liveFrame } from "@opencode/core/design/ui/live"
+import { liveAskFrame, liveFrame } from "@opencode/core/design/ui/live"
 import { DesignExport } from "@opencode/core/design/export"
 import { DesignDocumentTool } from "@opencode/core/design/document-tool"
 import { simulate } from "@opencode/core/design/ui/device"
@@ -100,6 +100,40 @@ describe("design live grant", () => {
     ).toEqual(["camera", "https://cdn.example.com"])
     expect(DesignDocumentTool.grants({ camera: true }, { camera: false })).toEqual([])
     expect(DesignDocumentTool.grants(undefined, { location: true })).toEqual(["location"])
+    expect(DesignDocumentTool.grants({ systemOne: true }, { systemOne: true, transcription: true })).toEqual([
+      "transcription",
+    ])
+  })
+
+  test("gives the frame window.redcode only when the design was granted System One or transcription", async () => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), "design-live-ask-"))
+    await fs.writeFile(path.join(directory, "index.html"), `<section class="slide" id="intro"></section>`)
+    const revision = {
+      id: "rev_ask",
+      document: { engine: "html", entry: "index.html", target: "presentation", controls: [] },
+    } as never
+    const bridge = `(${liveAskFrame.toString()})()`
+    expect(await DesignPage.preview(revision, directory, { systemOne: true })).toContain(bridge)
+    expect(await DesignPage.preview(revision, directory, { transcription: true })).toContain(bridge)
+    expect(await DesignPage.preview(revision, directory, { microphone: true })).not.toContain(bridge)
+    // The keys stay with Redcode: neither grant opens the frame's network.
+    expect(await DesignPage.preview(revision, directory, { systemOne: true })).toContain(`content="${DesignPage.FRAME_CSP}"`)
+    expect(DesignPage.present("/design/session/ses/x", "des_ask", "audience", undefined, { systemOne: true })).toContain(
+      `"systemOne":true`,
+    )
+    await fs.rm(directory, { recursive: true, force: true })
+  })
+
+  test("takes a live deck's questions within what System One answers at once", () => {
+    const valid = Schema.is(Design.LiveDecide)
+    const question = { type: "choice", instructions: "The speaker's mood", criteria: { calm: "Calm", tense: "Tense" } }
+    expect(valid({ text: "We shipped it.", questions: { mood: question } })).toBe(true)
+    expect(valid({ text: "", questions: { mood: question } })).toBe(false)
+    expect(valid({ text: "We shipped it.", questions: {} })).toBe(false)
+    expect(valid({ text: "We shipped it.", questions: { "Mood!": question } })).toBe(false)
+    expect(
+      valid({ text: "We shipped it.", questions: Object.fromEntries(Array.from({ length: 9 }, (_, i) => [`q${i}`, question])) }),
+    ).toBe(false)
   })
 
   test("tells the presentation page whether its slide gets the microphone", () => {
