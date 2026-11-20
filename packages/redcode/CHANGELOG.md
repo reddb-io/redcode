@@ -1,5 +1,11 @@
 # @reddb-io/redcode
 
+## 0.90.8
+
+### Patch Changes
+
+- Make the Redcode executable about 47 MB smaller by shipping the web UI, the bundled model catalog and the legacy Design vendor files as embedded files rather than code, which bytecode stored twice.
+
 ## 0.90.7
 
 ### Patch Changes
