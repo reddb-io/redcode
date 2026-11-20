@@ -2405,6 +2405,8 @@ export type SessionDesignListOutput = ReadonlyArray<{
         readonly microphone?: boolean | undefined
         readonly camera?: boolean | undefined
         readonly location?: boolean | undefined
+        readonly systemOne?: boolean | undefined
+        readonly transcription?: boolean | undefined
         readonly origins?: ReadonlyArray<string> | undefined
       }
     | undefined
@@ -2670,6 +2672,8 @@ export type SessionDesignCreateOutput = {
         readonly microphone?: boolean | undefined
         readonly camera?: boolean | undefined
         readonly location?: boolean | undefined
+        readonly systemOne?: boolean | undefined
+        readonly transcription?: boolean | undefined
         readonly origins?: ReadonlyArray<string> | undefined
       }
     | undefined
@@ -2927,6 +2931,8 @@ export type SessionDesignGetOutput = {
         readonly microphone?: boolean | undefined
         readonly camera?: boolean | undefined
         readonly location?: boolean | undefined
+        readonly systemOne?: boolean | undefined
+        readonly transcription?: boolean | undefined
         readonly origins?: ReadonlyArray<string> | undefined
       }
     | undefined
@@ -3439,6 +3445,8 @@ export type SessionDesignUpdateOutput = {
         readonly microphone?: boolean | undefined
         readonly camera?: boolean | undefined
         readonly location?: boolean | undefined
+        readonly systemOne?: boolean | undefined
+        readonly transcription?: boolean | undefined
         readonly origins?: ReadonlyArray<string> | undefined
       }
     | undefined
@@ -3696,6 +3704,8 @@ export type SessionDesignRefreshOutput = {
         readonly microphone?: boolean | undefined
         readonly camera?: boolean | undefined
         readonly location?: boolean | undefined
+        readonly systemOne?: boolean | undefined
+        readonly transcription?: boolean | undefined
         readonly origins?: ReadonlyArray<string> | undefined
       }
     | undefined
@@ -3970,6 +3980,8 @@ export type SessionDesignReopenOutput = {
         readonly microphone?: boolean | undefined
         readonly camera?: boolean | undefined
         readonly location?: boolean | undefined
+        readonly systemOne?: boolean | undefined
+        readonly transcription?: boolean | undefined
         readonly origins?: ReadonlyArray<string> | undefined
       }
     | undefined
@@ -4234,6 +4246,8 @@ export type SessionDesignRevisionsOutput = ReadonlyArray<{
           readonly microphone?: boolean | undefined
           readonly camera?: boolean | undefined
           readonly location?: boolean | undefined
+          readonly systemOne?: boolean | undefined
+          readonly transcription?: boolean | undefined
           readonly origins?: ReadonlyArray<string> | undefined
         }
       | undefined
@@ -4585,6 +4599,8 @@ export type SessionDesignRevisionOutput = {
           readonly microphone?: boolean | undefined
           readonly camera?: boolean | undefined
           readonly location?: boolean | undefined
+          readonly systemOne?: boolean | undefined
+          readonly transcription?: boolean | undefined
           readonly origins?: ReadonlyArray<string> | undefined
         }
       | undefined

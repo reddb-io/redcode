@@ -2623,7 +2623,7 @@ export const dict = {
   "settings.permissions.tool.webfetch.description": "Fetch content from a URL",
   "settings.permissions.tool.design_live.title": "Design live access",
   "settings.permissions.tool.design_live.description":
-    "Let a design's own JavaScript use the microphone, camera or location, or connect to these services, in the review and while presenting",
+    "Let a design's own JavaScript use the microphone, camera or location, ask your System One model, transcribe speech with your connections, or connect to these services, in the review and while presenting",
   "settings.permissions.tool.open.title": "Open",
   "settings.permissions.tool.open.description": "Open a file or folder in the application your system uses for it",
   "settings.permissions.tool.websearch.title": "Web Search",

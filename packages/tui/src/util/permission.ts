@@ -166,7 +166,11 @@ export function permissionPresentation(
               ? "Camera"
               : resource === "location"
                 ? "Location"
-                : `Connect to ${String(resource)}`,
+                : resource === "system-one"
+                  ? "Ask your System One model, with your saved connection"
+                  : resource === "transcription"
+                    ? "Transcribe speech, with your saved dictation connection"
+                    : `Connect to ${String(resource)}`,
         ),
         "Its own JavaScript runs in the review and while presenting.",
       ],

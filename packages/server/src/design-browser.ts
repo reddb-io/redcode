@@ -10,6 +10,7 @@ import { DesignAppMode } from "@opencode/core/design/app-mode"
 import { DesignFeedback } from "@opencode/core/design/feedback"
 import { DesignHandoff } from "@opencode/core/design/handoff"
 import { DesignHost } from "@opencode/core/design/host"
+import { DesignLive } from "@opencode/core/design/live"
 import { DesignRenderer } from "@opencode/core/design/renderer"
 import { DesignRuntime } from "@opencode/core/design/runtime"
 import { DesignStore } from "@opencode/core/design/store"
@@ -603,6 +604,21 @@ function mutate(
         yield* request.json.pipe(
           Effect.flatMap(Schema.decodeUnknownEffect(Design.Approve)),
           Effect.flatMap((input) => DesignHandoff.approve(sessionID, id, input)),
+        ),
+      )
+    // A live deck's requests to the user's own connections, which its grant allows; see DesignLive.
+    if (parts[1] === "live" && parts[2] === "decide" && parts.length === 3 && request.method === "POST")
+      return HttpServerResponse.jsonUnsafe(
+        yield* request.json.pipe(
+          Effect.flatMap(Schema.decodeUnknownEffect(Design.LiveDecide)),
+          Effect.flatMap((input) => DesignLive.decide(document, input)),
+        ),
+      )
+    if (parts[1] === "live" && parts[2] === "transcribe" && parts.length === 3 && request.method === "POST")
+      return HttpServerResponse.jsonUnsafe(
+        yield* request.json.pipe(
+          Effect.flatMap(Schema.decodeUnknownEffect(Design.LiveTranscribe)),
+          Effect.flatMap((input) => DesignLive.transcribe(document, input)),
         ),
       )
     return failure(404, "Not found")

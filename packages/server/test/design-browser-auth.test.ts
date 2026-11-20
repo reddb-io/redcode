@@ -519,5 +519,15 @@ it.live("Design pages keep devices and network closed until design_document reco
     const frame = yield* Effect.promise(() => preview.text())
     expect(frame).toContain("connect-src 'none'")
     expect(frame).not.toContain("design:microphone")
+    expect(frame).not.toContain("design:ask")
+    // The user's own connections stay closed too: neither route answers a design without its grant.
+    for (const [route, input] of [
+      ["decide", { text: "Hello", questions: { mood: { type: "noul", instructions: "Is the speaker calm?" } } }],
+      ["transcribe", { audio: "UklGRg==" }],
+    ] as const) {
+      const refused = yield* request(`/design/session/${sessionID}/${document.id}/live/${route}`, input)
+      expect(refused.status).toBe(400)
+      expect(((yield* Effect.promise(() => refused.json())) as { message: string }).message).toContain("not granted")
+    }
   }),
 )

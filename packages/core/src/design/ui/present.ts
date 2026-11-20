@@ -3,7 +3,7 @@
 
 import type { ReviewCopy } from "./copy.js"
 import type { deck, PresentEvent } from "./slides.js"
-import type { liveHost } from "./live.js"
+import type { liveAsk, liveHost } from "./live.js"
 import type { stage } from "./stage.js"
 
 export interface PresentOptions {
@@ -28,6 +28,12 @@ export interface PresentOptions {
   location?: boolean
   /** The device bridge from ./live, passed in because this function is serialized on its own. */
   live?: typeof liveHost
+  /** The design was granted questions to the user's System One: the current slide may ask them. */
+  systemOne?: boolean
+  /** The design was granted the user's dictation, the same way. */
+  transcription?: boolean
+  /** The bridge from ./live to the user's own connections, passed in the same way. */
+  ask?: typeof liveAsk
 }
 
 /**
@@ -81,6 +87,15 @@ export function mountPresent(host: HTMLElement, options: PresentOptions) {
     granted.microphone || granted.camera || granted.location
       ? options.live?.((device) => (granted[device] ? slide.contentWindow : undefined), false)
       : undefined
+  if (options.systemOne || options.transcription)
+    options.ask?.(
+      (service) => (options[service] ? slide.contentWindow : undefined),
+      (service, body) =>
+        transport(
+          `${options.endpoint}/${encodeURIComponent(options.designID)}/live/${service === "systemOne" ? "decide" : "transcribe"}`,
+          { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) },
+        ),
+    )
   const devicesChannel =
     devices && typeof BroadcastChannel === "function"
       ? new BroadcastChannel(`redcode-design-devices:${options.designID}`)
