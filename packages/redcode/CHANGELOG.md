@@ -1,5 +1,11 @@
 # @reddb-io/redcode
 
+## 0.90.11
+
+### Patch Changes
+
+- Run Codex in plan mode, show Codex's reasoning summaries, keep MCP servers' questions reaching you with full access, and give slow-starting MCP servers time to join a Codex thread.
+
 ## 0.90.10
 
 ### Patch Changes
