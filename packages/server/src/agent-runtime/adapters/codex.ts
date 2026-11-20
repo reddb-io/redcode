@@ -151,6 +151,13 @@ function events(input: AgentRuntimeEventInput): AgentRuntimeEvent[] {
   if (method === "serverRequest/resolved") return [{ type: "request.resolved", id: String(params.requestId) }]
   if (method === "turn/started") return [{ type: "started", turn: string(object(params.turn).id) }]
   if (method === "item/agentMessage/delta") return [{ type: "text", text: string(params.delta) }]
+  // Plan mode proposes its plan as an item of its own, which is the turn's reply.
+  if (method === "item/plan/delta") return [{ type: "text", text: string(params.delta) }]
+  // Reasoning streams as summary sections (OpenAI models) or as raw text (open models).
+  if (method === "item/reasoning/summaryTextDelta" || method === "item/reasoning/textDelta")
+    return [{ type: "reasoning", text: string(params.delta) }]
+  if (method === "item/reasoning/summaryPartAdded" && Number(params.summaryIndex) > 0)
+    return [{ type: "reasoning", text: "\n\n" }]
   if (method === "turn/plan/updated")
     return [
       {
@@ -284,7 +291,20 @@ function toolOutput(item: Frame) {
 
 // Codex asks before leaving its workspace sandbox; auto routes those requests to its own reviewer first.
 function permissions(mode: Harness.PermissionMode | undefined) {
-  if (mode === "bypassPermissions") return { approvalPolicy: "never", sandbox: "danger-full-access" }
+  // Full access asks nothing, but MCP servers' questions still reach the user: "never" would refuse them unseen.
+  if (mode === "bypassPermissions")
+    return {
+      approvalPolicy: {
+        granular: {
+          mcp_elicitations: true,
+          request_permissions: false,
+          rules: false,
+          sandbox_approval: false,
+          skill_approval: false,
+        },
+      },
+      sandbox: "danger-full-access",
+    }
   return {
     approvalPolicy: "on-request",
     sandbox: "workspace-write",
@@ -352,8 +372,8 @@ export const CodexAgentRuntime: AgentRuntimeAdapter = {
     "--ws-token-sha256",
     "--ws-shared-secret-file",
   ],
-  // Codex has no plan mode, and its workspace sandbox already accepts edits.
-  permissionModes: ["default", "auto", "bypassPermissions"],
+  // Codex's workspace sandbox already accepts edits; plan is its own collaboration mode.
+  permissionModes: ["default", "plan", "auto", "bypassPermissions"],
   installPackage: "@openai/codex",
   capabilities: {
     backgroundWork: true,
@@ -417,8 +437,12 @@ export const CodexAgentRuntime: AgentRuntimeAdapter = {
         cwd: input.directory,
         ...(input.run.model ? { model: input.run.model } : {}),
         ...permissions(input.run.permissionMode),
-        // Codex offers update_plan only when asked for it; its plan becomes the run's task list.
-        config: { "tools.update_plan": { enabled: true } },
+        config: {
+          // Codex offers update_plan only when asked for it; its plan becomes the run's task list.
+          "tools.update_plan.enabled": true,
+          // The 1 s default leaves a cold npx or uvx MCP server out of the first request.
+          mcp_optional_startup_grace_ms: 10_000,
+        },
         ...(!input.run.nativeID && (input.run.backgroundWait || input.run.delegation || input.computerUse)
           ? {
               dynamicTools: [
@@ -433,6 +457,7 @@ export const CodexAgentRuntime: AgentRuntimeAdapter = {
     )
     const nativeID = string(object(result.thread).id)
     if (!nativeID) throw new Error("Codex did not return a thread identity")
+    if (string(result.model)) threadModels.set(nativeID, string(result.model))
     return { nativeID }
   },
   async prompt(input) {
@@ -443,6 +468,7 @@ export const CodexAgentRuntime: AgentRuntimeAdapter = {
         ...(input.steer ? { expectedTurnId: input.turn } : {}),
         // The effort holds for this turn and the ones after it.
         ...(!input.steer && input.run.effort ? { effort: input.run.effort } : {}),
+        ...(input.steer ? {} : turnMode(input.run)),
         input: [
           ...(input.prompt.images ?? []).map((image) => ({
             type: "image",
@@ -463,6 +489,28 @@ export const CodexAgentRuntime: AgentRuntimeAdapter = {
       input.run.driver,
     )
   },
+}
+
+/** The model each thread runs, as Codex reported it; a collaboration mode must name one. */
+const threadModels = new Map<string, string>()
+
+/**
+ * Every turn names its collaboration mode, so leaving plan mode clears it, and asks for reasoning summaries, which
+ * some catalogues turn off by default.
+ */
+function turnMode(run: Harness.Run) {
+  const model = run.model ?? (run.nativeID ? threadModels.get(run.nativeID) : undefined)
+  return {
+    summary: "auto",
+    ...(model
+      ? {
+          collaborationMode: {
+            mode: run.permissionMode === "plan" ? "plan" : "default",
+            settings: { model, ...(run.effort ? { reasoning_effort: run.effort } : {}) },
+          },
+        }
+      : {}),
+  }
 }
 
 export const CodexRuntimeProtocol = { initialize, models, limits }

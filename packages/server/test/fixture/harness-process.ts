@@ -206,7 +206,7 @@ for await (const line of createInterface({ input: process.stdin })) {
         },
       })
     if (["thread/start", "thread/resume"].includes(value.method))
-      send({ id: value.id, result: { thread: { id: state.thread } } })
+      send({ id: value.id, result: { thread: { id: state.thread }, model: "fixture-model" } })
     if (value.method === "turn/start") {
       state.turn = `turn-${value.id}`
       send({ id: value.id, result: { turn: { id: state.turn } } })
