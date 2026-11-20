@@ -31,7 +31,7 @@ function appAssetsPlugin(archive: string): Plugin {
     },
     load(id) {
       if (id !== "\0virtual:opencode-app-assets") return
-      return `export default ${archive}`
+      return `export default Object.fromEntries(Object.entries(${archive}).map(([key, body]) => [key, () => Buffer.from(body, "base64")]))`
     },
   }
 }
