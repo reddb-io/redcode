@@ -220,6 +220,8 @@ export function liveFrame() {
         const track = built.track
         const stop = track.stop.bind(track)
         const close = () => {
+          // A deck stops its tracks after the presenter ended them; that device is already released.
+          if (track.readyState === "ended") return
           stop()
           built.close()
           channel.port1.close()
