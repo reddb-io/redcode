@@ -417,6 +417,8 @@ export const CodexAgentRuntime: AgentRuntimeAdapter = {
         cwd: input.directory,
         ...(input.run.model ? { model: input.run.model } : {}),
         ...permissions(input.run.permissionMode),
+        // Codex offers update_plan only when asked for it; its plan becomes the run's task list.
+        config: { "tools.update_plan": { enabled: true } },
         ...(!input.run.nativeID && (input.run.backgroundWait || input.run.delegation || input.computerUse)
           ? {
               dynamicTools: [
