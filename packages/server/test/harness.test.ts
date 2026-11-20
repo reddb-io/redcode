@@ -1280,7 +1280,7 @@ test("a Claude background command runs until its task reports the end", async ()
   }
 })
 
-test("Codex takes the run's effort and maps its permission mode onto approvals and the sandbox", async () => {
+test("Codex takes the run's effort, asks for its plan tool and maps its permission mode onto approvals and the sandbox", async () => {
   await using tmp = await tmpdir("redcode-harness-codex-modes-")
   const service = await createHarnesses(path.join(tmp.path, "state"))
   try {
@@ -1306,6 +1306,8 @@ test("Codex takes the run's effort and maps its permission mode onto approvals a
       await until(() => service.read(run.id).run.state === "ready")
       const start = (await frames()).findLast((frame) => frame.method === "thread/start")
       expect(start.params).toMatchObject(expected)
+      // Codex leaves its plan tool off unless the thread asks for it.
+      expect(start.params.config).toEqual({ "tools.update_plan": { enabled: true } })
       if (!permissionMode) expect(start.params.approvalsReviewer).toBeUndefined()
       expect((await frames()).findLast((frame) => frame.method === "turn/start").params.effort).toBe("high")
     }
