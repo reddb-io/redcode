@@ -1,5 +1,11 @@
 # @reddb-io/redcode
 
+## 0.90.10
+
+### Patch Changes
+
+- Show Codex plans as the run's task list again with current Codex releases, which offer their plan tool only to threads that ask for it.
+
 ## 0.90.9
 
 ### Patch Changes
