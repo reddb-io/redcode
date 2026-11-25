@@ -16,6 +16,25 @@ test("context usage includes reasoning and cache tokens in the model's window", 
   await expect(tooltip).toContainText("10,000")
 })
 
+test("the context ring and usage reading both warn above the model window", async ({ page }) => {
+  const messages = contextMessages.map((message) =>
+    message.type === "assistant" && message.tokens
+      ? { ...message, tokens: { ...message.tokens, input: 231000 } }
+      : message,
+  )
+  await openSession(page, { name: "OverWindow", pageMessages: () => ({ items: messages }) })
+  const button = page.getByRole("button", { name: "View context usage", exact: true })
+  const reading = button.getByText("120%", { exact: false })
+  await expect(reading).toBeVisible()
+  await expect(button.locator('[data-slot="progress-circle-progress"]')).toHaveCSS(
+    "stroke",
+    await reading.evaluate((element) => getComputedStyle(element).color),
+  )
+  await button.click()
+  const panel = page.locator('[data-slot="session-usage-content"]')
+  await expect(panel.getByRole("definition").filter({ hasText: "240K / 200K (120%)" })).toBeVisible()
+})
+
 test("cost indicators use full spending and refresh zero-valued child usage", async ({ page }, testInfo) => {
   const state: { budget: SessionBudgetView } = {
     budget: {

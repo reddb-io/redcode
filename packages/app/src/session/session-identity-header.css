@@ -5,7 +5,8 @@
 }
 
 .session-options-menu [data-component="menu-v2-item"] {
-  padding-inline-end: 30px;
+  /* The label gutter includes the menu surface padding and its 1px border. */
+  padding-inline-end: calc(34px - var(--reddb-spatial-gap-sm) - 1px);
 }
 
 .session-project-link {

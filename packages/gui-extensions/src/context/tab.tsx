@@ -1,5 +1,7 @@
 import { createMemo, on, onCleanup, For, Show } from "solid-js"
-import type { JSX } from "solid-js"
+import { sectionHeading } from "@reddb-io/design-system/contracts/section-heading"
+import { SectionHeading } from "@reddb-io/design-system/base/SectionHeading"
+import { ReactView } from "@opencode/ui/react-view"
 import { checksum } from "@opencode/util/encode"
 import { Icon } from "@opencode/ui/icon"
 import { Button } from "@opencode/ui/button"
@@ -14,18 +16,12 @@ import type { SessionBudgetLimits, SessionBudgetTotals, SessionMessageInfo } fro
 import { ContextUsage } from "@opencode/util/context-usage"
 import { createKeyed, createLatest, useExtension, type MountedSession } from "../sdk"
 import { catalogModel, readContext, syncCatalog } from "./catalog"
+import { UsageDetails } from "./details.react"
 import { fetchSessionExport, sessionExportFilename } from "./export"
 import { createSessionContextFormatter } from "./format"
 import { createSessionSpending, formatCost } from "./spending"
 
-function Stat(props: { label: string; value: JSX.Element }) {
-  return (
-    <div class="flex min-w-0 flex-col gap-1 border-t border-elevation-base-border pt-2">
-      <div class="text-[11px] font-medium uppercase tracking-[0.08em] text-ink-muted">{props.label}</div>
-      <div class="truncate font-mono text-[13px] tabular-nums text-foreground">{props.value}</div>
-    </div>
-  )
-}
+const heading = sectionHeading({ size: "sm" })
 
 function RawMessageContent(props: { message: SessionMessageInfo; onRendered: () => void }) {
   const file = createMemo(() => {
@@ -244,69 +240,57 @@ export default function SessionContextTab(props: { session: MountedSession }) {
     }
   })
 
-  const stats = [
-    { label: "stats.session", value: () => info()?.title ?? (props.session.id || "—") },
-    { label: "stats.messages", value: () => counts().all.toLocaleString(i18n.locale()) },
-    { label: "stats.selectedProvider", value: () => selected()?.provider ?? "—" },
-    { label: "stats.selectedModel", value: () => selected()?.name ?? "—" },
-    { label: "stats.selectedContext", value: () => formatter().number(selected()?.limit?.context || undefined) },
-    {
-      label: "stats.selectedInput",
-      value: () => formatter().number(selected()?.limit?.input || selected()?.limit?.context || undefined),
-    },
-    { label: "stats.selectedOutput", value: () => formatter().number(selected()?.limit?.output || undefined) },
-    { label: "stats.lastProvider", value: providerLabel },
-    { label: "stats.lastModel", value: modelLabel },
-    { label: "stats.lastContext", value: () => formatter().number(context()?.limit) },
-    { label: "stats.totalTokens", value: () => formatter().number(context()?.tokens) },
-    {
-      label: "stats.usage",
-      value: () => (
-        <Show when={context()} fallback="—">
-          {(value) => (
-            <span classList={{ "text-feedback-warning-foreground": ContextUsage.over(value()) }}>
-              {ContextUsage.format(value(), compact().format)}
-            </span>
-          )}
-        </Show>
-      ),
-    },
-    { label: "stats.inputTokens", value: () => formatter().number(context()?.message.tokens.input) },
-    { label: "stats.outputTokens", value: () => formatter().number(context()?.message.tokens.output) },
-    { label: "stats.reasoningTokens", value: () => formatter().number(context()?.message.tokens.reasoning) },
-    {
-      label: "stats.cacheTokens",
-      value: () =>
-        `${formatter().number(context()?.message.tokens.cache.read)} / ${formatter().number(context()?.message.tokens.cache.write)}`,
-    },
-    { label: "stats.userMessages", value: () => counts().user.toLocaleString(i18n.locale()) },
-    { label: "stats.assistantMessages", value: () => counts().assistant.toLocaleString(i18n.locale()) },
-    {
-      get label() {
-        return spend()?.costAssessment?.status === "unknown" && spend()!.spent.cost > 0
-          ? "stats.knownSubtotal"
-          : "stats.totalCost"
+  const stats = createMemo(() => {
+    const usage = context()
+    const spending = spend()
+    const assessment = spending?.costAssessment?.status
+    const partial = assessment === "unknown" && !!spending && spending.spent.cost > 0
+
+    return [
+      { term: ctx.t("stats.session"), value: info()?.title ?? (props.session.id || "—") },
+      { term: ctx.t("stats.messages"), value: counts().all.toLocaleString(i18n.locale()) },
+      { term: ctx.t("stats.selectedProvider"), value: selected()?.provider ?? "—" },
+      { term: ctx.t("stats.selectedModel"), value: selected()?.name ?? "—" },
+      { term: ctx.t("stats.selectedContext"), value: formatter().number(selected()?.limit?.context || undefined) },
+      {
+        term: ctx.t("stats.selectedInput"),
+        value: formatter().number(selected()?.limit?.input || selected()?.limit?.context || undefined),
       },
-      value: () => (
-        <>
-          <span>{cost()}</span>
-          <Show when={spend()?.costAssessment?.status === "unknown" && spend()!.spent.cost > 0}>
-            <div class="whitespace-normal font-sans text-[11px] leading-4 text-ink-muted">{ctx.t("cost.partial")}</div>
-          </Show>
-          <Show when={spend() && (!spend()?.costAssessment || spend()?.costAssessment?.status === "legacy")}>
-            <div class="whitespace-normal font-sans text-[11px] leading-4 text-ink-muted">{ctx.t("cost.legacy")}</div>
-          </Show>
-          <Show when={spend()?.costAssessment?.status === "estimated"}>
-            <div class="whitespace-normal font-sans text-[11px] leading-4 text-ink-muted">
-              {ctx.t("cost.estimated")}
-            </div>
-          </Show>
-        </>
-      ),
-    },
-    { label: "stats.sessionCreated", value: () => formatter().time(info()?.time.created) },
-    { label: "stats.lastActivity", value: () => formatter().time(context()?.message.time.created) },
-  ] satisfies { label: string; value: () => JSX.Element }[]
+      { term: ctx.t("stats.selectedOutput"), value: formatter().number(selected()?.limit?.output || undefined) },
+      { term: ctx.t("stats.lastProvider"), value: providerLabel() },
+      { term: ctx.t("stats.lastModel"), value: modelLabel() },
+      { term: ctx.t("stats.lastContext"), value: formatter().number(usage?.limit) },
+      { term: ctx.t("stats.totalTokens"), value: formatter().number(usage?.tokens) },
+      {
+        term: ctx.t("stats.usage"),
+        value: usage ? ContextUsage.format(usage, compact().format) : "—",
+        warning: !!usage && ContextUsage.over(usage),
+      },
+      { term: ctx.t("stats.inputTokens"), value: formatter().number(usage?.message.tokens.input) },
+      { term: ctx.t("stats.outputTokens"), value: formatter().number(usage?.message.tokens.output) },
+      { term: ctx.t("stats.reasoningTokens"), value: formatter().number(usage?.message.tokens.reasoning) },
+      {
+        term: ctx.t("stats.cacheTokens"),
+        value: `${formatter().number(usage?.message.tokens.cache.read)} / ${formatter().number(usage?.message.tokens.cache.write)}`,
+      },
+      { term: ctx.t("stats.userMessages"), value: counts().user.toLocaleString(i18n.locale()) },
+      { term: ctx.t("stats.assistantMessages"), value: counts().assistant.toLocaleString(i18n.locale()) },
+      {
+        term: ctx.t(partial ? "stats.knownSubtotal" : "stats.totalCost"),
+        value: cost(),
+        note: partial
+          ? ctx.t("cost.partial")
+          : spending && (!assessment || assessment === "legacy")
+            ? ctx.t("cost.legacy")
+            : assessment === "estimated"
+              ? ctx.t("cost.estimated")
+              : undefined,
+      },
+      { term: ctx.t("stats.sessionCreated"), value: formatter().time(info()?.time.created) },
+      { term: ctx.t("stats.lastActivity"), value: formatter().time(usage?.message.time.created) },
+      ...budgetLines().map((budget) => ({ term: ctx.t(budget.label), value: budget.lines.join("\n") })),
+    ]
+  })
 
   const exportSession = async () => {
     const sessionID = props.session.id
@@ -397,28 +381,12 @@ export default function SessionContextTab(props: { session: MountedSession }) {
       onScroll={handleScroll}
     >
       <div data-slot="session-usage-content" class="px-4 pt-4 pb-6 flex flex-col gap-6 md:px-6 md:pb-10 md:gap-10">
-        <div class="grid grid-cols-1 @[32rem]:grid-cols-2 @[48rem]:grid-cols-3 gap-x-6 gap-y-4">
-          <For each={stats}>{(stat) => <Stat label={ctx.t(stat.label)} value={stat.value()} />}</For>
-          <For each={budgetLines()}>
-            {(budget) => (
-              <Stat
-                label={ctx.t(budget.label)}
-                value={
-                  <span class="flex flex-col whitespace-normal">
-                    <For each={budget.lines}>{(line) => <span>{line}</span>}</For>
-                  </span>
-                }
-              />
-            )}
-          </For>
-        </div>
+        <ReactView component={UsageDetails} props={{ entries: stats() }} />
 
         <Show when={systemPrompt()}>
           {(prompt) => (
             <div class="flex flex-col gap-2">
-              <div class="text-[11px] font-medium uppercase tracking-[0.08em] text-ink-muted">
-                {ctx.t("systemPrompt.title")}
-              </div>
+              <ReactView component={SectionHeading} props={{ title: ctx.t("systemPrompt.title"), size: "sm" }} />
               <div class="border border-elevation-base-border rounded-md bg-elevation-sunken-surface px-3 py-2">
                 <Markdown text={prompt()} class="text-12-regular" />
               </div>
@@ -427,10 +395,8 @@ export default function SessionContextTab(props: { session: MountedSession }) {
         </Show>
 
         <div class="flex flex-col gap-2">
-          <div class="flex items-center justify-between">
-            <div class="text-[11px] font-medium uppercase tracking-[0.08em] text-ink-muted">
-              {ctx.t("rawMessages.title")}
-            </div>
+          <div class={heading.root()}>
+            <h2 class={heading.title()}>{ctx.t("rawMessages.title")}</h2>
             <Button
               size="small"
               variant="ghost"

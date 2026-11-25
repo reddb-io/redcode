@@ -1,32 +1,32 @@
+import { loadingIndicator } from "@reddb-io/design-system/contracts/loading-indicator"
 import { splitProps, type ComponentProps } from "solid-js"
-import "./loader.css"
+
+const slots = loadingIndicator({ labelHidden: true })
 
 export function Loader(props: ComponentProps<"svg">) {
   const [local, rest] = splitProps(props, ["class", "classList", "width", "height"])
 
   return (
     <svg
+      data-component="loader-v2"
       {...rest}
       class={local.class}
-      classList={local.classList}
+      classList={{ "shrink-0": true, ...local.classList }}
       width={local.width ?? 16}
       height={local.height ?? 16}
-      viewBox="0 0 16 16"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      data-component="loader-v2"
+      viewBox="0 0 24 24"
       aria-hidden={rest["aria-hidden"] ?? "true"}
     >
-      <circle cx="8" cy="8" r="6" data-slot="loader-v2-background" stroke-width="2" />
-      <circle
-        cx="8"
-        cy="8"
-        r="6"
-        data-slot="loader-v2-progress"
-        pathLength="100"
-        stroke-width="2"
-        stroke-dasharray="33 67"
-      />
+      <g class={slots.spinner({ class: "origin-center" })}>
+        <circle data-slot="loader-v2-background" class={slots.track()} cx="12" cy="12" r="9" stroke-width="3" />
+        <path
+          data-slot="loader-v2-progress"
+          class={slots.head()}
+          d="M21 12a9 9 0 0 0-9-9"
+          stroke-width="3"
+          stroke-linecap="round"
+        />
+      </g>
     </svg>
   )
 }

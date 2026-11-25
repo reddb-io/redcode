@@ -1,21 +1,18 @@
+import { divider } from "@reddb-io/design-system/contracts/divider"
 import { type ComponentProps, splitProps } from "solid-js"
-import "./divider.css"
 
-export interface DividerProps extends ComponentProps<"div"> {}
-
-export function Divider(props: DividerProps) {
+export function Divider(props: ComponentProps<"div">) {
   const [local, rest] = splitProps(props, ["class", "classList"])
-
   return (
     <div
       {...rest}
       role="separator"
       aria-orientation="horizontal"
       data-component="divider-v2"
-      classList={{
-        ...local.classList,
-        [local.class ?? ""]: !!local.class,
-      }}
+      class={divider({ orientation: "horizontal", class: local.class })}
+      classList={local.classList}
     />
   )
 }
+
+export type DividerProps = ComponentProps<"div">

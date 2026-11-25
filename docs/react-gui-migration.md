@@ -258,8 +258,9 @@ to use OpenTUI/Solid; web DS components do not render terminal UI.
 
 This inventory covers explicit component exports and the wildcard components in
 `@opencode/ui`. Counts are production source files importing each public path in
-App, Desktop, GUI extensions, Session UI, UI and TUI. A zero can mean a relative
-import, a plugin consumer, or a component with no current callers. Logo, assets,
+App, Desktop, GUI extensions, Session UI, UI and TUI. Tests, stories and declaration
+files are excluded. A zero can mean a relative import, a plugin consumer,
+or a component with no current callers. Logo, assets,
 service bridges and domain renderers appear here because they share this package;
 their presence alone does not justify replacing them.
 
@@ -300,7 +301,7 @@ their presence alone does not justify replacing them.
 | `project-avatar` | [data-display/project-avatar/project-avatar.tsx](../packages/ui/src/data-display/project-avatar/project-avatar.tsx) | 6 |
 | `provider-icon` | [components/provider-icon.tsx](../packages/ui/src/components/provider-icon.tsx) | 2 |
 | `radio` | [forms/radio/radio.tsx](../packages/ui/src/forms/radio/radio.tsx) | 2 |
-| `react-view` | [components/react-view.tsx](../packages/ui/src/components/react-view.tsx) | 13 |
+| `react-view` | [components/react-view.tsx](../packages/ui/src/components/react-view.tsx) | 19 |
 | `resize-handle` | [components/resize-handle.tsx](../packages/ui/src/components/resize-handle.tsx) | 4 |
 | `scroll-view` | [components/scroll-view.tsx](../packages/ui/src/components/scroll-view.tsx) | 10 |
 | `search-select` | [forms/search-select/search-select.tsx](../packages/ui/src/forms/search-select/search-select.tsx) | 0 |
@@ -328,6 +329,13 @@ and the Solid key legend use the Badge and Kbd recipes, and the React key legend
 uses native Kbd. The error screen uses native Logo, Textarea and Button on web,
 desktop and narrow mobile viewports. The Solid host still records the fatal
 error and provides the desktop updater and log export.
+
+The loading glyph in SSH, WSL, imports, file actions, browser, Office and
+execution panels uses Base LoadingIndicator slots. The upload and context rings
+use Base RadialProgress slots. Both context-ring sizes take the measured
+window's warning tone. The Usage panel renders statistics, cost notes and budget
+lines with native Base DescriptionList, including the mobile Usage view. SSH and
+WSL dialog separators use Base Divider.
 
 The review, updater and pairing extensions use the App SettingsRow for diff
 wrapping, release notes, update checks, screen activity and custom addresses.

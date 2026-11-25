@@ -1,3 +1,5 @@
+import { button } from "@reddb-io/design-system/contracts/button"
+import { toggleButton } from "@reddb-io/design-system/contracts/toggle-button"
 import { Show, createMemo, type ComponentProps, type JSX } from "solid-js"
 import { ProgressCircle } from "@opencode/ui/progress-circle"
 import { Tooltip } from "@opencode/ui/tooltip"
@@ -77,32 +79,12 @@ export function SessionContextUsage(props: {
   }
 
   const circle = () => (
-    <div class="flex items-center justify-center">
-      <ProgressCircle
-        appearance="indicator"
-        size={16}
-        strokeWidth={1.25}
-        percentage={context()?.percent ?? 0}
-        style={{
-          "--progress-circle-background": "var(--reddb-color-muted)",
-          "--progress-circle-background-overlay": "transparent",
-          "--progress-circle-progress": over()
-            ? "var(--reddb-color-feedback-warning-foreground)"
-            : "var(--reddb-color-foreground)",
-        }}
-      />
-    </div>
-  )
-
-  const compactCircle = () => (
-    <div class="flex items-center justify-center">
-      <ProgressCircle
-        appearance="compact"
-        strokeWidth={1.25}
-        percentage={context()?.percent ?? 0}
-        style={over() ? { "--progress-circle-progress": "var(--reddb-color-feedback-warning-foreground)" } : undefined}
-      />
-    </div>
+    <ProgressCircle
+      appearance={variant() === "indicator" ? "indicator" : "compact"}
+      strokeWidth={1.25}
+      percentage={context()?.percent ?? 0}
+      tone={over() ? "warning" : "neutral"}
+    />
   )
 
   const tooltipValue = () => (
@@ -161,13 +143,16 @@ export function SessionContextUsage(props: {
             <button
               type="button"
               data-component="session-context-usage"
-              class="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 font-mono text-[12px] leading-text-compact tabular-nums text-ink-muted transition-colors hover:bg-foreground/8 hover:text-foreground active:bg-foreground/12 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
-              classList={{ "bg-foreground/10 text-foreground": contextVisible() }}
+              class={button({
+                size: "sm",
+                variant: "ghost",
+                class: toggleButton({ pressed: contextVisible(), class: "shrink-0 font-mono tabular-nums" }),
+              })}
               onClick={openContext}
               aria-label={ctx.t("usage.view")}
               aria-pressed={contextVisible()}
             >
-              {compactCircle()}
+              {circle()}
               <span
                 aria-hidden="true"
                 class="hidden sm:inline"
