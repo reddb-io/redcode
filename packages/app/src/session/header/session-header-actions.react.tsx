@@ -35,6 +35,7 @@ function PanelToggleButton(props: { toggle: Toggle }) {
           data-action={`session-toggle-${toggle.id}`}
           aria-label={toggle.label}
           aria-pressed={toggle.pressed}
+          aria-expanded={toggle.id === "side" ? toggle.pressed : undefined}
           aria-controls={toggle.controls}
           className={toggleButton({
             pressed: toggle.pressed,

@@ -1,5 +1,5 @@
 import { useI18n } from "@opencode/ui/context/i18n"
-import { SegmentedControlItem, SegmentedControl } from "@opencode/ui/segmented-control"
+import { button, toggleButton, toggleGroup } from "@reddb-io/design-system/base/recipes"
 import { TextInput } from "@opencode/ui/text-input"
 import { Keybind } from "@opencode/ui/keybind"
 import { Icon } from "@opencode/ui/icon"
@@ -10,7 +10,7 @@ import { ResizeHandle } from "@opencode/ui/resize-handle"
 import { ScrollView } from "@opencode/ui/scroll-view"
 import { useLocale } from "@kobalte/core/i18n"
 import { makeEventListener } from "@solid-primitives/event-listener"
-import { Show, createEffect, createMemo, createSignal, type JSX } from "solid-js"
+import { Index, Show, createEffect, createMemo, createSignal, type JSX } from "solid-js"
 import { getWorkerPool } from "../../pierre/worker"
 import { SessionFilePanelV2, SessionFilePanelV2Empty } from "./session-file-panel-v2"
 
@@ -285,47 +285,25 @@ export function SessionReviewV2(props: SessionReviewV2Props) {
   const toolbarEnd = () => (
     <>
       {props.toolbarAction}
-      <SegmentedControl
+      <ReviewModeButtons
+        label={i18n.t("ui.sessionReviewV2.expandMode")}
+        options={[
+          { value: "expand", label: i18n.t("ui.sessionReviewV2.showAllLines") },
+          { value: "collapse", label: i18n.t("ui.sessionReviewV2.hideNonDiffLines") },
+        ]}
         value={props.expandMode}
-        onChange={(value) => {
-          if (value !== "expand" && value !== "collapse") return
-          props.onExpandModeChange(value)
-        }}
-        class="session-review-v2-segmented-control session-review-v2-segmented-control--icon"
-        aria-label={i18n.t("ui.sessionReviewV2.expandMode")}
-      >
-        <Tooltip openDelay={2000} value={i18n.t("ui.sessionReviewV2.showAllLines")}>
-          <SegmentedControlItem value="expand" aria-label={i18n.t("ui.sessionReviewV2.showAllLines")}>
-            <Icon name="expand" />
-          </SegmentedControlItem>
-        </Tooltip>
-        <Tooltip openDelay={2000} value={i18n.t("ui.sessionReviewV2.hideNonDiffLines")}>
-          <SegmentedControlItem value="collapse" aria-label={i18n.t("ui.sessionReviewV2.hideNonDiffLines")}>
-            <Icon name="collapse" />
-          </SegmentedControlItem>
-        </Tooltip>
-      </SegmentedControl>
+        onChange={props.onExpandModeChange}
+      />
       <Show when={props.onDiffStyleChange}>
-        <SegmentedControl
+        <ReviewModeButtons
+          label={i18n.t("ui.sessionReviewV2.diffView")}
+          options={[
+            { value: "unified", label: i18n.t("ui.sessionReviewV2.unifiedDiff") },
+            { value: "split", label: i18n.t("ui.sessionReviewV2.splitDiff") },
+          ]}
           value={props.diffStyle}
-          onChange={(value) => {
-            if (value !== "unified" && value !== "split") return
-            props.onDiffStyleChange?.(value)
-          }}
-          class="session-review-v2-segmented-control session-review-v2-segmented-control--icon"
-          aria-label={i18n.t("ui.sessionReviewV2.diffView")}
-        >
-          <Tooltip openDelay={2000} value={i18n.t("ui.sessionReviewV2.unifiedDiff")}>
-            <SegmentedControlItem value="unified" aria-label={i18n.t("ui.sessionReviewV2.unifiedDiff")}>
-              <Icon name="unified" />
-            </SegmentedControlItem>
-          </Tooltip>
-          <Tooltip openDelay={2000} value={i18n.t("ui.sessionReviewV2.splitDiff")}>
-            <SegmentedControlItem value="split" aria-label={i18n.t("ui.sessionReviewV2.splitDiff")}>
-              <Icon name="split" />
-            </SegmentedControlItem>
-          </Tooltip>
-        </SegmentedControl>
+          onChange={(value) => props.onDiffStyleChange?.(value)}
+        />
       </Show>
     </>
   )
@@ -365,5 +343,54 @@ export function SessionReviewV2SidebarToggle(props: { opened: boolean; disabled?
         icon={<Icon name="filetree" />}
       />
     </Tooltip>
+  )
+}
+
+function ReviewModeButtons<Value extends SessionReviewExpandMode | SessionReviewDiffStyle>(props: {
+  label: string
+  value: Value
+  options: [{ value: Value; label: string }, { value: Value; label: string }]
+  onChange: (value: Value) => void
+}) {
+  const styles = toggleGroup({ size: "sm" })
+  let list!: HTMLDivElement
+  return (
+    <div ref={list} role="group" aria-label={props.label} class={styles.list()}>
+      <Index each={props.options}>
+        {(option, index) => (
+          <button
+            type="button"
+            aria-label={option().label}
+            title={option().label}
+            aria-pressed={props.value === option().value}
+            tabIndex={props.value === option().value ? 0 : -1}
+            class={button({
+              variant: "secondary",
+              size: "sm",
+              class: toggleButton({ pressed: props.value === option().value, class: styles.option() }),
+            })}
+            onClick={() => props.onChange(option().value)}
+            onKeyDown={(event) => {
+              if (event.altKey || event.ctrlKey || event.metaKey) return
+              // With two options, both arrow directions select the other option, including in RTL.
+              const next = {
+                ArrowLeft: 1 - index,
+                ArrowRight: 1 - index,
+                ArrowUp: 1 - index,
+                ArrowDown: 1 - index,
+                Home: 0,
+                End: 1,
+              }[event.key]
+              if (next === undefined) return
+              event.preventDefault()
+              props.onChange(props.options[next].value)
+              list.querySelectorAll("button")[next].focus()
+            }}
+          >
+            <Icon name={option().value} />
+          </button>
+        )}
+      </Index>
+    </div>
   )
 }

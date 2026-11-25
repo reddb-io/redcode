@@ -3,7 +3,8 @@ import { SessionReviewEmptyChangesV2 } from "@opencode/session-ui/v2/session-rev
 import { SessionReviewEmptyNoGitV2 } from "@opencode/session-ui/v2/session-review-empty-no-git-v2"
 import { quietControl } from "@reddb-io/design-system/contracts/quiet-control"
 import { Icon } from "@opencode/ui/icon"
-import { Select } from "@opencode/ui/select"
+import { ReactView } from "@opencode/ui/react-view"
+import { SearchSelect } from "@reddb-io/design-system/base/SearchSelect"
 import { useExtension } from "../sdk"
 import type { ChangeMode, ReviewModel } from "./model"
 
@@ -23,13 +24,22 @@ export function ReviewTitle(props: { review: ReviewModel }) {
       <Show
         when={props.review.options().length === 1 && props.review.options()[0]}
         fallback={
-          <Select
-            options={props.review.options()}
-            current={props.review.mode()}
-            label={label}
-            placement="bottom-start"
-            gutter={6}
-            onSelect={(option) => option && props.review.setMode(option)}
+          <ReactView
+            component={SearchSelect}
+            props={{
+              label: ctx.t("source.label"),
+              options: props.review.options().map((value) => ({ value, label: label(value) })),
+              value: props.review.mode(),
+              size: "sm",
+              clearable: false,
+              className: "min-w-0 gap-0 [&>label]:sr-only",
+              searchPlaceholder: ctx.t("ui.searchSelect.search"),
+              emptyText: ctx.t("ui.searchSelect.empty"),
+              onValueChange: (value: string) => {
+                const option = props.review.options().find((mode) => mode === value)
+                if (option) props.review.setMode(option)
+              },
+            }}
           />
         }
       >

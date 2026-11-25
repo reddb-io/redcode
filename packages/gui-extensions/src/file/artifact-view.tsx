@@ -15,7 +15,8 @@ import { Dynamic } from "solid-js/web"
 import { createResizeObserver } from "@solid-primitives/resize-observer"
 import { Button } from "@opencode/ui/button"
 import { FileIcon } from "@opencode/ui/file-icon"
-import { SegmentedControl, SegmentedControlItem } from "@opencode/ui/segmented-control"
+import { ReactView } from "@opencode/ui/react-view"
+import { ToggleGroup } from "@reddb-io/design-system/base/ToggleGroup"
 import { ScrollView } from "@opencode/ui/scroll-view"
 import { Markdown } from "@opencode/session-ui/markdown"
 import { MarkdownProvider, useMarkdown } from "@opencode/session-ui/context/markdown"
@@ -241,15 +242,22 @@ function ArtifactToolbar(props: {
   return (
     <div data-slot="artifact-toolbar" class="flex h-10 shrink-0 items-center gap-3 px-4">
       <Show when={props.onModeChange}>
-        <SegmentedControl
-          value={props.mode ?? "preview"}
-          onChange={(value) => {
-            if (value === "preview" || value === "source") props.onModeChange?.(value)
+        <ReactView
+          component={ToggleGroup}
+          props={{
+            legend: ctx.t("view.mode"),
+            options: [
+              { value: "preview", label: ctx.t("view.preview") },
+              { value: "source", label: ctx.t("view.source") },
+            ],
+            value: props.mode ?? "preview",
+            size: "sm",
+            className: "shrink-0 gap-0 [&>legend]:sr-only",
+            onValueChange: (value) => {
+              if (value === "preview" || value === "source") props.onModeChange?.(value)
+            },
           }}
-        >
-          <SegmentedControlItem value="preview">{ctx.t("view.preview")}</SegmentedControlItem>
-          <SegmentedControlItem value="source">{ctx.t("view.source")}</SegmentedControlItem>
-        </SegmentedControl>
+        />
       </Show>
       <div class="ms-auto flex min-w-0 items-center gap-3">
         <div class="flex min-w-0 items-center gap-2 text-12-regular text-text-weak">

@@ -1,4 +1,5 @@
 export default {
+  "source.label": "Change source",
   "tab.title": "Review",
   "tab.count.one": "Files Changed {{count}}",
   "tab.count.other": "Files Changed {{count}}",

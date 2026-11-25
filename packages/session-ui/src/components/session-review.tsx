@@ -1,7 +1,8 @@
 import { Accordion } from "@opencode/ui/accordion"
 import { Button } from "@opencode/ui/button"
 import { Menu } from "@opencode/ui/menu"
-import { SegmentedControl, SegmentedControlItem } from "@opencode/ui/segmented-control"
+import { ReactView } from "@opencode/ui/react-view"
+import { ToggleGroup } from "@reddb-io/design-system/base/ToggleGroup"
 import { DiffChanges } from "@opencode/ui/diff-changes"
 import { FileIcon } from "@opencode/ui/file-icon"
 import { Icon } from "@opencode/ui/icon"
@@ -364,24 +365,22 @@ export const SessionReview = (props: SessionReviewProps) => {
         </Show>
         <div data-slot="session-review-actions">
           <Show when={hasDiffs() && props.onDiffStyleChange}>
-            <SegmentedControl
-              class="session-review-diff-style"
-              value={diffStyle()}
-              onChange={(style) => {
-                if (style !== "unified" && style !== "split") return
-                props.onDiffStyleChange?.(style)
+            <ReactView
+              component={ToggleGroup}
+              props={{
+                legend: i18n.t("ui.sessionReviewV2.diffView"),
+                options: [
+                  { value: "unified", label: i18n.t("ui.sessionReview.diffStyle.unified") },
+                  { value: "split", label: i18n.t("ui.sessionReview.diffStyle.split") },
+                ],
+                value: diffStyle(),
+                size: "sm",
+                className: "gap-0 [&>legend]:sr-only",
+                onValueChange: (value) => {
+                  if (value === "unified" || value === "split") props.onDiffStyleChange?.(value)
+                },
               }}
-            >
-              <For each={["unified", "split"] as const}>
-                {(style) => (
-                  <SegmentedControlItem value={style}>
-                    {i18n.t(
-                      style === "unified" ? "ui.sessionReview.diffStyle.unified" : "ui.sessionReview.diffStyle.split",
-                    )}
-                  </SegmentedControlItem>
-                )}
-              </For>
-            </SegmentedControl>
+            />
           </Show>
           <Show when={hasDiffs()}>
             <Button

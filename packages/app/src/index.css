@@ -131,7 +131,7 @@
   }
 
   /* The panel's width animation supplies the slide; only fade its fixed-width contents. */
-  [data-slot="session-side-region-presence"][data-opened] [data-slot="session-review-content"] {
+  [data-slot="session-side-panel-presence"][data-opened] [data-slot="session-review-content"] {
     transition: opacity 200ms ease-out 40ms;
   }
 
@@ -140,22 +140,14 @@
     opacity: 0;
   }
 
-  [data-slot="session-side-region-presence"][data-opened="false"] [data-slot="session-review-content"] {
+  [data-slot="session-side-panel-presence"][data-opened="false"] [data-slot="session-review-content"] {
     transition: opacity 160ms ease-out;
   }
 
   @starting-style {
-    [data-slot="session-side-region-presence"][data-opened="true"] [data-slot="session-review-content"] {
+    [data-slot="session-side-panel-presence"][data-opened="true"] [data-slot="session-review-content"] {
       opacity: 0;
     }
-  }
-
-  [data-slot="session-side-region-presence"][data-opened="true"] {
-    animation: side-region-presence-in 240ms cubic-bezier(0.22, 1, 0.36, 1);
-  }
-
-  [data-slot="session-side-region-presence"][data-opened="false"] {
-    animation: side-region-presence-out 240ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
   }
 
   [data-slot="terminal-panel-presence"][data-opened="true"] {
@@ -187,7 +179,6 @@
     [data-slot="side-terminal-panel-presence"],
     [data-slot="session-side-panel-presence"],
     [data-slot="session-review-content"],
-    [data-slot="session-side-region-presence"],
     [data-component="terminal-panel"] {
       animation: none !important;
     }

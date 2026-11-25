@@ -1,4 +1,5 @@
 export default {
+  "view.mode": "File view",
   "tree.all": "All files",
   "tree.empty": "No files",
   "tree.changes.one": "Files Changed {{count}}",

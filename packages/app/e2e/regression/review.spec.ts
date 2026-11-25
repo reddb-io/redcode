@@ -131,13 +131,13 @@ test("Git initialization belongs to its session and refreshes after a session sw
   expect((await response).status()).toBe(204)
   expect((await refreshed).status()).toBe(200)
   expect(requests).toEqual([{ directory: workspace.directory, provider: "git" }])
-  await expect(panel.getByRole("button", { name: "Git changes", exact: true })).toBeVisible()
+  await expect(panel.getByRole("button", { name: "Git changes, Change source", exact: true })).toBeVisible()
   await expect(init).toHaveCount(0)
   await expect(page.getByText("Request failed", { exact: true })).toHaveCount(0)
 
   await page.locator("[data-titlebar-tab-slot]", { hasText: "Initialize Alpha" }).click()
   await expectSessionTitle(page, "Initialize Alpha")
-  await expect(panel.getByRole("button", { name: "Git changes", exact: true })).toBeVisible()
+  await expect(panel.getByRole("button", { name: "Git changes, Change source", exact: true })).toBeVisible()
   await expect(pending).toHaveCount(0)
 })
 
@@ -339,7 +339,7 @@ for (const listed of [false, true]) {
       },
     })
     const panel = page.locator("#review-panel")
-    await panel.getByRole("button", { name: "Open file" }).click()
+    await openFileBrowser(page)
     await expect(panel.getByRole("button", { name: "README.md" })).toBeVisible()
     await expect(panel.locator('[data-slot="session-review-v2-sidebar-title"]')).toHaveText(
       listed ? "Custom app" : "app",
@@ -429,7 +429,7 @@ test("file tree expands Windows paths and scrolls long names in both directions"
   })
 
   const panel = page.locator("#review-panel")
-  await panel.getByRole("button", { name: "Open file" }).click()
+  await openFileBrowser(page)
   await expect(panel.getByRole("tab", { name: "Open file" })).toHaveAttribute("aria-selected", "true")
   const sidebar = panel.locator('[data-component="session-review-v2-sidebar-root"]')
   const frontend = panel.locator('[data-slot="file-tree-v2-row"][data-path="frontend"]')
@@ -592,6 +592,16 @@ test("shows Markdown frontmatter as compact artifact properties", async ({ page 
   await page.getByRole("link", { name: "notes.md", exact: true }).click()
   const paper = page.locator('#review-panel [data-slot="artifact-markdown-page"]')
 
+  const toolbar = page.locator('[data-slot="artifact-toolbar"]')
+  const preview = toolbar.getByRole("button", { name: "Preview", exact: true })
+  const source = toolbar.getByRole("button", { name: "Source", exact: true })
+  await preview.press("End")
+  await expect(source).toBeFocused()
+  await expect(source).toHaveAttribute("aria-pressed", "true")
+  await expect(paper).toBeHidden()
+  await source.press("Home")
+  await expect(preview).toBeFocused()
+  await expect(preview).toHaveAttribute("aria-pressed", "true")
   await expect(paper.getByRole("heading", { name: "Notes", exact: true })).toBeVisible()
   await expect(paper.locator("code.language-yaml")).toHaveCount(0)
   await expect(paper.getByRole("term")).toHaveText(["description", "mode", "model", "temperature", "steps", "color"])
@@ -744,6 +754,13 @@ test("restores review state and the side-panel tab per session", async ({ page }
   await toggle.click()
   await page.getByRole("button", { name: "gamma.ts" }).click()
   await selectedFile("gamma.ts")
+  const expand = panel.getByRole("button", { name: "Show all lines" })
+  const collapse = panel.getByRole("button", { name: "Hide non-diff lines" })
+  await expand.focus()
+  await expand.press("ArrowLeft")
+  await expect(collapse).toBeFocused()
+  await expect(collapse).toHaveAttribute("aria-pressed", "true")
+  await selectedFile("gamma.ts")
   await openFileBrowser(page)
   await panel.getByRole("button", { name: "README.md" }).click()
   await selectedTab("README.md")
@@ -751,8 +768,19 @@ test("restores review state and the side-panel tab per session", async ({ page }
   await switchSession("Beta review state")
   await toggle.click()
   await expect(review).toHaveAttribute("aria-selected", "true")
-  await page.getByRole("button", { name: "Git changes" }).click()
-  await page.getByRole("option", { name: "Branch changes" }).click()
+  const source = panel.getByRole("button", { name: "Git changes, Change source" })
+  await source.click()
+  const search = page.getByRole("dialog", { name: "Change source" }).getByRole("combobox")
+  await expect(search).toBeFocused()
+  await expect(page.getByRole("option", { name: "Branch changes" })).toBeVisible()
+  await search.fill("branch")
+  await expect(page.getByRole("option")).toHaveCount(1)
+  await search.press("Escape")
+  await expect(source).toBeFocused()
+  await source.click()
+  await search.fill("branch")
+  await search.press("ArrowDown")
+  await search.press("Enter")
   await page.getByRole("button", { name: "beta.ts" }).click()
   await selectedFile("beta.ts")
   await page.getByRole("button", { name: "View context usage" }).click()
@@ -839,7 +867,7 @@ test("keeps the review state a session stored before extensions", async ({ page 
       },
     },
   })
-  const mode = (name: string) => page.getByRole("button", { name, exact: true })
+  const mode = (name: string) => page.getByRole("button", { name: `${name}, Change source`, exact: true })
   const changes = page.getByRole("tablist", { name: "Session view", exact: true }).getByRole("tab", { name: "Changes" })
 
   const trigger = (file: string) =>
@@ -895,7 +923,7 @@ test("desktop review waits for the session's stored mode before it loads changes
       ...(hold && { hold }),
     })}`
 
-  const mode = (name: string) => page.getByRole("button", { name, exact: true })
+  const mode = (name: string) => page.getByRole("button", { name: `${name}, Change source`, exact: true })
   const file = page.locator('[data-slot="session-review-v2-file-name"]')
   const toggle = page.getByRole("button", { name: "Toggle review", exact: true })
 
@@ -938,7 +966,7 @@ test("a chosen mode the session stops offering shows as Git, and comes back when
     vcs,
     vcsDiff: ({ mode }) => (mode === "branch" ? [fileDiff("beta.ts")] : [fileDiff("gamma.ts")]),
   })
-  const mode = (name: string) => page.getByRole("button", { name, exact: true })
+  const mode = (name: string) => page.getByRole("button", { name: `${name}, Change source`, exact: true })
   const file = page.locator('[data-slot="session-review-v2-file-name"]')
 
   await page.getByRole("button", { name: "Toggle review", exact: true }).click()
@@ -1002,31 +1030,29 @@ for (const direction of ["ltr", "rtl"] as const) {
     await expect(toggle).toHaveAttribute("aria-expanded", "true")
     await expect(panel).toHaveAttribute("aria-hidden", "false")
     await expect(toggle).toHaveCount(1)
-    await expect.poll(() => toggle.boundingBox()).toEqual(closed)
+    const inset = (button: { x: number; width: number }, header: { x: number; width: number }) =>
+      direction === "rtl" ? button.x - header.x : header.x + header.width - button.x - button.width
+    const initialInset = inset(closed, header)
     await expect
       .poll(async () => {
-        const box = (await panel.boundingBox())!
-
-        return (
-          closed.x >= box.x &&
-          closed.x + closed.width <= box.x + box.width &&
-          closed.y >= box.y &&
-          closed.y + closed.height <= box.y + 52
-        )
+        const button = await toggle.boundingBox()
+        const title = await page.locator("[data-session-title]").boundingBox()
+        if (!button || !title) return
+        return inset(button, title)
       })
-      .toBe(true)
+      .toBeCloseTo(initialInset, 0)
 
     for (const control of [
       panel.locator('[data-slot="session-side-panel-actions"]'),
-      panel.getByRole("button", { name: "Open file", exact: true }),
+      panel.getByRole("button", { name: "Open a panel", exact: true }),
     ]) {
       await expect
         .poll(async () => {
           const box = await control.boundingBox()
-
-          return box ? box.y + box.height / 2 : undefined
+          if (!box) return Infinity
+          return Math.abs(box.y + box.height / 2 - (closed.y + closed.height / 2))
         })
-        .toBe(closed.y + closed.height / 2)
+        .toBeLessThanOrEqual(1)
     }
 
     await toggle.press("Enter")
@@ -1131,7 +1157,7 @@ async function expectHeaderClearOfToggle(page: Page, toggle: Locator, progress: 
   }
 
   const clip = (await toggle.boundingBox())!
-  // Header contents must make no difference to the pixels behind the fixed toggle.
+  // The review tab bar must never paint over the toggle in the adjoining session header.
   expect(await page.screenshot({ clip })).toEqual(
     await page.screenshot({ clip, style: ".session-review-v2-tabs-bar { visibility: hidden !important; }" }),
   )

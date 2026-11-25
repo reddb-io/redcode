@@ -304,8 +304,8 @@ their presence alone does not justify replacing them.
 | `resize-handle` | [components/resize-handle.tsx](../packages/ui/src/components/resize-handle.tsx) | 4 |
 | `scroll-view` | [components/scroll-view.tsx](../packages/ui/src/components/scroll-view.tsx) | 10 |
 | `search-select` | [forms/search-select/search-select.tsx](../packages/ui/src/forms/search-select/search-select.tsx) | 0 |
-| `segmented-control` | [navigation/segmented-control/segmented-control.tsx](../packages/ui/src/navigation/segmented-control/segmented-control.tsx) | 3 |
-| `select` | [forms/select/select.tsx](../packages/ui/src/forms/select/select.tsx) | 1 |
+| `segmented-control` | [navigation/segmented-control/segmented-control.tsx](../packages/ui/src/navigation/segmented-control/segmented-control.tsx) | 0 |
+| `select` | [forms/select/select.tsx](../packages/ui/src/forms/select/select.tsx) | 0 |
 | `spinner` | [components/spinner.tsx](../packages/ui/src/components/spinner.tsx) | 5 |
 | `split-button` | [actions/split-button/split-button.tsx](../packages/ui/src/actions/split-button/split-button.tsx) | 1 |
 | `steps` | [navigation/steps/steps.tsx](../packages/ui/src/navigation/steps/steps.tsx) | 1 |
@@ -334,6 +334,10 @@ wrapping, release notes, update checks, screen activity and custom addresses.
 The switch rows use native checkboxes with the Base switch recipe and the row’s
 label and description. The address field uses the Base Input, with validation
 on Enter and blur. Extension stores and desktop IPC still own these settings.
+
+File previews and inline diff layouts use Base ToggleGroup. The compact diff
+toolbar uses the same toggle recipes with labeled icon buttons. The review
+source menu uses Base SearchSelect on desktop and mobile.
 
 The Creator creation and plugin trial forms share the Base Dialog, Button, Field
 and Textarea. Guided creation also uses the Base Input and SearchSelect. The
