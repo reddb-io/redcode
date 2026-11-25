@@ -442,37 +442,6 @@
   margin-top: 8px;
 }
 
-.settings-back {
-  display: flex;
-  flex-shrink: 0;
-  height: 28px;
-  align-items: center;
-  gap: 6px;
-  padding-inline: 6px;
-  border: 0;
-  border-radius: var(--reddb-radius-md);
-  background: transparent;
-  color: var(--reddb-color-ink-muted);
-  font: inherit;
-  line-height: var(--line-height-compact);
-  text-align: start;
-  cursor: pointer;
-}
-
-.settings-back:hover {
-  background: color-mix(in srgb, var(--reddb-color-foreground) 8%, transparent);
-  color: var(--reddb-color-foreground);
-}
-
-.settings-back:active {
-  background: color-mix(in srgb, var(--reddb-color-foreground) 12%, transparent);
-}
-
-.settings-back:focus-visible {
-  outline: 2px solid var(--reddb-color-focus);
-  outline-offset: 2px;
-}
-
 [dir="rtl"] .settings-back-icon {
   transform: scaleX(-1);
 }
@@ -793,10 +762,6 @@
     height: 1px;
     background: var(--v2-background-bg-base);
     pointer-events: none;
-  }
-
-  .settings-mobile-nav .settings-back {
-    flex-shrink: 0;
   }
 
   .settings-screen .settings > .settings-content {

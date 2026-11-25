@@ -37,13 +37,16 @@ export function SettingsNavigationView(props: {
   }
   const backLabel =
     !state.searchable && search.selected ? snapshot.language.t("settings.backToSettings") : state.backLabel
+  const backButton = (
+    <Button type="button" variant="ghost" size="sm" className="settings-back shrink-0 justify-start" onClick={back}>
+      <SettingsIcon name="arrow-left" size="small" className="settings-back-icon" />
+      <span>{backLabel}</span>
+    </Button>
+  )
   return (
     <div className="settings" data-component="tabs-v2" data-variant="settings" data-orientation="vertical">
       <div className="settings-mobile-nav">
-        <button type="button" className="settings-back" onClick={back}>
-          <SettingsIcon name="arrow-left" size="small" className="settings-back-icon" />
-          <span>{backLabel}</span>
-        </button>
+        {backButton}
         <div className="settings-mobile-actions">
           <SharedSlot mount={props.mobileAction} />
           <Select
@@ -58,10 +61,7 @@ export function SettingsNavigationView(props: {
       </div>
       <aside className="settings-sidebar" data-searchable={state.searchable}>
         <div className="settings-nav">
-          <button type="button" className="settings-back" onClick={back}>
-            <SettingsIcon name="arrow-left" size="small" className="settings-back-icon" />
-            <span>{backLabel}</span>
-          </button>
+          {backButton}
           {state.searchable && <SettingsSearch services={props.services} />}
           {(!state.searchable || !search.query.trim()) && (
             <div

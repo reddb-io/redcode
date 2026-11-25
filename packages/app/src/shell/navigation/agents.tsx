@@ -2,7 +2,7 @@ import type { SessionInfo } from "@opencode/client/promise"
 import { Button } from "@opencode/ui/button"
 import { Icon } from "@opencode/ui/icon"
 import { SearchSelect } from "@/runtime/react/search-select"
-import { input } from "@reddb-io/design-system/contracts/input"
+import { AgentSessionFilters } from "./agents-session-filters.react"
 import { useQuery } from "@tanstack/solid-query"
 import { Key } from "@solid-primitives/keyed"
 import { createMemo, For, lazy, onCleanup, Show, Suspense, Switch, Match } from "solid-js"
@@ -117,21 +117,17 @@ export default function Agents() {
             }}
           />
           <Show when={scope.view() === "sessions"}>
-            <input
-              class={input({ size: "sm", class: "min-h-[var(--reddb-spatial-target-min)] w-full sm:w-48" })}
-              aria-label={language.t("agents.filter")}
-              placeholder={language.t("agents.filter")}
-              value={state.query}
-              onInput={(event) => setState("query", event.currentTarget.value)}
+            <ReactView
+              component={AgentSessionFilters}
+              props={{
+                query: state.query,
+                attention: state.attention,
+                filterLabel: language.t("agents.filter"),
+                attentionLabel: language.t("agents.attention"),
+                setQuery: (value) => setState("query", value),
+                setAttention: (value) => setState("attention", value),
+              }}
             />
-            <Button
-              variant="ghost"
-              aria-pressed={state.attention}
-              class="min-h-[var(--reddb-spatial-target-min)]"
-              onClick={() => setState("attention", !state.attention)}
-            >
-              {language.t("agents.attention")}
-            </Button>
           </Show>
         </header>
         <div
