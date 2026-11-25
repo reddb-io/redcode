@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from "@playwright/test"
-import { NO_PROVIDER, T0, provider } from "../utils/app"
+import { NO_PROVIDER, T0, holdRoute, provider } from "../utils/app"
 import { openDraft, openSession } from "../utils/workspace"
 import { mockGoal } from "../utils/goal-fixture"
 
@@ -407,6 +407,13 @@ test("pastes a clipboard image once and submits it with the draft text", async (
   await expect(images).toHaveCount(1)
   await expect(images).toBeVisible()
   await expect(images).toHaveJSProperty("naturalWidth", 8)
+  const preview = page.getByRole("button", { name: "image.png", exact: true })
+  await preview.press("Enter")
+  const dialog = page.getByRole("dialog", { name: "image.png" })
+  await expect(dialog.getByRole("img", { name: "image.png" })).toHaveJSProperty("naturalWidth", 8)
+  await page.keyboard.press("Escape")
+  await expect(dialog).toBeHidden()
+  await expect(preview).toBeFocused()
   await expect(editor).toHaveText("Explain this screenshot")
   await editor.press("Enter")
   await expect.poll(() => prompts.length).toBe(1)
@@ -486,6 +493,33 @@ test("shows the dropzone and attaches a dropped file", async ({ page }) => {
   await expect(page.locator('[data-component="composer-attachments"]')).toContainText("dropzone.txt")
 })
 
+test("cancels an in-flight attachment from its progress notification and preserves the draft", async ({ page }) => {
+  const { editor } = await openDraft(page, {
+    name: "AttachmentUpload",
+    provider: NO_PROVIDER,
+    onFileWrite: () => {},
+  })
+  await editor.fill("Keep this draft")
+  const held = await holdRoute(page, /\/api\/experimental\/fs\/write\?/, { method: "POST" })
+  const transfer = await page.evaluateHandle(() => {
+    const data = new DataTransfer()
+    data.items.add(new File(["pending upload"], "pending.txt", { type: "text/plain" }))
+    return data
+  })
+  try {
+    await page.locator('[data-component="new-session"]').dispatchEvent("drop", { dataTransfer: transfer })
+    await held.arrived
+    const progress = page.getByRole("progressbar", { name: "pending.txt", exact: true })
+    await expect(progress).toBeVisible()
+    await page.getByRole("button", { name: "Cancel upload of pending.txt" }).click()
+    await expect(progress).toHaveCount(0)
+    await expect(page.locator('[data-component="composer-attachments"]')).toHaveCount(0)
+    await expect(editor).toHaveText("Keep this draft")
+  } finally {
+    held.release()
+  }
+})
+
 test("keeps a narrow session composer contained when invoking a built-in", async ({ page }) => {
   await page.setViewportSize({ width: 800, height: 600 })
   const { editor } = await openSession(page, { name: "ComposerCommand", provider: NO_PROVIDER })
@@ -540,7 +574,9 @@ test("lists slash commands in their built-in order", async ({ page }) => {
     "/mcp",
     "/model",
     "/connect",
+    "/reload",
     "/agent",
+    "/creator-components",
     "/btw",
     "/design-review",
     "/import",

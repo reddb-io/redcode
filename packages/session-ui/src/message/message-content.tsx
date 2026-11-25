@@ -439,7 +439,11 @@ export function CurrentUserMessageDisplay(props: {
               <Show
                 when={!image()}
                 fallback={
-                  <div
+                  <button
+                    type="button"
+                    disabled={!mediaView().clickable}
+                    aria-label={name()}
+                    class="p-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
                     data-slot="user-message-attachment"
                     data-type="image"
                     data-clickable={mediaView().clickable ? "true" : undefined}
@@ -467,7 +471,7 @@ export function CurrentUserMessageDisplay(props: {
                         )}
                       </Match>
                       <Match when={mediaView().status === "failed"}>
-                        <div
+                        <span
                           data-slot="user-message-attachment-icon"
                           role="img"
                           aria-label={i18n.t("ui.fileMedia.state.error", {
@@ -475,10 +479,10 @@ export function CurrentUserMessageDisplay(props: {
                           })}
                         >
                           <Icon name="outline-photo" size="small" />
-                        </div>
+                        </span>
                       </Match>
                     </Switch>
-                  </div>
+                  </button>
                 }
               >
                 <AttachmentCard

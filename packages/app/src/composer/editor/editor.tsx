@@ -12,7 +12,9 @@ import {
   type JSX,
 } from "solid-js"
 import { createStore } from "solid-js/store"
-import { Portal } from "solid-js/web"
+import { Dynamic, Portal } from "solid-js/web"
+import { button } from "@reddb-io/design-system/contracts/button"
+import { image } from "@reddb-io/design-system/contracts/image"
 import { createResizeObserver } from "@solid-primitives/resize-observer"
 import { createMediaQuery } from "@solid-primitives/media"
 import { FileIcon } from "@opencode/ui/file-icon"
@@ -29,7 +31,7 @@ import { Tooltip } from "@opencode/ui/tooltip"
 import { ScrollView } from "@opencode/ui/scroll-view"
 import { AttachmentCard } from "@opencode/session-ui/attachment-card"
 import { ProgressCircle } from "@opencode/ui/progress-circle"
-import type { Upload } from "../attachments/uploads"
+import { uploadPercent, type Upload } from "../attachments/uploads"
 import { CommentCard } from "@opencode/session-ui/comment-card"
 import { typeLabel } from "@opencode/session-ui/message-file"
 import { getFilename } from "@opencode/util/path"
@@ -672,7 +674,6 @@ export function ComposerAttachments(props: {
   onFileRemove?: (file: Extract<ComposerComment, { type: "file" }>) => void
 }) {
   const i18n = useI18n()
-  const percent = (upload: Upload) => (upload.size === 0 ? 100 : Math.floor((upload.loaded / upload.size) * 100))
 
   return (
     <Show
@@ -690,7 +691,11 @@ export function ComposerAttachments(props: {
         >
           <For each={props.comments ?? []}>
             {(comment) => (
-              <div class="relative group shrink-0">
+              <ComposerAttachmentItem
+                label={props.removeLabel}
+                description={comment.comment ?? (comment.type === "file" ? comment.path : comment.label)}
+                onRemove={props.onCommentRemove && (() => props.onCommentRemove?.(comment))}
+              >
                 <Tooltip
                   value={comment.comment}
                   placement="top"
@@ -705,23 +710,20 @@ export function ComposerAttachments(props: {
                         : { type: "file", path: comment.path, selection: comment.selection }
                     }
                     active={comment.key === props.activeCommentID}
-                    onClick={() => props.onCommentClick?.(comment)}
+                    onClick={props.onCommentClick && (() => props.onCommentClick?.(comment))}
                   />
                 </Tooltip>
-                <button
-                  type="button"
-                  onClick={() => props.onCommentRemove?.(comment)}
-                  class="absolute -top-1 -end-1 size-4 rounded-full bg-v2-icon-icon-muted outline-solid outline-1 outline-v2-icon-icon-contrast flex items-center justify-center hover-reveal group-hover:opacity-100"
-                  aria-label={props.removeLabel}
-                >
-                  <Icon name="outline-xmark" class="text-v2-icon-icon-contrast" />
-                </button>
-              </div>
+              </ComposerAttachmentItem>
             )}
           </For>
           <For each={props.files ?? []}>
             {(file) => (
-              <div class="relative group shrink-0" data-slot="composer-context-file">
+              <ComposerAttachmentItem
+                slot="composer-context-file"
+                label={props.removeLabel}
+                description={file.name ?? file.path}
+                onRemove={props.onFileRemove && (() => props.onFileRemove?.(file))}
+              >
                 <Tooltip value={file.path} placement="top" contentClass="break-all">
                   <AttachmentCard title={file.name ?? getFilename(file.path)} surface="base">
                     <FileIcon node={{ path: file.path, type: "file" }} />
@@ -737,20 +739,16 @@ export function ComposerAttachments(props: {
                     </span>
                   </AttachmentCard>
                 </Tooltip>
-                <button
-                  type="button"
-                  onClick={() => props.onFileRemove?.(file)}
-                  class="absolute -top-1 -end-1 size-4 rounded-full bg-v2-icon-icon-muted outline-solid outline-1 outline-v2-icon-icon-contrast flex items-center justify-center hover-reveal group-hover:opacity-100"
-                  aria-label={props.removeLabel}
-                >
-                  <Icon name="outline-xmark" class="text-v2-icon-icon-contrast" />
-                </button>
-              </div>
+              </ComposerAttachmentItem>
             )}
           </For>
           <For each={props.attachments}>
             {(attachment) => (
-              <div class="relative group shrink-0">
+              <ComposerAttachmentItem
+                label={props.removeLabel}
+                description={attachment.filename}
+                onRemove={() => props.onAttachmentRemove(attachment)}
+              >
                 <Tooltip
                   value={attachment.type === "path" ? attachment.path : attachment.filename}
                   placement="top"
@@ -764,58 +762,55 @@ export function ComposerAttachments(props: {
                       </AttachmentCard>
                     }
                   >
-                    {(image) => {
+                    {(attachmentImage) => {
                       // Restored drafts and history carry image ids only; bytes load when shown.
-                      const [url] = createResource(() => image().blob, resolveBlobUrl)
+                      const [url] = createResource(() => attachmentImage().blob, resolveBlobUrl)
 
                       return (
-                        <>
-                          {/* Keep loading local; the route boundary would detach the screen and drop editor focus. */}
-                          <Suspense fallback={<div class="w-[58px] h-[46px]" />}>
+                        <Dynamic
+                          component={props.onAttachmentClick ? "button" : "span"}
+                          type={props.onAttachmentClick ? "button" : undefined}
+                          class={button({
+                            variant: "secondary",
+                            size: "sm",
+                            class: "h-[46px] w-[58px] overflow-hidden p-0",
+                          })}
+                          aria-label={props.onAttachmentClick ? attachment.filename : undefined}
+                          onClick={() => props.onAttachmentClick?.(attachment)}
+                        >
+                          {/* Keep blob loading local so the editor stays mounted and retains focus. */}
+                          <Suspense>
                             <img
-                              src={url() ?? ""}
+                              src={url() ?? undefined}
                               alt={attachment.filename}
-                              class="w-[58px] h-[46px] rounded-md object-cover"
-                              onClick={() => props.onAttachmentClick?.(attachment)}
+                              class={image({ class: "size-full" })}
                             />
                           </Suspense>
-                          <div class="pointer-events-none absolute inset-0 rounded-md shadow-[inset_0_0_0_1px_var(--reddb-color-muted)]" />
-                        </>
+                        </Dynamic>
                       )
                     }}
                   </Show>
                 </Tooltip>
-                <button
-                  type="button"
-                  onClick={() => props.onAttachmentRemove(attachment)}
-                  class="absolute -top-1 -end-1 size-4 rounded-full bg-v2-icon-icon-muted outline-solid outline-1 outline-v2-icon-icon-contrast flex items-center justify-center hover-reveal group-hover:opacity-100"
-                  aria-label={props.removeLabel}
-                >
-                  <Icon name="outline-xmark" class="text-v2-icon-icon-contrast" />
-                </button>
-              </div>
+              </ComposerAttachmentItem>
             )}
           </For>
           <For each={props.uploads ?? []}>
             {(upload) => (
-              <div class="relative group shrink-0" data-slot="composer-upload">
+              <ComposerAttachmentItem
+                slot="composer-upload"
+                label={i18n.t("ui.promptInput.cancelUpload")}
+                description={upload.filename}
+                onRemove={props.onUploadCancel && (() => props.onUploadCancel?.(upload))}
+              >
                 <Tooltip value={upload.filename} placement="top" contentClass="break-all">
                   <AttachmentCard title={upload.filename}>
                     <span class="inline-flex items-center gap-1">
-                      <ProgressCircle percentage={percent(upload)} />
-                      {i18n.t("ui.promptInput.uploading", { percent: percent(upload) })}
+                      <ProgressCircle percentage={uploadPercent(upload)} />
+                      {i18n.t("ui.promptInput.uploading", { percent: uploadPercent(upload) })}
                     </span>
                   </AttachmentCard>
                 </Tooltip>
-                <button
-                  type="button"
-                  onClick={() => props.onUploadCancel?.(upload)}
-                  class="absolute -top-1 -end-1 size-4 rounded-full bg-v2-icon-icon-muted outline-solid outline-1 outline-v2-icon-icon-contrast flex items-center justify-center hover-reveal group-hover:opacity-100"
-                  aria-label={i18n.t("ui.promptInput.cancelUpload")}
-                >
-                  <Icon name="outline-xmark" class="text-v2-icon-icon-contrast" />
-                </button>
-              </div>
+              </ComposerAttachmentItem>
             )}
           </For>
         </div>
@@ -829,6 +824,35 @@ export function ComposerAttachments(props: {
         />
       </div>
     </Show>
+  )
+}
+
+function ComposerAttachmentItem(props: {
+  slot?: string
+  label: string
+  description: string
+  onRemove?: () => void
+  children: JSX.Element
+}) {
+  return (
+    <div
+      data-slot={props.slot}
+      class="inline-flex min-w-0 max-w-full shrink-0 items-center gap-[var(--reddb-spatial-gap-sm)]"
+    >
+      {props.children}
+      <Show when={props.onRemove}>
+        <IconButton
+          type="button"
+          size="small"
+          variant="ghost"
+          icon={<Icon name="outline-xmark" size="small" />}
+          aria-label={props.label}
+          aria-description={props.description}
+          title={props.label}
+          onClick={props.onRemove}
+        />
+      </Show>
+    </div>
   )
 }
 
@@ -958,6 +982,7 @@ export function ComposerEditorSelect(props: {
     if (!mobile() && store.open) setOpen(false)
   })
 
+  let selectedItem: HTMLDivElement | undefined
   const selected = () => props.options.find((option) => option.id === props.current)
 
   const content = () => (
@@ -994,15 +1019,28 @@ export function ComposerEditorSelect(props: {
               size="normal"
               class={`max-w-[220px] justify-start ![font-weight:440] ${props.class ?? ""}`}
               aria-label={props.title}
+              ref={(element: HTMLButtonElement) => {
+                trigger = element
+              }}
+              onKeyDown={(event: KeyboardEvent) => {
+                if (event.key !== "Enter" && event.key !== " ") return
+                // The portaled radio items mount after the trigger handles the key.
+                requestAnimationFrame(() => selectedItem?.focus({ preventScroll: true }))
+              }}
             >
               {content()}
             </Menu.Trigger>
             <Menu.Portal>
-              <Menu.Content>
+              <Menu.Content
+                onEscapeKeyDown={() => requestAnimationFrame(() => trigger?.focus({ preventScroll: true }))}
+              >
                 <Menu.RadioGroup value={props.current} onChange={props.onSelect}>
                   <For each={props.options}>
                     {(option) => (
                       <Menu.RadioItem
+                        ref={(element: HTMLDivElement) => {
+                          if (option.id === props.current) selectedItem = element
+                        }}
                         value={option.id}
                         class={props.capitalize === false ? undefined : "capitalize"}
                         closeOnSelect

@@ -19,7 +19,7 @@ test("space activates a focused timeline button instead of scrolling", async ({ 
     seedHistory: true,
   })
   const scroller = page.locator(".scroll-view__viewport", { has: page.locator("[data-timeline-row]") })
-  const trigger = page.getByRole("button", { name: "Used 1 Shell", exact: true })
+  const trigger = page.getByRole("button", { name: /^Worked for .*Ran 1 command$/ })
   await expect
     .poll(() => scroller.evaluate((element) => element.scrollHeight - element.clientHeight))
     .toBeGreaterThan(300)
@@ -36,6 +36,26 @@ test("space activates a focused timeline button instead of scrolling", async ({ 
   await trigger.press("Space")
   await expect(trigger).toHaveAttribute("aria-expanded", "true")
   expect(await scroller.evaluate((element) => element.scrollTop)).toBe(before)
+})
+
+test("opens a sent image with Space and restores focus after the preview closes", async ({ page }) => {
+  const message = userMessage([
+    {
+      id: "prt_sent_image",
+      type: "file",
+      filename: "pixel.png",
+      mime: "image/png",
+      url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aSysAAAAASUVORK5CYII=",
+    },
+  ])
+  await setupTimeline(page, { messages: [message, assistantMessage()] })
+  const image = page.getByRole("button", { name: "pixel.png", exact: true })
+  await image.press("Space")
+  const preview = page.getByRole("dialog", { name: "pixel.png", exact: true })
+  await expect(preview.getByRole("img", { name: "pixel.png" })).toHaveJSProperty("naturalWidth", 1)
+  await preview.getByRole("button", { name: "Close", exact: true }).click()
+  await expect(preview).toBeHidden()
+  await expect(image).toBeFocused()
 })
 
 function lines(count: number) {

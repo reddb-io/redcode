@@ -1,6 +1,7 @@
-import { createEffect, createRoot, For, on, onCleanup } from "solid-js"
+import { createEffect, createRoot, on, onCleanup } from "solid-js"
 import { createStore } from "solid-js/store"
-import { Icon } from "@opencode/ui/icon"
+import { ReactView } from "@opencode/ui/react-view"
+import { UploadProgress } from "./progress.react"
 import { Toast, toaster } from "@opencode/ui/toast"
 import { useLanguage } from "@/runtime/i18n/language"
 
@@ -11,6 +12,10 @@ export type Upload = {
   size: number
   loaded: number
   cancel: () => void
+}
+
+export function uploadPercent(item: Upload) {
+  return item.size === 0 ? 100 : Math.min(100, Math.max(0, Math.floor((item.loaded / item.size) * 100)))
 }
 
 // Uploads outlive the composer that started them, so one process-wide list feeds every chip
@@ -83,45 +88,25 @@ export function UploadToastHost() {
 }
 
 function UploadToast(props: { toastId: number; language: ReturnType<typeof useLanguage> }) {
-  const percent = (item: Upload) => (item.size === 0 ? 100 : Math.floor((item.loaded / item.size) * 100))
-
   return (
     <Toast toastId={props.toastId}>
       <Toast.Content>
-        <For each={state.items}>
-          {(item) => (
-            <div data-component="upload-row">
-              <div data-slot="upload-row-label">
-                <span data-slot="upload-row-name" title={item.filename}>
-                  {item.filename}
-                </span>
-                <span data-slot="upload-row-percent">
-                  {props.language.t("prompt.toast.uploading.percent", { percent: percent(item) })}
-                </span>
-              </div>
-              <div data-slot="upload-row-track">
-                <div
-                  data-component="upload-progress"
-                  role="progressbar"
-                  aria-label={item.filename}
-                  aria-valuemin={0}
-                  aria-valuemax={100}
-                  aria-valuenow={percent(item)}
-                >
-                  <div data-slot="upload-progress-bar" style={{ width: `${percent(item)}%` }} />
-                </div>
-                <button
-                  type="button"
-                  data-slot="upload-row-cancel"
-                  aria-label={props.language.t("prompt.toast.uploading.cancelFile", { filename: item.filename })}
-                  onClick={() => item.cancel()}
-                >
-                  <Icon name="outline-xmark" />
-                </button>
-              </div>
-            </div>
-          )}
-        </For>
+        <ReactView
+          component={UploadProgress}
+          props={{
+            items: state.items.map((item) => {
+              const percent = uploadPercent(item)
+              return {
+                id: item.id,
+                filename: item.filename,
+                percent,
+                valueText: props.language.t("prompt.toast.uploading.percent", { percent }),
+                cancelLabel: props.language.t("prompt.toast.uploading.cancelFile", { filename: item.filename }),
+                cancel: item.cancel,
+              }
+            }),
+          }}
+        />
       </Toast.Content>
     </Toast>
   )
