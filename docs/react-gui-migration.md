@@ -300,10 +300,10 @@ their presence alone does not justify replacing them.
 | `project-avatar` | [data-display/project-avatar/project-avatar.tsx](../packages/ui/src/data-display/project-avatar/project-avatar.tsx) | 6 |
 | `provider-icon` | [components/provider-icon.tsx](../packages/ui/src/components/provider-icon.tsx) | 2 |
 | `radio` | [forms/radio/radio.tsx](../packages/ui/src/forms/radio/radio.tsx) | 2 |
-| `react-view` | [components/react-view.tsx](../packages/ui/src/components/react-view.tsx) | 7 |
+| `react-view` | [components/react-view.tsx](../packages/ui/src/components/react-view.tsx) | 10 |
 | `resize-handle` | [components/resize-handle.tsx](../packages/ui/src/components/resize-handle.tsx) | 4 |
 | `scroll-view` | [components/scroll-view.tsx](../packages/ui/src/components/scroll-view.tsx) | 10 |
-| `search-select` | [forms/search-select/search-select.tsx](../packages/ui/src/forms/search-select/search-select.tsx) | 2 |
+| `search-select` | [forms/search-select/search-select.tsx](../packages/ui/src/forms/search-select/search-select.tsx) | 0 |
 | `segmented-control` | [navigation/segmented-control/segmented-control.tsx](../packages/ui/src/navigation/segmented-control/segmented-control.tsx) | 3 |
 | `select` | [forms/select/select.tsx](../packages/ui/src/forms/select/select.tsx) | 1 |
 | `spinner` | [components/spinner.tsx](../packages/ui/src/components/spinner.tsx) | 5 |
@@ -313,7 +313,7 @@ their presence alone does not justify replacing them.
 | `switch` | [forms/switch/switch.tsx](../packages/ui/src/forms/switch/switch.tsx) | 4 |
 | `tab-state-indicator` | [navigation/tab-state-indicator.tsx](../packages/ui/src/navigation/tab-state-indicator.tsx) | 0 |
 | `tabs` | [navigation/tabs/tabs.tsx](../packages/ui/src/navigation/tabs/tabs.tsx) | 10 |
-| `text-field` | [components/text-field.tsx](../packages/ui/src/components/text-field.tsx) | 2 |
+| `text-field` | [components/text-field.tsx](../packages/ui/src/components/text-field.tsx) | 0 |
 | `text-input` | [forms/text-input/text-input.tsx](../packages/ui/src/forms/text-input/text-input.tsx) | 3 |
 | `text-reveal` | [components/text-reveal.tsx](../packages/ui/src/components/text-reveal.tsx) | 1 |
 | `text-shimmer` | [typography/text-shimmer/text-shimmer.tsx](../packages/ui/src/typography/text-shimmer/text-shimmer.tsx) | 8 |
@@ -337,7 +337,10 @@ on Enter and blur. Extension stores and desktop IPC still own these settings.
 
 The Creator creation and plugin trial forms share the Base Dialog, Button, Field
 and Textarea. Guided creation also uses the Base Input and SearchSelect. The
-artifact and plugin installation pickers still use the Solid search select.
+artifact and plugin installers share a searchable Base RadioGroup with Input
+and Pagination. Both filter the entire published inventory by name or revision
+and show up to 20 real choices per page as the selected server returns them.
+The two library filters and the editable component name use Base Field and Input.
 
 For the remaining migration, review controls together with the surface that owns
 their focus, overlays and scrolling. The titlebar tab strip and recent menu share

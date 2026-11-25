@@ -7,9 +7,10 @@ import { Button } from "@opencode/ui/button"
 import { Dialog, DialogFooter, DialogHeader, DialogTitleGroup } from "@opencode/ui/dialog"
 import { Icon } from "@opencode/ui/icon"
 import { IconButton } from "@opencode/ui/icon-button"
-import { SearchSelect } from "@opencode/ui/search-select"
+import { PublishedSource } from "./source-picker"
 import { Switch } from "@opencode/ui/switch"
-import { TextField } from "@opencode/ui/text-field"
+import { ReactView } from "@opencode/ui/react-view"
+import { CreatorInput } from "./input.react"
 import { Tooltip } from "@opencode/ui/tooltip"
 import { createKeyed, createLatest, useExtension, type ServerRef } from "../sdk"
 import type definition from "./index"
@@ -253,12 +254,16 @@ function Library(props: { server: ServerRef; location: LocationRef; sessionID?: 
         fallback={
           <div class="min-h-0 flex-1 overflow-auto px-3 py-2">
             <Show when={items().length}>
-              <TextField
-                label={ctx.t("search")}
-                hideLabel
-                placeholder={ctx.t("search")}
-                value={state.search}
-                onChange={(value) => setState("search", value)}
+              <ReactView
+                component={CreatorInput}
+                props={{
+                  label: ctx.t("search"),
+                  type: "search",
+                  hideLabel: true,
+                  placeholder: ctx.t("search"),
+                  value: state.search,
+                  onChange: (value) => setState("search", value),
+                }}
               />
             </Show>
             <Show when={inventory.loading && !inventory.latest}>
@@ -548,9 +553,8 @@ function Install(props: {
         <DialogTitleGroup title={ctx.t("install")} description={ctx.t("install.description")} />
       </DialogHeader>
       <div class="flex flex-col gap-3 px-6 pb-4">
-        <SearchSelect
+        <PublishedSource
           label={ctx.t("install.source")}
-          placeholder={ctx.t("install.source")}
           options={options()}
           value={state.design}
           onChange={(value) =>
@@ -574,11 +578,14 @@ function Install(props: {
         >
           {ctx.t("install.sources.refresh")}
         </Button>
-        <TextField
-          label={ctx.t("install.name")}
-          value={state.name}
-          onChange={(value) => setState("name", value)}
-          disabled={state.saving}
+        <ReactView
+          component={CreatorInput}
+          props={{
+            label: ctx.t("install.name"),
+            disabled: state.saving,
+            value: state.name,
+            onChange: (value) => setState("name", value),
+          }}
         />
         <Show when={state.error || designs.error}>
           <p role="alert" class="text-12-regular text-text-danger-base">

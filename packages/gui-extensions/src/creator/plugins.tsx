@@ -6,8 +6,9 @@ import type {
 } from "@opencode/client/promise"
 import type { LocationRef } from "@opencode/client/promise"
 import { Button } from "@opencode/ui/button"
-import { SearchSelect } from "@opencode/ui/search-select"
-import { TextField } from "@opencode/ui/text-field"
+import { PublishedSource } from "./source-picker"
+import { ReactView } from "@opencode/ui/react-view"
+import { CreatorInput } from "./input.react"
 import { Dialog, DialogFooter, DialogHeader, DialogTitleGroup } from "@opencode/ui/dialog"
 import { createKeyed, createLatest, useExtension, type ServerRef, type SessionRef } from "../sdk"
 import type definition from "./index"
@@ -177,12 +178,16 @@ function Library(props: { server: ServerRef; location: LocationRef; session?: Se
           </Show>
         }
       >
-        <TextField
-          label={ctx.t("plugins.search")}
-          hideLabel
-          placeholder={ctx.t("plugins.search")}
-          value={state.search}
-          onChange={(value) => setState("search", value)}
+        <ReactView
+          component={CreatorInput}
+          props={{
+            label: ctx.t("plugins.search"),
+            type: "search",
+            hideLabel: true,
+            placeholder: ctx.t("plugins.search"),
+            value: state.search,
+            onChange: (value) => setState("search", value),
+          }}
         />
         <Show when={!filtered().length}>
           <p class="text-12-regular text-ink-muted">{ctx.t("search.empty")}</p>
@@ -379,9 +384,8 @@ function Installer(props: { server: ServerRef; location: LocationRef; close: () 
         {ctx.t(state.installed ? "plugins.step.test" : state.review ? "plugins.step.review" : "plugins.step.choose")}
       </p>
       <Show when={!state.review}>
-        <SearchSelect
+        <PublishedSource
           label={ctx.t("plugins.source")}
-          placeholder={ctx.t("plugins.source")}
           options={(candidates.latest?.data ?? []).map((item) => ({
             value: item.designID,
             label: item.name,
@@ -440,7 +444,7 @@ function Installer(props: { server: ServerRef; location: LocationRef; close: () 
           {state.error || message(candidates.error)}
         </p>
       </Show>
-      <div class="flex items-center justify-end gap-2">
+      <div class="flex flex-wrap items-center justify-end gap-2">
         <Button variant="ghost" disabled={state.pending} onClick={() => props.close()}>
           {ctx.t(state.installed ? "plugins.close" : "common.cancel")}
         </Button>
