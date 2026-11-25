@@ -8,6 +8,7 @@ import { useData, type FormWithLocation } from "../../context/data"
 import { useInteractivity } from "../../context/interactivity"
 import { Keymap } from "../../context/keymap"
 import { useTheme } from "../../context/theme"
+import { ActionButton } from "../../ui/action-button"
 import { SplitBorder } from "../../ui/border"
 import { useToast } from "../../ui/toast"
 import { DialogEscape } from "../../util/dialog-escape"
@@ -135,24 +136,14 @@ export function SecretPrompt(props: {
           It is stored in this project's vault; the model works with the reference and never reads the value.
         </text>
       </box>
-      <box
-        flexDirection="row"
-        flexShrink={0}
-        gap={1}
-        paddingLeft={2}
-        paddingRight={3}
-        paddingBottom={1}
-        justifyContent="space-between"
-      >
-        <box flexDirection="row" gap={2}>
-          <text fg={theme.text.base} onMouseUp={submit}>
-            enter <span style={{ fg: theme.text.muted }}>store</span>
-          </text>
-          <text fg={theme.text.base} onMouseUp={cancel}>
-            esc <span style={{ fg: theme.text.muted }}>decline</span>
-          </text>
-          <text fg={theme.text.muted}>the value is never shown</text>
+      <box flexShrink={0} paddingLeft={2} paddingRight={3} paddingBottom={1}>
+        <box flexDirection="row" flexWrap="wrap" columnGap={1}>
+          <ActionButton label="enter store" primary onPress={submit} />
+          <ActionButton label="esc decline" onPress={cancel} />
         </box>
+        <text fg={theme.text.muted} wrapMode="word">
+          the value is never shown
+        </text>
         <Show when={error()}>
           <text fg={theme.text.feedback.error.base}>{error()}</text>
         </Show>

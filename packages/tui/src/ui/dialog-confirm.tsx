@@ -1,4 +1,5 @@
-import { DialogAction, DialogMessage } from "./dialog-message"
+import { ActionButton } from "./action-button"
+import { DialogMessage } from "./dialog-message"
 import { Keymap } from "../context/keymap"
 import { useDialog } from "./dialog"
 import { createStore } from "solid-js/store"
@@ -59,7 +60,7 @@ export function DialogConfirm(props: DialogConfirmProps) {
     <DialogMessage title={props.title} message={props.message} onDismiss={() => dialog.clear()}>
       <For each={["cancel", "confirm"] as const}>
         {(key) => (
-          <DialogAction
+          <ActionButton
             focused={key === store.active}
             label={Locale.titlecase(props.label?.[key] ?? key)}
             onPress={() => select(key)}

@@ -1,4 +1,5 @@
-import { DialogAction, DialogMessage } from "./dialog-message"
+import { ActionButton } from "./action-button"
+import { DialogMessage } from "./dialog-message"
 import { Keymap } from "../context/keymap"
 import { useDialog } from "./dialog"
 
@@ -29,7 +30,7 @@ export function DialogAlert(props: DialogAlertProps) {
   }))
   return (
     <DialogMessage title={props.title} message={props.message} onDismiss={() => dialog.clear()}>
-      <DialogAction focused label="ok" onPress={confirm} />
+      <ActionButton focused label="ok" onPress={confirm} />
     </DialogMessage>
   )
 }

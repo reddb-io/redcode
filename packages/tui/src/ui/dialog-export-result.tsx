@@ -1,4 +1,5 @@
-import { DialogMessage, DialogAction } from "./dialog-message"
+import { ActionButton } from "./action-button"
+import { DialogMessage } from "./dialog-message"
 import { Keymap } from "../context/keymap"
 import { useDialog, type DialogContext } from "./dialog"
 
@@ -24,7 +25,7 @@ export function DialogExportResult(props: { path: string; onClose?: () => void }
 
   return (
     <DialogMessage title="Session exported" message={props.path} onDismiss={close}>
-      <DialogAction focused label="Close" onPress={close} />
+      <ActionButton focused label="Close" onPress={close} />
     </DialogMessage>
   )
 }

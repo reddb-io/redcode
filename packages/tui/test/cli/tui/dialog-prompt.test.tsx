@@ -297,3 +297,31 @@ test("dialog prompt submit can be disabled", async () => {
     await prompt.cleanup()
   }
 })
+
+test("the visible paste and submit actions operate the narrow prompt", async () => {
+  await using tmp = await tmpdir()
+  const submitted: string[] = []
+  const prompt = await mountPrompt({
+    root: tmp.path,
+    keybinds: {},
+    onConfirm: (value) => submitted.push(value),
+    clipboard: { read: async () => ({ mime: "text/plain", data: "-review" }), write: async () => {} },
+  })
+  try {
+    prompt.app.resize(38, 24)
+    await wait(() => prompt.app.renderer.currentFocusedEditor instanceof TextareaRenderable)
+    await prompt.app.renderOnce()
+    const click = async (label: string) => {
+      const lines = prompt.app.captureCharFrame().split("\n")
+      const row = lines.findIndex((line) => line.includes(label))
+      expect(row).toBeGreaterThanOrEqual(0)
+      await prompt.app.mockMouse.click(lines[row].indexOf(label), row)
+    }
+    await click("ctrl+v paste")
+    await wait(() => prompt.app.renderer.currentFocusedEditor?.plainText === "draft-review")
+    await click("enter submit")
+    expect(submitted).toEqual(["draft-review"])
+  } finally {
+    await prompt.cleanup()
+  }
+})

@@ -1,10 +1,12 @@
-import { decodePasteBytes, stripAnsiSequences, TextAttributes } from "@opentui/core"
+import { decodePasteBytes, stripAnsiSequences } from "@opentui/core"
 import { usePaste, useRenderer } from "@opentui/solid"
 import { createSignal, onCleanup, onMount, Show } from "solid-js"
 import { useClipboard } from "../context/clipboard"
 import { useInteractivity } from "../context/interactivity"
 import { Keymap } from "../context/keymap"
 import { useTheme } from "../context/theme"
+import { ActionButton } from "../ui/action-button"
+import { DialogHeading } from "../ui/dialog-message"
 import { useDialog } from "../ui/dialog"
 import { useToast } from "../ui/toast"
 import { secretKey, secretLength, secretMask, secretPaste } from "../util/secret"
@@ -69,28 +71,21 @@ export function DialogSecret(props: {
 
   return (
     <box paddingLeft={2} paddingRight={2} gap={1}>
-      <box flexDirection="row" justifyContent="space-between">
-        <text attributes={TextAttributes.BOLD} fg={theme.text.base}>
-          {props.title}
-        </text>
-        <text fg={theme.text.muted} onMouseUp={props.onCancel}>
-          esc
-        </text>
-      </box>
+      <DialogHeading title={props.title} onDismiss={props.onCancel} />
       <box gap={1}>
         <Show when={props.description}>
           <text fg={theme.text.muted}>{props.description}</text>
         </Show>
         <SecretField length={secret.length()} active={true} />
       </box>
-      <box paddingBottom={1} flexDirection="row" gap={2}>
-        <text fg={theme.text.base} onMouseUp={confirm}>
-          enter <span style={{ fg: theme.text.muted }}>store</span>
+      <box paddingBottom={1}>
+        <box flexDirection="row" flexWrap="wrap" columnGap={1}>
+          <ActionButton label="enter store" primary disabled={!secret.length()} onPress={confirm} />
+          <ActionButton label="esc cancel" onPress={props.onCancel} />
+        </box>
+        <text fg={theme.text.muted} wrapMode="word">
+          the value is never shown
         </text>
-        <text fg={theme.text.base} onMouseUp={props.onCancel}>
-          esc <span style={{ fg: theme.text.muted }}>cancel</span>
-        </text>
-        <text fg={theme.text.muted}>the value is never shown</text>
       </box>
     </box>
   )
@@ -100,9 +95,18 @@ export function DialogSecret(props: {
 export function SecretField(props: { length: number; active: boolean }) {
   const theme = useTheme()
   return (
-    <box flexDirection="row" gap={1}>
+    <box
+      flexDirection="row"
+      flexWrap="wrap"
+      columnGap={1}
+      backgroundColor={props.active ? theme.background.formfield.focused : theme.background.formfield.base}
+    >
       <Show when={props.length > 0} fallback={<text fg={theme.text.muted}>Type or paste the value</text>}>
-        <text fg={props.active ? theme.text.formfield.focused : theme.text.formfield.base}>
+        <text
+          maxWidth="100%"
+          wrapMode="char"
+          fg={props.active ? theme.text.formfield.focused : theme.text.formfield.base}
+        >
           {secretMask(props.length)}
         </text>
         <text fg={theme.text.muted}>{props.length === 1 ? "1 character" : `${props.length} characters`}</text>

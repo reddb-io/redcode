@@ -50,35 +50,3 @@ export function DialogHeading(props: {
     </box>
   )
 }
-
-export function DialogAction(props: { label: string; focused: boolean; primary?: boolean; onPress: () => void }) {
-  const theme = useTheme().surface("dialog")
-  return (
-    <box
-      paddingLeft={1}
-      paddingRight={1}
-      flexShrink={1}
-      backgroundColor={
-        props.focused
-          ? theme.background.action.primary.focused
-          : props.primary
-            ? theme.background.action.primary.base
-            : undefined
-      }
-      onMouseUp={props.onPress}
-    >
-      <text
-        wrapMode="word"
-        fg={
-          props.focused
-            ? theme.text.action.primary.focused
-            : props.primary
-              ? theme.text.action.primary.base
-              : theme.text.action.secondary.base
-        }
-      >
-        {props.label}
-      </text>
-    </box>
-  )
-}

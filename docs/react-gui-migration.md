@@ -407,7 +407,17 @@ Terminal components live separately in `packages/tui/src/ui`, `component`,
 `routes` and `feature-plugins`. Alerts, confirmations, help and export results use the common
 terminal message layout and action control. Prompts, selectors and export options share the
 dialog heading. Selector rows use form-field focus and selection colors. Export checkboxes and actions use the form and action theme
-states, with forward and reverse keyboard traversal. Selectors, toasts, session
+states, with forward and reverse keyboard traversal.
+
+Text prompts and worktree naming share the same terminal action button as dialog
+confirmations. Clicking a shortcut runs its action. Masked input
+in the Vault dialog and session request uses the form-field focus palette.
+Store and cancel or decline stay together with their shortcut labels as the
+terminal narrows. The character count and masked preview wrap within the field.
+
+![OpenTUI frames before and after the terminal input migration at 38 columns](screenshots/terminal-input-actions.webp)
+
+Selectors, toasts, session
 tabs, the command palette and feature panels retain their OpenTUI renderers. List
 the current terminal views and locate the direct GUI consumers from the root:
 

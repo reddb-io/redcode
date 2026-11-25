@@ -1,4 +1,5 @@
-import { DialogAction, DialogHeading } from "./dialog-message"
+import { ActionButton } from "./action-button"
+import { DialogHeading } from "./dialog-message"
 import { Keymap } from "../context/keymap"
 import { useTheme } from "../context/theme"
 import { useDialog, type DialogContext } from "./dialog"
@@ -152,8 +153,8 @@ export function DialogExportOptions(props: DialogExportOptionsProps) {
         }}
       </For>
       <box flexDirection="row" flexWrap="wrap" justifyContent="flex-end" gap={1} paddingBottom={1}>
-        <DialogAction label="Copy" focused={store.active === "copy"} onPress={() => choose("copy")} />
-        <DialogAction label="Export" primary focused={store.active === "export"} onPress={() => choose("export")} />
+        <ActionButton label="Copy" focused={store.active === "copy"} onPress={() => choose("copy")} />
+        <ActionButton label="Export" primary focused={store.active === "export"} onPress={() => choose("export")} />
       </box>
     </box>
   )

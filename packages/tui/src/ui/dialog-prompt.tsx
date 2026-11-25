@@ -8,6 +8,7 @@ import { useConfig } from "../config"
 import { useRenderer } from "@opentui/solid"
 import { useClipboard } from "../context/clipboard"
 import { useToast } from "./toast"
+import { ActionButton } from "./action-button"
 import { DialogHeading } from "./dialog-message"
 import { createPasteDedupe } from "../component/prompt/paste-dedupe"
 
@@ -154,8 +155,10 @@ export function DialogPrompt(props: DialogPromptProps) {
           placeholder={props.placeholder ?? "Enter text"}
           placeholderColor={theme.text.muted}
           textColor={props.busy ? theme.text.formfield.disabled : theme.text.formfield.base}
-          focusedTextColor={props.busy ? theme.text.formfield.disabled : theme.text.formfield.base}
-          cursorColor={props.busy ? theme.background.formfield.disabled : theme.text.base}
+          backgroundColor={props.busy ? theme.background.formfield.disabled : theme.background.formfield.base}
+          focusedBackgroundColor={theme.background.formfield.focused}
+          focusedTextColor={theme.text.formfield.focused}
+          cursorColor={theme.text.formfield.focused}
           cursorStyle={config.cursor}
           onPaste={(event) => {
             if (props.busy) {
@@ -182,17 +185,19 @@ export function DialogPrompt(props: DialogPromptProps) {
           <Spinner color={theme.text.muted}>{props.busyText ?? "Working…"}</Spinner>
         </Show>
       </box>
-      <box paddingBottom={1} gap={1} flexDirection="row" flexWrap="wrap">
+      <box paddingBottom={1}>
         <Show when={!props.busy} fallback={<text fg={theme.text.muted}>processing…</text>}>
-          <Show when={shortcuts.get("prompt.paste")}>
-            <text fg={theme.text.muted}>
-              {shortcuts.get("prompt.paste")} paste
-              {shortcuts.list("prompt.paste").includes("alt+v") ? " · alt+v if the terminal captures ctrl+v" : ""}
-            </text>
-          </Show>
-          <Show when={shortcuts.get("dialog.prompt.submit")}>
-            <text fg={theme.text.base}>
-              {shortcuts.get("dialog.prompt.submit")} <span style={{ fg: theme.text.muted }}>submit</span>
+          <box flexDirection="row" flexWrap="wrap" columnGap={1}>
+            <Show when={shortcuts.get("prompt.paste")}>
+              {(key) => <ActionButton label={`${key()} paste`} onPress={() => void paste()} />}
+            </Show>
+            <Show when={shortcuts.get("dialog.prompt.submit")}>
+              {(key) => <ActionButton label={`${key()} submit`} primary onPress={confirm} />}
+            </Show>
+          </box>
+          <Show when={shortcuts.get("prompt.paste") && shortcuts.list("prompt.paste").includes("alt+v")}>
+            <text fg={theme.text.muted} wrapMode="word">
+              alt+v if the terminal captures ctrl+v
             </text>
           </Show>
         </Show>

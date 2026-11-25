@@ -1,9 +1,11 @@
-import { InputRenderable, TextAttributes } from "@opentui/core"
+import { InputRenderable } from "@opentui/core"
 import { Slug } from "@opencode/core/util/slug"
 import { createSignal, onMount } from "solid-js"
 import { Keymap } from "../context/keymap"
 import { useTheme } from "../context/theme"
 import { useDialog, type DialogContext } from "../ui/dialog"
+import { ActionButton } from "../ui/action-button"
+import { DialogHeading } from "../ui/dialog-message"
 import { useConfig } from "../config"
 
 export function DialogWorktreeName(props: { onConfirm: (name: string) => void }) {
@@ -48,14 +50,7 @@ export function DialogWorktreeName(props: { onConfirm: (name: string) => void })
 
   return (
     <box paddingLeft={2} paddingRight={2} gap={1}>
-      <box flexDirection="row" justifyContent="space-between">
-        <text attributes={TextAttributes.BOLD} fg={theme.text.base}>
-          Name worktree
-        </text>
-        <text fg={theme.text.muted} onMouseUp={() => dialog.clear()}>
-          esc
-        </text>
-      </box>
+      <DialogHeading title="Name worktree" onDismiss={dialog.clear} />
       <input
         cursorStyle={config.cursor}
         ref={(value: InputRenderable) => {
@@ -66,16 +61,17 @@ export function DialogWorktreeName(props: { onConfirm: (name: string) => void })
         placeholder="Worktree name"
         placeholderColor={theme.text.muted}
         textColor={theme.text.formfield.base}
-        focusedTextColor={theme.text.formfield.base}
-        cursorColor={theme.text.formfield.base}
+        backgroundColor={theme.background.formfield.base}
+        focusedBackgroundColor={theme.background.formfield.focused}
+        focusedTextColor={theme.text.formfield.focused}
+        cursorColor={theme.text.formfield.focused}
       />
-      <box paddingBottom={1} flexDirection="row" gap={2}>
-        <text fg={theme.text.base}>
-          enter <span style={{ fg: theme.text.muted }}>submit</span>
-        </text>
-        <text fg={theme.text.base}>
-          {shortcuts.get("dialog.worktree.generate")} <span style={{ fg: theme.text.muted }}>generate one</span>
-        </text>
+      <box paddingBottom={1} flexDirection="row" flexWrap="wrap" columnGap={1}>
+        <ActionButton label="enter submit" primary onPress={confirm} />
+        <ActionButton
+          label={`${shortcuts.get("dialog.worktree.generate") ?? ""} generate one`.trimStart()}
+          onPress={generate}
+        />
       </box>
     </box>
   )

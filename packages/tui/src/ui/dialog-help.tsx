@@ -1,4 +1,5 @@
-import { DialogMessage, DialogAction } from "./dialog-message"
+import { ActionButton } from "./action-button"
+import { DialogMessage } from "./dialog-message"
 import { Keymap } from "../context/keymap"
 import { useDialog } from "./dialog"
 
@@ -21,7 +22,7 @@ export function DialogHelp() {
       dismissLabel="esc/enter"
       onDismiss={() => dialog.clear()}
     >
-      <DialogAction focused label="ok" onPress={() => dialog.clear()} />
+      <ActionButton focused label="ok" onPress={() => dialog.clear()} />
     </DialogMessage>
   )
 }
