@@ -69,7 +69,7 @@ test.each(["seconds", "date", "reset", "fallback"] as const)(
       fetch: () => {
         calls++
         if (calls > 1) return Response.json({ tag_name: "recovered" })
-        const headers =
+        const headers: Record<string, string> =
           header === "seconds"
             ? { "retry-after": "600" }
             : header === "date"
