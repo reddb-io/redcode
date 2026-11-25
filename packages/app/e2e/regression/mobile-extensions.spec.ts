@@ -196,7 +196,6 @@ test("mobile changes summarize expanded diffs, stage comments, wrap by setting, 
   await page.keyboard.press("Control+,")
   const settings = page.getByTestId("settings-screen")
   const wrap = settings.getByRole("switch", { name: "Wrap lines", exact: true })
-  const wrapControl = settings.locator('[data-action="settings-mobile-diff-wrap"] [data-slot="switch-control"]')
 
   const storedWrap = () =>
     page.evaluate(
@@ -204,7 +203,7 @@ test("mobile changes summarize expanded diffs, stage comments, wrap by setting, 
     )
 
   await expect(wrap).toBeChecked()
-  await wrapControl.click()
+  await wrap.click()
   await expect(wrap).not.toBeChecked()
   await expect.poll(storedWrap).toBe(false)
   await settings.getByRole("button", { name: "Back to app", exact: true }).click()
@@ -225,7 +224,7 @@ test("mobile changes summarize expanded diffs, stage comments, wrap by setting, 
   await expect(modified.locator("[data-diff]")).toHaveAttribute("data-overflow", "scroll")
   await page.keyboard.press("Control+,")
   await expect(wrap).not.toBeChecked()
-  await wrapControl.click()
+  await wrap.click()
   await expect(wrap).toBeChecked()
   await expect.poll(storedWrap).toBe(true)
   await settings.getByRole("button", { name: "Back to app", exact: true }).click()

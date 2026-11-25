@@ -2,8 +2,9 @@ import { Button } from "@opencode/ui/button"
 import { Dialog, DialogBody, DialogHeader, DialogTitleGroup } from "@opencode/ui/dialog"
 import { Icon } from "@opencode/ui/icon"
 import { RadioGroup, RadioItem } from "@opencode/ui/radio"
-import { Switch } from "@opencode/ui/switch"
-import { TextInput } from "@opencode/ui/text-input"
+import { ReactView } from "@opencode/ui/react-view"
+import { SettingsSwitchRow } from "../settings/switch-row.react"
+import { PairingAddress } from "./address.react"
 import { Tooltip } from "@opencode/ui/tooltip"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/solid-query"
 import { createMemo, createSignal, For, onCleanup, Show, type Accessor, type JSX } from "solid-js"
@@ -209,51 +210,30 @@ export default function PairingPage(props: {
                 </div>
               </div>
             </Show>
-            {/* The address field spans the row so the description keeps its width. */}
-            <div data-component="settings-row">
-              <div data-slot="settings-row-copy">
-                <div data-slot="settings-row-title">{ctx.t("custom.title")}</div>
-                <div data-slot="settings-row-description">{ctx.t("custom.description")}</div>
-                <TextInput
-                  type="url"
-                  dir="ltr"
-                  spellcheck={false}
-                  autocapitalize="off"
-                  aria-label={ctx.t("custom.title")}
-                  placeholder={ctx.t("custom.placeholder")}
-                  value={custom.draft}
-                  invalid={custom.invalid}
-                  aria-describedby={custom.invalid ? "pairing-custom-error" : undefined}
-                  onInput={(event) => setCustom({ draft: event.currentTarget.value, invalid: false })}
-                  onChange={saveCustom}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") saveCustom()
-                  }}
-                />
-                <Show when={custom.invalid}>
-                  <span
-                    id="pairing-custom-error"
-                    class="text-11-regular leading-[var(--line-height-compact)] text-v2-state-fg-danger"
-                    role="alert"
-                  >
-                    {ctx.t("custom.invalid")}
-                  </span>
-                </Show>
-              </div>
-            </div>
+            <ReactView
+              component={PairingAddress}
+              props={{
+                title: ctx.t("custom.title"),
+                description: ctx.t("custom.description"),
+                placeholder: ctx.t("custom.placeholder"),
+                value: custom.draft,
+                error: custom.invalid ? ctx.t("custom.invalid") : undefined,
+                update: (draft) => setCustom({ draft, invalid: false }),
+                save: saveCustom,
+              }}
+            />
             <Show when={display()}>
-              <div data-action="settings-keep-screen-active">
-                <Row title={ctx.t("screenActive.title")} description={ctx.t("screenActive.description")}>
-                  <Switch
-                    hideLabel
-                    checked={screenActive.isSuccess && screenActive.data}
-                    disabled={screenActive.isPending || !!screenActive.error || screenActivity.isPending}
-                    onChange={(enabled) => screenActivity.mutate(enabled)}
-                  >
-                    {ctx.t("screenActive.title")}
-                  </Switch>
-                </Row>
-              </div>
+              <ReactView
+                component={SettingsSwitchRow}
+                props={{
+                  action: "settings-keep-screen-active",
+                  title: ctx.t("screenActive.title"),
+                  description: ctx.t("screenActive.description"),
+                  checked: screenActive.isSuccess && screenActive.data,
+                  disabled: screenActive.isPending || !!screenActive.error || screenActivity.isPending,
+                  onChange: (enabled) => screenActivity.mutate(enabled),
+                }}
+              />
             </Show>
           </div>
           <Show when={display() && (screenActive.error || screenActivity.error)}>

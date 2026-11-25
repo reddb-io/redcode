@@ -1,19 +1,23 @@
 import { TextAttributes } from "@opentui/core"
 import type { JSX } from "solid-js"
 import { useTheme } from "../context/theme"
-import { useDialog } from "./dialog"
 
-export function DialogMessage(props: { title: string; message: string; children: JSX.Element }) {
+export function DialogMessage(props: {
+  title: string
+  message: string
+  dismissLabel?: string
+  onDismiss: () => void
+  children: JSX.Element
+}) {
   const theme = useTheme().surface("dialog")
-  const dialog = useDialog()
   return (
     <box paddingLeft={2} paddingRight={2} gap={1}>
       <box flexDirection="row" justifyContent="space-between" gap={1}>
         <text attributes={TextAttributes.BOLD} fg={theme.text.base} flexShrink={1} wrapMode="word">
           {props.title}
         </text>
-        <text fg={theme.text.action.secondary.base} flexShrink={0} onMouseUp={() => dialog.clear()}>
-          esc
+        <text fg={theme.text.action.secondary.base} flexShrink={0} onMouseUp={props.onDismiss}>
+          {props.dismissLabel ?? "esc"}
         </text>
       </box>
       <text fg={theme.text.muted} wrapMode="word">

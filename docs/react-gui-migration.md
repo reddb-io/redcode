@@ -270,7 +270,7 @@ their presence alone does not justify replacing them.
 | `app-icon` | [components/app-icon.tsx](../packages/ui/src/components/app-icon.tsx) | 1 |
 | `avatar` | [data-display/avatar/avatar.tsx](../packages/ui/src/data-display/avatar/avatar.tsx) | 0 |
 | `badge` | [data-display/badge/badge.tsx](../packages/ui/src/data-display/badge/badge.tsx) | 0 |
-| `button` | [actions/button/button.tsx](../packages/ui/src/actions/button/button.tsx) | 59 |
+| `button` | [actions/button/button.tsx](../packages/ui/src/actions/button/button.tsx) | 57 |
 | `card` | [components/card.tsx](../packages/ui/src/components/card.tsx) | 4 |
 | `checkbox` | [forms/checkbox/checkbox.tsx](../packages/ui/src/forms/checkbox/checkbox.tsx) | 0 |
 | `collapsible` | [components/collapsible.tsx](../packages/ui/src/components/collapsible.tsx) | 3 |
@@ -300,7 +300,7 @@ their presence alone does not justify replacing them.
 | `project-avatar` | [data-display/project-avatar/project-avatar.tsx](../packages/ui/src/data-display/project-avatar/project-avatar.tsx) | 6 |
 | `provider-icon` | [components/provider-icon.tsx](../packages/ui/src/components/provider-icon.tsx) | 2 |
 | `radio` | [forms/radio/radio.tsx](../packages/ui/src/forms/radio/radio.tsx) | 2 |
-| `react-view` | [components/react-view.tsx](../packages/ui/src/components/react-view.tsx) | 2 |
+| `react-view` | [components/react-view.tsx](../packages/ui/src/components/react-view.tsx) | 5 |
 | `resize-handle` | [components/resize-handle.tsx](../packages/ui/src/components/resize-handle.tsx) | 4 |
 | `scroll-view` | [components/scroll-view.tsx](../packages/ui/src/components/scroll-view.tsx) | 10 |
 | `search-select` | [forms/search-select/search-select.tsx](../packages/ui/src/forms/search-select/search-select.tsx) | 3 |
@@ -310,11 +310,11 @@ their presence alone does not justify replacing them.
 | `split-button` | [actions/split-button/split-button.tsx](../packages/ui/src/actions/split-button/split-button.tsx) | 1 |
 | `steps` | [navigation/steps/steps.tsx](../packages/ui/src/navigation/steps/steps.tsx) | 1 |
 | `sticky-accordion-header` | [components/sticky-accordion-header.tsx](../packages/ui/src/components/sticky-accordion-header.tsx) | 2 |
-| `switch` | [forms/switch/switch.tsx](../packages/ui/src/forms/switch/switch.tsx) | 7 |
+| `switch` | [forms/switch/switch.tsx](../packages/ui/src/forms/switch/switch.tsx) | 4 |
 | `tab-state-indicator` | [navigation/tab-state-indicator.tsx](../packages/ui/src/navigation/tab-state-indicator.tsx) | 0 |
 | `tabs` | [navigation/tabs/tabs.tsx](../packages/ui/src/navigation/tabs/tabs.tsx) | 10 |
 | `text-field` | [components/text-field.tsx](../packages/ui/src/components/text-field.tsx) | 4 |
-| `text-input` | [forms/text-input/text-input.tsx](../packages/ui/src/forms/text-input/text-input.tsx) | 4 |
+| `text-input` | [forms/text-input/text-input.tsx](../packages/ui/src/forms/text-input/text-input.tsx) | 3 |
 | `text-reveal` | [components/text-reveal.tsx](../packages/ui/src/components/text-reveal.tsx) | 1 |
 | `text-shimmer` | [typography/text-shimmer/text-shimmer.tsx](../packages/ui/src/typography/text-shimmer/text-shimmer.tsx) | 8 |
 | `text-strikethrough` | [components/text-strikethrough.tsx](../packages/ui/src/components/text-strikethrough.tsx) | 0 |
@@ -329,6 +329,12 @@ uses native Kbd. The error screen uses native Logo, Textarea and Button on web,
 desktop and narrow mobile viewports. The Solid host still records the fatal
 error and provides the desktop updater and log export.
 
+The review, updater and pairing extensions use the App SettingsRow for diff
+wrapping, release notes, update checks, screen activity and custom addresses.
+The switch rows use native checkboxes with the Base switch recipe and the row’s
+label and description. The address field uses the Base Input, with validation
+on Enter and blur. Extension stores and desktop IPC still own these settings.
+
 For the remaining migration, review controls together with the surface that owns
 their focus, overlays and scrolling. The titlebar tab strip and recent menu share
 the desktop rail and mobile tabs drawer. The composer, transcript and extension
@@ -337,8 +343,8 @@ window controls. Product icons and editor, terminal and diff renderers have thei
 own interaction contracts.
 
 Terminal components live separately in `packages/tui/src/ui`, `component`,
-`routes` and `feature-plugins`. Alert and confirmation use the common terminal
-message layout and action control. Prompt, select, help, export dialogs, toasts,
+`routes` and `feature-plugins`. Alerts, confirmations, help and export results use the common
+terminal message layout and action control. Prompt, select, export options, toasts,
 session tabs, command palette and feature panels retain OpenTUI renderers. List
 the current terminal views and locate the direct GUI consumers from the root:
 

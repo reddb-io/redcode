@@ -56,7 +56,7 @@ export function DialogConfirm(props: DialogConfirmProps) {
     ],
   }))
   return (
-    <DialogMessage title={props.title} message={props.message}>
+    <DialogMessage title={props.title} message={props.message} onDismiss={() => dialog.clear()}>
       <For each={["cancel", "confirm"] as const}>
         {(key) => (
           <DialogAction

@@ -121,7 +121,7 @@ test("a long empty-state query keeps its closing quote beside the ellipsis while
   const view = await open(page)
   const query = "zzzz 🧑🏽‍💻 ".repeat(40)
   await view.search.fill(query)
-  const status = view.settings.getByRole("status")
+  const status = view.settings.getByRole("status", { name: /^No results for / })
   const quoted = status.locator("bdi")
 
   const fits = () =>

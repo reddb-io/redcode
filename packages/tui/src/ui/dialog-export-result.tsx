@@ -1,11 +1,9 @@
-import { TextAttributes } from "@opentui/core"
+import { DialogMessage, DialogAction } from "./dialog-message"
 import { Keymap } from "../context/keymap"
-import { useTheme } from "../context/theme"
 import { useDialog, type DialogContext } from "./dialog"
 
 export function DialogExportResult(props: { path: string; onClose?: () => void }) {
   const dialog = useDialog()
-  const theme = useTheme().surface("dialog")
 
   const close = () => {
     props.onClose?.()
@@ -25,29 +23,9 @@ export function DialogExportResult(props: { path: string; onClose?: () => void }
   }))
 
   return (
-    <box paddingLeft={2} paddingRight={2} gap={1}>
-      <box flexDirection="row" justifyContent="space-between">
-        <text attributes={TextAttributes.BOLD} fg={theme.text.base}>
-          Session exported
-        </text>
-        <text fg={theme.text.muted} onMouseUp={close}>
-          esc
-        </text>
-      </box>
-      <box>
-        <text fg={theme.text.base}>{props.path}</text>
-      </box>
-      <box flexDirection="row" justifyContent="flex-end" gap={1} paddingBottom={1}>
-        <box
-          paddingLeft={3}
-          paddingRight={3}
-          backgroundColor={theme.background.action.primary.focused}
-          onMouseUp={close}
-        >
-          <text fg={theme.text.action.primary.focused}>Close</text>
-        </box>
-      </box>
-    </box>
+    <DialogMessage title="Session exported" message={props.path} onDismiss={close}>
+      <DialogAction focused label="Close" onPress={close} />
+    </DialogMessage>
   )
 }
 

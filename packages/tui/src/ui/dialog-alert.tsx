@@ -28,7 +28,7 @@ export function DialogAlert(props: DialogAlertProps) {
     ],
   }))
   return (
-    <DialogMessage title={props.title} message={props.message}>
+    <DialogMessage title={props.title} message={props.message} onDismiss={() => dialog.clear()}>
       <DialogAction focused label="ok" onPress={confirm} />
     </DialogMessage>
   )

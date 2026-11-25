@@ -31,7 +31,9 @@ export function revealSettingsSearch(root: HTMLElement, view: SettingsView) {
     if (!panel || !control || !control.getClientRects().length) return false
 
     const row =
-      control.closest<HTMLElement>('[data-component="settings-row"], [data-component="settings-list"] > *') ?? control
+      control.closest<HTMLElement>(
+        '[data-settings-row], [data-component="settings-row"], [data-component="settings-list"] > *',
+      ) ?? control
 
     if (!view.target) panel.scrollTop = 0
 
