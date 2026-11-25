@@ -70,7 +70,7 @@ export function Appearance(props: {
                 <Select
                   {...association}
                   data-action="settings-color-scheme"
-                  controlSize="sm"
+                  size="sm"
                   value={props.scheme}
                   options={(["system", "light", "dark"] as const).map((value) => ({
                     value,
@@ -102,7 +102,7 @@ export function Appearance(props: {
                 <Select
                   {...association}
                   data-action="settings-theme"
-                  controlSize="sm"
+                  size="sm"
                   options={props.themes}
                   value={props.theme}
                   onValueChange={props.onThemeChange}
@@ -117,7 +117,7 @@ export function Appearance(props: {
                 <Select
                   {...association}
                   data-action="settings-density"
-                  controlSize="sm"
+                  size="sm"
                   value={props.density}
                   options={(["tiny", "compact", "comfortable"] as const).map((value) => ({
                     value,
@@ -140,7 +140,7 @@ export function Appearance(props: {
                     <Input
                       {...association}
                       data-action={fontSettings[font.kind].action}
-                      controlSize="sm"
+                      size="sm"
                       type="text"
                       value={font.value}
                       onValueChange={font.onChange}

@@ -18,6 +18,7 @@ import { SequenceDiagram } from "./SequenceDiagram.js";
 import { TraceWaterfall } from "./TraceWaterfall.js";
 import { Waterfall } from "./Waterfall.js";
 import { HexViewer } from "./HexViewer.js";
+import { RecordDiff } from "./RecordDiff.js";
 import { Diff } from "./Diff.js";
 import { Treemap } from "./Treemap.js";
 import { Sparkline } from "./Sparkline.js";
@@ -33,6 +34,7 @@ import { PanZoomViewport } from "./PanZoomViewport.js";
 import { TerminalSession } from "./TerminalSession.js";
 import { GeoMap } from "./GeoMap.js";
 import { CodeField } from "./CodeField.js";
+import { DataTable } from "./DataTable.js";
 import { Table } from "./Table.js";
 import { MetricChart } from "./MetricChart.js";
 import { Graph } from "./Graph.js";
@@ -68,6 +70,7 @@ export {
   Candlestick,
   CodeField,
   CompositeChart,
+  DataTable,
   DeveloperPanel,
   DeveloperRequestInspector,
   Diagram,
@@ -102,6 +105,7 @@ export {
   QueueExplorer,
   QueueView,
   Radar,
+  RecordDiff,
   Sankey,
   Scatter,
   SceneViewport,

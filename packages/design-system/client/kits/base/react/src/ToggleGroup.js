@@ -6,12 +6,12 @@ import { ToggleButton } from "./ToggleButton.js";
 import { toggleGroup } from "../../src/toggle-group.variants.js";
 import { toggleGroupTarget, toggleGroupValue } from "../../src/core/toggle-group.js";
 import { afterFormReset, associatedForm } from "../../src/core/native-controls.js";
-function ToggleGroup({ legend, options, value, defaultValue, name, disabled = false, help, error, className, listClass, optionClass, onValueChange, ref, ...rest }) {
+function ToggleGroup({ legend, options, value, defaultValue, name, disabled = false, help, error, size = "md", className, overflow = "scroll", listClass, optionClass, onValueChange, ref, ...rest }) {
   const [local, setLocal] = useState(defaultValue);
   const initial = useRef(defaultValue);
   const currentValue = useRef(value);
   currentValue.current = value;
-  const selected = toggleGroupValue(options, value ?? local), styles = toggleGroup({ invalid: Boolean(error) });
+  const selected = toggleGroupValue(options, value ?? local), styles = toggleGroup({ invalid: Boolean(error), size, overflow });
   const element = useRef(null), list = useRef(null);
   useImperativeHandle(ref, () => element.current, []);
   useEffect(() => afterFormReset(associatedForm(element.current, rest.form), () => {
@@ -24,7 +24,7 @@ function ToggleGroup({ legend, options, value, defaultValue, name, disabled = fa
     onValueChange?.(option.value);
   }
   return /* @__PURE__ */ jsx(Fieldset, { ...rest, ref: element, legend, disabled, help, error, className: styles.root({ class: className }), "data-toggle-group": true, children: (control) => /* @__PURE__ */ jsxs(Fragment, { children: [
-    /* @__PURE__ */ jsx("div", { ref: list, className: styles.list({ class: listClass }), role: "group", "aria-label": legend, children: options.map((option, index) => /* @__PURE__ */ jsx(
+    /* @__PURE__ */ jsx("div", { ref: list, className: styles.list({ class: listClass }), role: "group", "aria-label": legend, "data-overflow": overflow, children: options.map((option, index) => /* @__PURE__ */ jsx(
       ToggleButton,
       {
         ...control,

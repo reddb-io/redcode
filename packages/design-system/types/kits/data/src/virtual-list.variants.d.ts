@@ -4,6 +4,8 @@ export declare const virtualList: import("tailwind-variants").TVReturnType<{
             root?: import("tailwind-variants").ClassValue;
             list?: import("tailwind-variants").ClassValue;
             row?: import("tailwind-variants").ClassValue;
+            status?: import("tailwind-variants").ClassValue;
+            indicator?: import("tailwind-variants").ClassValue;
             empty?: import("tailwind-variants").ClassValue;
             probe?: import("tailwind-variants").ClassValue;
         };
@@ -14,6 +16,8 @@ export declare const virtualList: import("tailwind-variants").TVReturnType<{
             root?: import("tailwind-variants").ClassValue;
             list?: import("tailwind-variants").ClassValue;
             row?: import("tailwind-variants").ClassValue;
+            status?: import("tailwind-variants").ClassValue;
+            indicator?: import("tailwind-variants").ClassValue;
             empty?: import("tailwind-variants").ClassValue;
             probe?: import("tailwind-variants").ClassValue;
         };
@@ -24,12 +28,16 @@ export declare const virtualList: import("tailwind-variants").TVReturnType<{
     list: string;
     row: string;
     empty: string;
+    status: string;
+    indicator: string;
 }, undefined, {
     [key: string]: {
         [key: string]: import("tailwind-variants").ClassValue | {
             root?: import("tailwind-variants").ClassValue;
             list?: import("tailwind-variants").ClassValue;
             row?: import("tailwind-variants").ClassValue;
+            status?: import("tailwind-variants").ClassValue;
+            indicator?: import("tailwind-variants").ClassValue;
             empty?: import("tailwind-variants").ClassValue;
             probe?: import("tailwind-variants").ClassValue;
         };
@@ -40,10 +48,14 @@ export declare const virtualList: import("tailwind-variants").TVReturnType<{
     list: string;
     row: string;
     empty: string;
+    status: string;
+    indicator: string;
 }, import("tailwind-variants").TVReturnType<unknown, {
     root: string;
     probe: string;
     list: string;
     row: string;
     empty: string;
+    status: string;
+    indicator: string;
 }, undefined, unknown, unknown, undefined>>;

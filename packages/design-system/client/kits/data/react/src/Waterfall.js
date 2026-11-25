@@ -80,7 +80,7 @@ function Waterfall(props) {
                   textAnchor: "end",
                   dominantBaseline: "middle",
                   fill: mutedInk,
-                  className: "font-mono text-xs",
+                  className: "font-mono text-caption",
                   children: format(tick)
                 }
               )
@@ -118,7 +118,7 @@ function Waterfall(props) {
                         y: Math.min(y1, y2) - 8,
                         textAnchor: "middle",
                         fill: ink,
-                        className: "font-mono text-xs",
+                        className: "font-mono text-caption",
                         children: [
                           step.kind === "delta" && step.amount > 0 ? "+" : "",
                           format(step.amount)
@@ -132,7 +132,7 @@ function Waterfall(props) {
                         y: bottom + 20,
                         textAnchor: "middle",
                         fill: mutedInk,
-                        className: "text-xs",
+                        className: "text-caption",
                         children: short(step.label, Math.max(5, Math.floor(band / 7)))
                       }
                     )

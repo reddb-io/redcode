@@ -1,4 +1,5 @@
 import { tv } from "tailwind-variants";
+import { typeRoleMerge } from "@reddb-io/design-system/base/recipes";
 const outcomeScreen = tv({
   slots: {
     root: "flex w-full items-center justify-center bg-background p-[var(--reddb-spatial-section-inset)] text-foreground",
@@ -10,7 +11,7 @@ const outcomeScreen = tv({
   },
   variants: { fullPage: { true: { root: "min-h-[100dvh]" }, false: { root: "min-h-full" } } },
   defaultVariants: { fullPage: true }
-});
+}, typeRoleMerge);
 export {
   outcomeScreen
 };

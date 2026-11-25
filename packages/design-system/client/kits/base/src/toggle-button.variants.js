@@ -1,7 +1,7 @@
 import { tv } from "tailwind-variants";
 const toggleButton = tv({
   base: [
-    "aria-pressed:bg-foreground/10 aria-pressed:text-foreground",
+    "aria-pressed:bg-state-selected aria-pressed:text-foreground",
     "aria-pressed:border-b-2 aria-pressed:border-b-foreground"
   ].join(" "),
   variants: {

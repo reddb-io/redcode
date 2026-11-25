@@ -3,6 +3,7 @@ import { jsx, jsxs } from "react/jsx-runtime";
 import { useId, useRef } from "react";
 import { Accordion as Managed } from "@base-ui/react/accordion";
 import { Button } from "./Button.js";
+import { Icon } from "./Icon.js";
 import { accordion } from "../../src/accordion.variants.js";
 import { toggleGroupTarget } from "../../src/core/toggle-group.js";
 import { useValue } from "./state.js";
@@ -29,7 +30,7 @@ function Accordion({ label, items, value, multiple = false, disabled = false, on
       }
     ), children: [
       /* @__PURE__ */ jsx("span", { "data-accordion-label": true, className: styles.label(), children: item.label }),
-      /* @__PURE__ */ jsx("span", { "aria-hidden": "true", className: styles.indicator(), children: "\u2304" })
+      /* @__PURE__ */ jsx("span", { "aria-hidden": "true", className: styles.indicator(), children: /* @__PURE__ */ jsx(Icon, { icon: "chevron-down", size: "text", "aria-hidden": "true" }) })
     ] }) }),
     /* @__PURE__ */ jsx(Managed.Panel, { id: `${id}-${index}-content`, role: "region", "aria-labelledby": `${id}-${index}-trigger`, className: styles.content({ class: contentClass }), children: children?.({ value: item.value }) })
   ] }, item.value)) });

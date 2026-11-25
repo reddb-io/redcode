@@ -7,7 +7,9 @@ import { Input } from "./Input.js";
 import { numberField } from "../../src/number-field.variants.js";
 import { numberConstraints } from "../../src/core/number-field.js";
 import { afterFormReset, associatedForm } from "../../src/core/native-controls.js";
-function NumberField({ label, value, defaultValue = null, onValueChange, min, max, step = 1, help, error, controlSize = "md", decrementLabel, incrementLabel, id, required = false, disabled = false, readOnly = false, className, ref, ...rest }) {
+import { resolveFieldSize } from "../../src/core/field-size.js";
+function NumberField({ label, value, defaultValue = null, onValueChange, min, max, step = 1, help, error, size: sizeProp, controlSize: legacySize, decrementLabel, incrementLabel, id, required = false, disabled = false, readOnly = false, className, ref, ...rest }) {
+  const fieldSize = resolveFieldSize("NumberField", { size: sizeProp, controlSize: legacySize }).size;
   const initial = useRef(value === void 0 ? defaultValue : value);
   const [local, setLocal] = useState(initial.current);
   const current = value === void 0 ? local : value;
@@ -41,9 +43,9 @@ function NumberField({ label, value, defaultValue = null, onValueChange, min, ma
     input.dispatchEvent(new Event("change", { bubbles: true }));
   }
   return /* @__PURE__ */ jsx(Field, { label, help, error, required, id, className, children: (control) => /* @__PURE__ */ jsxs("div", { "data-number-field": true, className: slots.root(), children: [
-    /* @__PURE__ */ jsx(Button, { size: controlSize, variant: "secondary", className: slots.step(), "aria-label": decrementLabel ?? `Decrease ${label}`, disabled: disabled || readOnly || current !== null && min !== void 0 && current <= min, onClick: () => move(-1), children: "\u2212" }),
-    /* @__PURE__ */ jsx(Input, { ...rest, ...control, ...constraints, type: "number", defaultValue: initial.current ?? "", disabled, readOnly, controlSize, ref: element, onValueChange: update, className: slots.input() }),
-    /* @__PURE__ */ jsx(Button, { size: controlSize, variant: "secondary", className: slots.step(), "aria-label": incrementLabel ?? `Increase ${label}`, disabled: disabled || readOnly || current !== null && max !== void 0 && current >= max, onClick: () => move(1), children: "+" })
+    /* @__PURE__ */ jsx(Button, { size: fieldSize, variant: "secondary", className: slots.step(), "aria-label": decrementLabel ?? `Decrease ${label}`, disabled: disabled || readOnly || current !== null && min !== void 0 && current <= min, onClick: () => move(-1), children: "\u2212" }),
+    /* @__PURE__ */ jsx(Input, { ...rest, ...control, ...constraints, type: "number", defaultValue: initial.current ?? "", disabled, readOnly, size: fieldSize, ref: element, onValueChange: update, className: slots.input() }),
+    /* @__PURE__ */ jsx(Button, { size: fieldSize, variant: "secondary", className: slots.step(), "aria-label": incrementLabel ?? `Increase ${label}`, disabled: disabled || readOnly || current !== null && max !== void 0 && current >= max, onClick: () => move(1), children: "+" })
   ] }) });
 }
 export {

@@ -229,7 +229,7 @@ function AccountMenu(props: {
     <div className="settings-provider-account-trigger flex items-center gap-1">
       <Select
         aria-label={language.t("settings.providers.account.manage", { provider: name })}
-        controlSize="sm"
+        size="sm"
         value={active?.id ?? ""}
         disabled={busy}
         options={accounts.map((account) => ({ value: account.id, label: account.label }))}

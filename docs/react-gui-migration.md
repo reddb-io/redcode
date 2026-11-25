@@ -254,6 +254,99 @@ Before migrating session or timeline rendering, capture and compare the existing
 production benchmarks as required by `packages/app/AGENTS.md`. The TUI continues
 to use OpenTUI/Solid; web DS components do not render terminal UI.
 
+### Shared component inventory
+
+This inventory covers explicit component exports and the wildcard components in
+`@opencode/ui`. Counts are production source files importing each public path in
+App, Desktop, GUI extensions, Session UI, UI and TUI. A zero can mean a relative
+import, a plugin consumer, or a component with no current callers. Logo, assets,
+service bridges and domain renderers appear here because they share this package;
+their presence alone does not justify replacing them.
+
+| Shared component | Implementation under `packages/ui/src` | Files importing the public component |
+| --- | --- | ---: |
+| `accordion` | [data-display/accordion/accordion.tsx](../packages/ui/src/data-display/accordion/accordion.tsx) | 3 |
+| `animated-number` | [components/animated-number.tsx](../packages/ui/src/components/animated-number.tsx) | 1 |
+| `app-icon` | [components/app-icon.tsx](../packages/ui/src/components/app-icon.tsx) | 1 |
+| `avatar` | [data-display/avatar/avatar.tsx](../packages/ui/src/data-display/avatar/avatar.tsx) | 0 |
+| `badge` | [data-display/badge/badge.tsx](../packages/ui/src/data-display/badge/badge.tsx) | 0 |
+| `button` | [actions/button/button.tsx](../packages/ui/src/actions/button/button.tsx) | 59 |
+| `card` | [components/card.tsx](../packages/ui/src/components/card.tsx) | 4 |
+| `checkbox` | [forms/checkbox/checkbox.tsx](../packages/ui/src/forms/checkbox/checkbox.tsx) | 0 |
+| `collapsible` | [components/collapsible.tsx](../packages/ui/src/components/collapsible.tsx) | 3 |
+| `context-menu` | [components/context-menu.tsx](../packages/ui/src/components/context-menu.tsx) | 0 |
+| `dialog` | [overlays/dialog/dialog.tsx](../packages/ui/src/overlays/dialog/dialog.tsx) | 16 |
+| `diff-changes` | [data-display/diff-changes/diff-changes.tsx](../packages/ui/src/data-display/diff-changes/diff-changes.tsx) | 7 |
+| `divider` | [layout/divider/divider.tsx](../packages/ui/src/layout/divider/divider.tsx) | 2 |
+| `dock-surface` | [components/dock-surface.tsx](../packages/ui/src/components/dock-surface.tsx) | 2 |
+| `field` | [forms/field/field.tsx](../packages/ui/src/forms/field/field.tsx) | 0 |
+| `file-icon` | [components/file-icon.tsx](../packages/ui/src/components/file-icon.tsx) | 13 |
+| `font` | [components/font.tsx](../packages/ui/src/components/font.tsx) | 1 |
+| `hover-card` | [components/hover-card.tsx](../packages/ui/src/components/hover-card.tsx) | 0 |
+| `icon` | [icons/icon/icon.tsx](../packages/ui/src/icons/icon/icon.tsx) | 84 |
+| `icon-button` | [actions/icon-button/icon-button.tsx](../packages/ui/src/actions/icon-button/icon-button.tsx) | 33 |
+| `image-preview` | [components/image-preview.tsx](../packages/ui/src/components/image-preview.tsx) | 3 |
+| `inline-input` | [forms/inline-input/inline-input.tsx](../packages/ui/src/forms/inline-input/inline-input.tsx) | 1 |
+| `keybind` | [data-display/keybind/keybind.tsx](../packages/ui/src/data-display/keybind/keybind.tsx) | 9 |
+| `line-comment` | [data-display/line-comment/line-comment.tsx](../packages/ui/src/data-display/line-comment/line-comment.tsx) | 4 |
+| `list` | [components/list.tsx](../packages/ui/src/components/list.tsx) | 2 |
+| `loader` | [feedback/loader/loader.tsx](../packages/ui/src/feedback/loader/loader.tsx) | 6 |
+| `logo` | [components/logo.tsx](../packages/ui/src/components/logo.tsx) | 1 |
+| `menu` | [navigation/menu/menu.tsx](../packages/ui/src/navigation/menu/menu.tsx) | 19 |
+| `motion-spring` | [components/motion-spring.tsx](../packages/ui/src/components/motion-spring.tsx) | 1 |
+| `popover` | [components/popover.tsx](../packages/ui/src/components/popover.tsx) | 0 |
+| `progress` | [components/progress.tsx](../packages/ui/src/components/progress.tsx) | 0 |
+| `progress-circle` | [feedback/progress-circle/progress-circle.tsx](../packages/ui/src/feedback/progress-circle/progress-circle.tsx) | 2 |
+| `project-avatar` | [data-display/project-avatar/project-avatar.tsx](../packages/ui/src/data-display/project-avatar/project-avatar.tsx) | 6 |
+| `provider-icon` | [components/provider-icon.tsx](../packages/ui/src/components/provider-icon.tsx) | 2 |
+| `radio` | [forms/radio/radio.tsx](../packages/ui/src/forms/radio/radio.tsx) | 2 |
+| `react-view` | [components/react-view.tsx](../packages/ui/src/components/react-view.tsx) | 2 |
+| `resize-handle` | [components/resize-handle.tsx](../packages/ui/src/components/resize-handle.tsx) | 4 |
+| `scroll-view` | [components/scroll-view.tsx](../packages/ui/src/components/scroll-view.tsx) | 10 |
+| `search-select` | [forms/search-select/search-select.tsx](../packages/ui/src/forms/search-select/search-select.tsx) | 3 |
+| `segmented-control` | [navigation/segmented-control/segmented-control.tsx](../packages/ui/src/navigation/segmented-control/segmented-control.tsx) | 3 |
+| `select` | [forms/select/select.tsx](../packages/ui/src/forms/select/select.tsx) | 1 |
+| `spinner` | [components/spinner.tsx](../packages/ui/src/components/spinner.tsx) | 5 |
+| `split-button` | [actions/split-button/split-button.tsx](../packages/ui/src/actions/split-button/split-button.tsx) | 1 |
+| `steps` | [navigation/steps/steps.tsx](../packages/ui/src/navigation/steps/steps.tsx) | 1 |
+| `sticky-accordion-header` | [components/sticky-accordion-header.tsx](../packages/ui/src/components/sticky-accordion-header.tsx) | 2 |
+| `switch` | [forms/switch/switch.tsx](../packages/ui/src/forms/switch/switch.tsx) | 7 |
+| `tab-state-indicator` | [navigation/tab-state-indicator.tsx](../packages/ui/src/navigation/tab-state-indicator.tsx) | 0 |
+| `tabs` | [navigation/tabs/tabs.tsx](../packages/ui/src/navigation/tabs/tabs.tsx) | 10 |
+| `text-field` | [components/text-field.tsx](../packages/ui/src/components/text-field.tsx) | 4 |
+| `text-input` | [forms/text-input/text-input.tsx](../packages/ui/src/forms/text-input/text-input.tsx) | 4 |
+| `text-reveal` | [components/text-reveal.tsx](../packages/ui/src/components/text-reveal.tsx) | 1 |
+| `text-shimmer` | [typography/text-shimmer/text-shimmer.tsx](../packages/ui/src/typography/text-shimmer/text-shimmer.tsx) | 8 |
+| `text-strikethrough` | [components/text-strikethrough.tsx](../packages/ui/src/components/text-strikethrough.tsx) | 0 |
+| `textarea` | [forms/textarea/textarea.tsx](../packages/ui/src/forms/textarea/textarea.tsx) | 0 |
+| `toast` | [feedback/toast/toast.tsx](../packages/ui/src/feedback/toast/toast.tsx) | 22 |
+| `tooltip` | [overlays/tooltip/tooltip.tsx](../packages/ui/src/overlays/tooltip/tooltip.tsx) | 33 |
+| `typewriter` | [components/typewriter.tsx](../packages/ui/src/components/typewriter.tsx) | 0 |
+
+On v2026.11.28, Button, IconButton and toast actions use the Base Button recipe. Badge
+and the Solid key legend use the Badge and Kbd recipes, and the React key legend
+uses native Kbd. The error screen uses native Logo, Textarea and Button on web,
+desktop and narrow mobile viewports. The Solid host still records the fatal
+error and provides the desktop updater and log export.
+
+For the remaining migration, review controls together with the surface that owns
+their focus, overlays and scrolling. The titlebar tab strip and recent menu share
+the desktop rail and mobile tabs drawer. The composer, transcript and extension
+panels share the responsive app renderer. Electron also owns its native menus and
+window controls. Product icons and editor, terminal and diff renderers have their
+own interaction contracts.
+
+Terminal components live separately in `packages/tui/src/ui`, `component`,
+`routes` and `feature-plugins`. Alert and confirmation use the common terminal
+message layout and action control. Prompt, select, help, export dialogs, toasts,
+session tabs, command palette and feature panels retain OpenTUI renderers. List
+the current terminal views and locate the direct GUI consumers from the root:
+
+```sh
+rg --files packages/tui/src/{ui,component,routes,feature-plugins} -g '*.tsx' -g '!**/storybook/**'
+rg -n '@opencode/ui/' packages/{app,desktop,gui-extensions,session-ui,ui}/src
+```
+
 ## Verification
 
 The owning browser suites are `packages/app/e2e/regression/settings.spec.ts`,

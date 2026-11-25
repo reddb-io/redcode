@@ -31,20 +31,24 @@ function DeveloperRequestInspector({ requests, onRequestsChange, requestActions,
   return /* @__PURE__ */ jsxs("div", { className: `${styles.content} h-full`, children: [
     /* @__PURE__ */ jsxs("div", { className: styles.list, role: "region", "aria-label": "Requests", tabIndex: 0, children: [
       /* @__PURE__ */ jsxs("div", { className: styles.listToolbar, children: [
-        /* @__PURE__ */ jsx(Input, { controlSize: "sm", type: "search", "aria-label": "Filter requests", placeholder: "Filter requests", value: filter, onChange: (event) => setFilter(event.currentTarget.value) }),
+        /* @__PURE__ */ jsx(Input, { size: "sm", type: "search", "aria-label": "Filter requests", placeholder: "Filter requests", value: filter, onChange: (event) => setFilter(event.currentTarget.value) }),
         onRequestsChange && /* @__PURE__ */ jsx(Button, { variant: "ghost", size: "sm", className: "shrink-0 whitespace-nowrap", "aria-label": "Clear requests", onClick: () => onRequestsChange([]), children: "Clear" })
       ] }),
       /* @__PURE__ */ jsxs("div", { className: styles.listRows, role: "region", "aria-label": "Request list", tabIndex: 0, children: [
         !filtered.length && /* @__PURE__ */ jsx("p", { className: `${styles.detail} ${styles.muted}`, children: requests.length ? "No requests match the filter." : "No requests recorded." }),
-        filtered.map((item) => /* @__PURE__ */ jsx(ListRow, { size: "sm", selected: active?.id === item.id, "aria-pressed": active?.id === item.id, className: `${styles.row} py-0`, onClick: () => setSelected(item.id), leading: /* @__PURE__ */ jsxs("span", { className: "flex items-center gap-[var(--reddb-spatial-gap-sm)]", children: [
-          item.timeLabel && /* @__PURE__ */ jsx("span", { className: `${styles.muted} max-w-[10ch] shrink-0 truncate`, title: item.timeLabel, children: item.timeLabel }),
-          item.source && /* @__PURE__ */ jsx("span", { className: `${styles.muted} max-w-[8ch] shrink-0 truncate`, title: item.source, children: item.source })
-        ] }), trailing: /* @__PURE__ */ jsxs(Fragment, { children: [
-          /* @__PURE__ */ jsx(Badge, { tone: developerRequestStatusTone(item.status), children: item.status }),
-          /* @__PURE__ */ jsx("span", { className: styles.muted, children: formatRequestDuration(item.durationMs) })
-        ] }), children: /* @__PURE__ */ jsxs("span", { className: "flex min-w-0 items-center gap-[var(--reddb-spatial-gap-sm)]", children: [
-          /* @__PURE__ */ jsx("span", { className: "shrink-0", children: item.method }),
-          /* @__PURE__ */ jsx("span", { className: "min-w-0 truncate", children: item.target })
+        filtered.map((item) => /* @__PURE__ */ jsx(ListRow, { size: "sm", selected: active?.id === item.id, "aria-pressed": active?.id === item.id, className: styles.row, onClick: () => setSelected(item.id), children: /* @__PURE__ */ jsxs("span", { className: styles.rowBody, children: [
+          /* @__PURE__ */ jsxs("span", { className: styles.rowMeta, children: [
+            item.timeLabel && /* @__PURE__ */ jsx("span", { className: `${styles.muted} max-w-[10ch] shrink-0 truncate`, title: item.timeLabel, children: item.timeLabel }),
+            item.source && /* @__PURE__ */ jsx("span", { className: `${styles.muted} max-w-[8ch] shrink-0 truncate`, title: item.source, children: item.source })
+          ] }),
+          /* @__PURE__ */ jsxs("span", { className: styles.rowRequest, children: [
+            /* @__PURE__ */ jsx("span", { className: "shrink-0", children: item.method }),
+            /* @__PURE__ */ jsx("span", { className: "min-w-0 truncate", title: item.target, children: item.target })
+          ] }),
+          /* @__PURE__ */ jsxs("span", { className: styles.rowStatus, children: [
+            /* @__PURE__ */ jsx(Badge, { tone: developerRequestStatusTone(item.status), children: item.status }),
+            /* @__PURE__ */ jsx("span", { className: styles.muted, children: formatRequestDuration(item.durationMs) })
+          ] })
         ] }) }, item.id))
       ] })
     ] }),
@@ -56,7 +60,7 @@ function DeveloperRequestInspector({ requests, onRequestsChange, requestActions,
         /* @__PURE__ */ jsx("span", { className: styles.muted, children: formatRequestDuration(active.durationMs) }),
         requestActions && /* @__PURE__ */ jsx("div", { className: styles.requestActions, children: requestActions(active) })
       ] }),
-      /* @__PURE__ */ jsx(Tabs, { label: "Request views", items: tabItems, triggerClass: "text-caption", value: tab, onValueChange: (value) => {
+      /* @__PURE__ */ jsx(Tabs, { label: "Request views", items: tabItems, size: "sm", triggerClass: "text-caption", value: tab, onValueChange: (value) => {
         if (value === "request" || value === "response" || value === "headers" || value === "timing" || value === "tools") setTab(value);
       }, className: styles.tabs, contentClass: styles.detailBody, actions: /* @__PURE__ */ jsxs(Fragment, { children: [
         active && tab !== "tools" && /* @__PURE__ */ jsx(Toolbar, { label: "Request actions", size: "sm", className: styles.tabActions, items: [{ id: "copy", label: "Copy details", onselect: copyDetails }] }),

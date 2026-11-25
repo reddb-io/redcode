@@ -91,7 +91,7 @@ function SequenceDiagram(props) {
                       y: 30,
                       textAnchor: "middle",
                       fill: ink,
-                      className: "text-xs font-medium",
+                      className: "text-caption font-medium",
                       children: short(p.label, Math.floor(band / 8))
                     }
                   ),
@@ -155,7 +155,7 @@ function SequenceDiagram(props) {
                           y: y - 9,
                           textAnchor: sx === tx ? "start" : "middle",
                           fill: selected === m.id ? ink : mutedInk,
-                          className: "text-xs",
+                          className: "text-caption",
                           children: short(
                             m.label,
                             Math.max(12, Math.floor(Math.abs(tx - sx) / 7))

@@ -1,4 +1,5 @@
 import { tv } from "tailwind-variants";
+import { typeRoleMerge } from "./type-roles.js";
 import { TONES } from "./tone.js";
 const MEASURE_TONE_FILL = {
   neutral: "bg-foreground",
@@ -11,8 +12,8 @@ const meter = tv({
   slots: {
     root: "flex w-full flex-col gap-[var(--reddb-spatial-gap-sm)] text-foreground",
     summary: "flex items-baseline justify-between gap-[var(--reddb-spatial-gap-md)]",
-    label: "text-sm font-medium",
-    value: "text-sm tabular-nums text-ink-muted",
+    label: "text-label",
+    value: "text-label font-regular tabular-nums text-ink-muted",
     track: "h-2 w-full overflow-hidden rounded-full bg-muted",
     indicator: "h-full rounded-full transition-[width] motion-reduce:transition-none"
   },
@@ -32,13 +33,11 @@ const meter = tv({
       info: { indicator: MEASURE_TONE_FILL.info },
       success: { indicator: MEASURE_TONE_FILL.success },
       warning: { indicator: MEASURE_TONE_FILL.warning },
-      danger: { indicator: MEASURE_TONE_FILL.danger },
-      /** @deprecated The accent is an emphasis, not a tone (ADR 0026); kept one release. */
-      primary: { indicator: "bg-primary" }
+      danger: { indicator: MEASURE_TONE_FILL.danger }
     }
   },
   defaultVariants: { tone: "neutral", layout: "stacked", labelHidden: false }
-});
+}, typeRoleMerge);
 const METER_TONES = TONES;
 export {
   MEASURE_TONE_FILL,

@@ -1,7 +1,7 @@
 "use client";
-import { jsx, jsxs } from "react/jsx-runtime";
+import { Fragment, jsx, jsxs } from "react/jsx-runtime";
 import { useEffect, useRef, useState } from "react";
-import { Button } from "@reddb-io/design-system/base";
+import { Alert, Button, ContentState, LoadingIndicator, collectionView } from "@reddb-io/design-system/base";
 import { VirtualList } from "./VirtualList.js";
 import {
   retainedEvents,
@@ -17,10 +17,15 @@ function EventLog({
   following = false,
   onfollowingchange,
   emptyLabel = "No matching events",
+  state,
+  errorMessage = "Could not load events.",
+  retryLabel = "Retry",
+  loadingRows = 5,
+  onretry,
   className
 }) {
   const visual = operationalView();
-  const host = useRef(null), controller = useRef(null), previous = useRef(void 0), [suspended, setSuspended] = useState(false), [unread, setUnread] = useState(0), retained = retainedEvents(events, limit, query);
+  const host = useRef(null), controller = useRef(null), previous = useRef(void 0), [suspended, setSuspended] = useState(false), [unread, setUnread] = useState(0), retained = retainedEvents(events, limit, query), view = collectionView(state, events.length);
   const pause = useRef(onfollowingchange);
   pause.current = onfollowingchange;
   useEffect(() => {
@@ -52,6 +57,8 @@ function EventLog({
     {
       ref: host,
       "data-event-log": true,
+      "data-state": state ?? "ready",
+      "aria-busy": view.busy ? true : void 0,
       className: visual.root({ class: className }),
       children: [
         /* @__PURE__ */ jsxs("div", { className: visual.header(), children: [
@@ -69,38 +76,48 @@ function EventLog({
               },
               children: following && !suspended ? "Pause following" : `Follow latest${unread ? ` (${unread} new)` : ""}`
             }
+          ),
+          state === "refreshing" && !view.placeholder && /* @__PURE__ */ jsx(LoadingIndicator, { size: "sm", label: "Refreshing" })
+        ] }),
+        view.stale && /* @__PURE__ */ jsxs(Alert, { tone: "danger", children: [
+          errorMessage,
+          onretry && /* @__PURE__ */ jsxs(Fragment, { children: [
+            " ",
+            /* @__PURE__ */ jsx(Button, { size: "sm", variant: "secondary", onClick: onretry, children: retryLabel })
+          ] })
+        ] }),
+        view.placeholder ? /* @__PURE__ */ jsx(ContentState, { state: view.placeholder, label, emptyTitle: emptyLabel, errorMessage, retryLabel, onRetry: onretry, shape: "table", rows: loadingRows, columns: 1, children: /* @__PURE__ */ jsx("span", {}) }) : /* @__PURE__ */ jsxs(Fragment, { children: [
+          retained.discarded > 0 && /* @__PURE__ */ jsxs("p", { className: visual.text(), children: [
+            retained.discarded,
+            " earlier events outside retention"
+          ] }),
+          /* @__PURE__ */ jsx(
+            VirtualList,
+            {
+              label,
+              items: retained.events,
+              rowKey: (event) => event.id,
+              rowUnits: 2,
+              visibleRows: 6,
+              emptyLabel,
+              children: (event) => /* @__PURE__ */ jsxs("div", { "data-event-id": event.id, className: visual.eventBody(), children: [
+                /* @__PURE__ */ jsxs("div", { className: visual.eventMeta(), children: [
+                  /* @__PURE__ */ jsx("time", { dateTime: event.datetime, children: event.time }),
+                  event.source && /* @__PURE__ */ jsx("span", { title: event.source, children: event.source })
+                ] }),
+                /* @__PURE__ */ jsx(
+                  "p",
+                  {
+                    className: visual.eventMessage(),
+                    title: event.message,
+                    style: { color: operationalToneInk(event.tone) },
+                    children: event.message
+                  }
+                )
+              ] })
+            }
           )
-        ] }),
-        retained.discarded > 0 && /* @__PURE__ */ jsxs("p", { className: visual.text(), children: [
-          retained.discarded,
-          " earlier events outside retention"
-        ] }),
-        /* @__PURE__ */ jsx(
-          VirtualList,
-          {
-            label,
-            items: retained.events,
-            rowKey: (event) => event.id,
-            rowUnits: 2,
-            visibleRows: 6,
-            emptyLabel,
-            children: (event) => /* @__PURE__ */ jsxs("div", { "data-event-id": event.id, className: visual.eventBody(), children: [
-              /* @__PURE__ */ jsxs("div", { className: visual.eventMeta(), children: [
-                /* @__PURE__ */ jsx("time", { dateTime: event.datetime, children: event.time }),
-                event.source && /* @__PURE__ */ jsx("span", { title: event.source, children: event.source })
-              ] }),
-              /* @__PURE__ */ jsx(
-                "p",
-                {
-                  className: visual.eventMessage(),
-                  title: event.message,
-                  style: { color: operationalToneInk(event.tone) },
-                  children: event.message
-                }
-              )
-            ] })
-          }
-        )
+        ] })
       ]
     }
   );

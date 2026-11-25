@@ -79,7 +79,7 @@ function ProjectEditor(props: { services: Services; snapshot: ReturnType<Service
                   {...association}
                   data-action="settings-project-name"
                   type="text"
-                  controlSize="sm"
+                  size="sm"
                   value={state.name}
                   placeholder={model.folderName()}
                   onValueChange={(name) => model.update({ name })}

@@ -1,7 +1,8 @@
 import { tv } from "tailwind-variants";
+import { typeRoleMerge } from "@reddb-io/design-system/base/recipes";
 const statusBreakdown = tv({
   slots: {
-    root: "grid min-w-0 [overflow-wrap:anywhere] gap-[var(--reddb-spatial-gap-sm)] text-foreground",
+    root: "grid min-w-0 wrap-break-word gap-[var(--reddb-spatial-gap-sm)] text-foreground",
     heading: "m-0 flex flex-wrap items-baseline justify-between gap-[var(--reddb-spatial-gap-md)] text-body font-medium",
     total: "text-caption font-regular tabular-nums text-ink-muted",
     track: "flex h-[var(--reddb-spatial-gap-md)] overflow-hidden rounded-[var(--reddb-radius-sm)] bg-muted",
@@ -12,7 +13,7 @@ const statusBreakdown = tv({
     count: "shrink-0 font-mono tabular-nums",
     empty: "m-0 text-caption text-ink-muted"
   }
-});
+}, typeRoleMerge);
 export {
   statusBreakdown
 };

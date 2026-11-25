@@ -7,6 +7,11 @@ import {
   useState
 } from "react";
 import {
+  Alert,
+  Button,
+  ContentState,
+  LoadingIndicator,
+  collectionView,
   quietControl,
   useControllableValue
 } from "@reddb-io/design-system/base";
@@ -31,6 +36,11 @@ function TreeView(props) {
     onReorder,
     leading,
     trailing,
+    state,
+    errorMessage = "Could not load the tree.",
+    retryLabel = "Retry",
+    loadingRows = 5,
+    onretry,
     className = ""
   } = props;
   const [expanded, setExpandedValue] = useControllableValue(
@@ -157,117 +167,132 @@ function TreeView(props) {
     } else return;
     event.preventDefault();
   }
-  return /* @__PURE__ */ jsx(
-    "ul",
-    {
-      ref: tree,
-      role: "tree",
-      "aria-label": label,
-      "data-tree-view": true,
-      className: `m-0 grid list-none gap-[var(--reddb-spatial-gap-sm)] p-0 text-sm text-foreground ${className}`.trim(),
-      children: visible.map((entry) => /* @__PURE__ */ jsx(
-        "li",
-        {
-          role: "treeitem",
-          "aria-expanded": entry.node.children.length ? expandedIds.has(entry.node.id) : void 0,
-          "aria-selected": selected === entry.node.id,
-          "aria-level": entry.level,
-          "aria-posinset": entry.position,
-          "aria-setsize": entry.setSize,
-          tabIndex: activeId === entry.node.id ? 0 : -1,
-          "data-tree-id": entry.node.id,
-          "data-tree-reorderable": canReorder(entry.node) ? "" : void 0,
-          draggable: canReorder(entry.node),
-          className: "cursor-default rounded-sm px-[var(--reddb-spatial-inset-sm)] py-[var(--reddb-spatial-gap-sm)] hover:bg-foreground/8 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus aria-selected:bg-foreground/10 aria-selected:font-medium",
-          style: {
-            paddingInlineStart: `calc(var(--reddb-spatial-inset-sm) + ${entry.level - 1} * var(--reddb-spatial-inset-md))`
-          },
-          onClick: (event) => {
-            setActiveId(entry.node.id);
-            setSelected(entry.node.id);
-            event.currentTarget.focus();
-          },
-          onKeyDown: (event) => keydown(event, entry),
-          onDragStart: (event) => dragStart(event, entry.node),
-          onDragOver: (event) => dragOver(event, entry.node),
-          onDrop: (event) => drop(event, entry.node),
-          onDragEnd: () => dragged.current = null,
-          children: /* @__PURE__ */ jsxs("span", { className: "flex min-w-0 items-center gap-[var(--reddb-spatial-gap-sm)]", children: [
-            canReorder(entry.node) && /* @__PURE__ */ jsx(
-              "span",
-              {
-                "data-tree-drag-handle": true,
-                "aria-hidden": "true",
-                title: `Drag ${entry.node.label} to reorder`,
-                className: "cursor-grab text-ink-muted",
-                children: "\u22EE\u22EE"
-              }
-            ),
-            /* @__PURE__ */ jsx(
-              "span",
-              {
-                "aria-hidden": "true",
-                className: "inline-block w-[1em] shrink-0 text-ink-muted",
-                children: entry.node.children.length ? expandedIds.has(entry.node.id) ? "\u25BE" : "\u25B8" : ""
-              }
-            ),
-            renamingId === entry.node.id ? /* @__PURE__ */ jsx(
-              "input",
-              {
-                ref: editor,
-                "data-tree-rename": entry.node.id,
-                "aria-label": `Edit name for ${entry.node.label}`,
-                value: renameDraft,
-                onChange: (event) => {
-                  draft.current = event.currentTarget.value;
-                  setRenameDraft(event.currentTarget.value);
-                },
-                onKeyDown: (event) => renameKey(event, entry.node),
-                onBlur: () => finishRename(entry.node, true),
-                onClick: (event) => event.stopPropagation(),
-                className: "min-w-0 flex-1 rounded-sm border border-muted bg-background px-[var(--reddb-spatial-inset-sm)] text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
-              }
-            ) : /* @__PURE__ */ jsxs(Fragment, { children: [
-              leading && /* @__PURE__ */ jsx(
+  const view = collectionView(state, nodes.length);
+  if (view.placeholder)
+    return /* @__PURE__ */ jsx(ContentState, { state: view.placeholder, label, emptyTitle: "No items", errorMessage, retryLabel, onRetry: onretry, shape: "list", rows: loadingRows, "data-tree-view-state": view.placeholder, className: className || void 0, children: /* @__PURE__ */ jsx("span", {}) });
+  return /* @__PURE__ */ jsxs(Fragment, { children: [
+    view.stale && /* @__PURE__ */ jsxs(Alert, { tone: "danger", children: [
+      errorMessage,
+      onretry && /* @__PURE__ */ jsxs(Fragment, { children: [
+        " ",
+        /* @__PURE__ */ jsx(Button, { size: "sm", variant: "secondary", onClick: onretry, children: retryLabel })
+      ] })
+    ] }),
+    state === "refreshing" && /* @__PURE__ */ jsx(LoadingIndicator, { size: "sm", label: "Refreshing" }),
+    /* @__PURE__ */ jsx(
+      "ul",
+      {
+        ref: tree,
+        role: "tree",
+        "aria-label": label,
+        "aria-busy": view.busy ? true : void 0,
+        "data-tree-view": true,
+        "data-state": state ?? "ready",
+        className: `m-0 grid list-none gap-[var(--reddb-spatial-gap-sm)] p-0 text-body text-foreground ${className}`.trim(),
+        children: visible.map((entry) => /* @__PURE__ */ jsx(
+          "li",
+          {
+            role: "treeitem",
+            "aria-expanded": entry.node.children.length ? expandedIds.has(entry.node.id) : void 0,
+            "aria-selected": selected === entry.node.id,
+            "aria-level": entry.level,
+            "aria-posinset": entry.position,
+            "aria-setsize": entry.setSize,
+            tabIndex: activeId === entry.node.id ? 0 : -1,
+            "data-tree-id": entry.node.id,
+            "data-tree-reorderable": canReorder(entry.node) ? "" : void 0,
+            draggable: canReorder(entry.node),
+            className: "cursor-default rounded-sm px-[var(--reddb-spatial-inset-sm)] py-[var(--reddb-spatial-gap-sm)] hover:bg-state-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus aria-selected:bg-state-selected aria-selected:font-medium",
+            style: {
+              paddingInlineStart: `calc(var(--reddb-spatial-inset-sm) + ${entry.level - 1} * var(--reddb-spatial-inset-md))`
+            },
+            onClick: (event) => {
+              setActiveId(entry.node.id);
+              setSelected(entry.node.id);
+              event.currentTarget.focus();
+            },
+            onKeyDown: (event) => keydown(event, entry),
+            onDragStart: (event) => dragStart(event, entry.node),
+            onDragOver: (event) => dragOver(event, entry.node),
+            onDrop: (event) => drop(event, entry.node),
+            onDragEnd: () => dragged.current = null,
+            children: /* @__PURE__ */ jsxs("span", { className: "flex min-w-0 items-center gap-[var(--reddb-spatial-gap-sm)]", children: [
+              canReorder(entry.node) && /* @__PURE__ */ jsx(
                 "span",
                 {
-                  className: "flex shrink-0 items-center",
-                  "data-tree-leading": true,
-                  children: leading(entry.node)
+                  "data-tree-drag-handle": true,
+                  "aria-hidden": "true",
+                  title: `Drag ${entry.node.label} to reorder`,
+                  className: "cursor-grab text-ink-muted",
+                  children: "\u22EE\u22EE"
                 }
               ),
-              /* @__PURE__ */ jsx("span", { className: "min-w-0 flex-1 truncate", children: entry.node.label }),
-              trailing && /* @__PURE__ */ jsx(
+              /* @__PURE__ */ jsx(
                 "span",
                 {
-                  className: "flex shrink-0 items-center",
-                  "data-tree-trailing": true,
-                  children: trailing(entry.node)
+                  "aria-hidden": "true",
+                  className: "inline-block w-[1em] shrink-0 text-ink-muted",
+                  children: entry.node.children.length ? expandedIds.has(entry.node.id) ? "\u25BE" : "\u25B8" : ""
                 }
               ),
-              canRename(entry.node) && /* @__PURE__ */ jsx(
-                "button",
+              renamingId === entry.node.id ? /* @__PURE__ */ jsx(
+                "input",
                 {
-                  type: "button",
-                  "aria-label": `Rename ${entry.node.label}`,
-                  "data-tree-rename-action": true,
-                  className: quietControl({
-                    class: "rounded-sm px-[var(--reddb-spatial-gap-sm)]"
-                  }),
-                  onClick: (event) => {
-                    event.stopPropagation();
-                    beginRename(entry.node);
+                  ref: editor,
+                  "data-tree-rename": entry.node.id,
+                  "aria-label": `Edit name for ${entry.node.label}`,
+                  value: renameDraft,
+                  onChange: (event) => {
+                    draft.current = event.currentTarget.value;
+                    setRenameDraft(event.currentTarget.value);
                   },
-                  children: "Rename"
+                  onKeyDown: (event) => renameKey(event, entry.node),
+                  onBlur: () => finishRename(entry.node, true),
+                  onClick: (event) => event.stopPropagation(),
+                  className: "min-w-0 flex-1 rounded-sm border border-muted bg-background px-[var(--reddb-spatial-inset-sm)] text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
                 }
-              )
+              ) : /* @__PURE__ */ jsxs(Fragment, { children: [
+                leading && /* @__PURE__ */ jsx(
+                  "span",
+                  {
+                    className: "flex shrink-0 items-center",
+                    "data-tree-leading": true,
+                    children: leading(entry.node)
+                  }
+                ),
+                /* @__PURE__ */ jsx("span", { className: "min-w-0 flex-1 truncate", children: entry.node.label }),
+                trailing && /* @__PURE__ */ jsx(
+                  "span",
+                  {
+                    className: "flex shrink-0 items-center",
+                    "data-tree-trailing": true,
+                    children: trailing(entry.node)
+                  }
+                ),
+                canRename(entry.node) && /* @__PURE__ */ jsx(
+                  "button",
+                  {
+                    type: "button",
+                    "aria-label": `Rename ${entry.node.label}`,
+                    "data-tree-rename-action": true,
+                    className: quietControl({
+                      class: "rounded-sm px-[var(--reddb-spatial-gap-sm)]"
+                    }),
+                    onClick: (event) => {
+                      event.stopPropagation();
+                      beginRename(entry.node);
+                    },
+                    children: "Rename"
+                  }
+                )
+              ] })
             ] })
-          ] })
-        },
-        entry.node.id
-      ))
-    }
-  );
+          },
+          entry.node.id
+        ))
+      }
+    )
+  ] });
 }
 var TreeView_default = TreeView;
 export {

@@ -3,6 +3,7 @@ export declare const operationalView: import("tailwind-variants").TVReturnType<{
         [key: string]: import("tailwind-variants").ClassValue | {
             title?: import("tailwind-variants").ClassValue;
             caption?: import("tailwind-variants").ClassValue;
+            data?: import("tailwind-variants").ClassValue;
             figure?: import("tailwind-variants").ClassValue;
             header?: import("tailwind-variants").ClassValue;
             svg?: import("tailwind-variants").ClassValue;
@@ -13,6 +14,7 @@ export declare const operationalView: import("tailwind-variants").TVReturnType<{
             grid?: import("tailwind-variants").ClassValue;
             note?: import("tailwind-variants").ClassValue;
             overlay?: import("tailwind-variants").ClassValue;
+            queue?: import("tailwind-variants").ClassValue;
             count?: import("tailwind-variants").ClassValue;
             event?: import("tailwind-variants").ClassValue;
             engine?: import("tailwind-variants").ClassValue;
@@ -24,12 +26,14 @@ export declare const operationalView: import("tailwind-variants").TVReturnType<{
             nodeTitle?: import("tailwind-variants").ClassValue;
             nodeText?: import("tailwind-variants").ClassValue;
             srOnly?: import("tailwind-variants").ClassValue;
-            queue?: import("tailwind-variants").ClassValue;
             queueSlot?: import("tailwind-variants").ClassValue;
             stateItem?: import("tailwind-variants").ClassValue;
             eventBody?: import("tailwind-variants").ClassValue;
             eventMeta?: import("tailwind-variants").ClassValue;
             eventMessage?: import("tailwind-variants").ClassValue;
+            dataSummary?: import("tailwind-variants").ClassValue;
+            dataList?: import("tailwind-variants").ClassValue;
+            dataRow?: import("tailwind-variants").ClassValue;
             entityList?: import("tailwind-variants").ClassValue;
             metrics?: import("tailwind-variants").ClassValue;
         };
@@ -39,6 +43,7 @@ export declare const operationalView: import("tailwind-variants").TVReturnType<{
         [x: string]: import("tailwind-variants").ClassValue | {
             title?: import("tailwind-variants").ClassValue;
             caption?: import("tailwind-variants").ClassValue;
+            data?: import("tailwind-variants").ClassValue;
             figure?: import("tailwind-variants").ClassValue;
             header?: import("tailwind-variants").ClassValue;
             svg?: import("tailwind-variants").ClassValue;
@@ -49,6 +54,7 @@ export declare const operationalView: import("tailwind-variants").TVReturnType<{
             grid?: import("tailwind-variants").ClassValue;
             note?: import("tailwind-variants").ClassValue;
             overlay?: import("tailwind-variants").ClassValue;
+            queue?: import("tailwind-variants").ClassValue;
             count?: import("tailwind-variants").ClassValue;
             event?: import("tailwind-variants").ClassValue;
             engine?: import("tailwind-variants").ClassValue;
@@ -60,12 +66,14 @@ export declare const operationalView: import("tailwind-variants").TVReturnType<{
             nodeTitle?: import("tailwind-variants").ClassValue;
             nodeText?: import("tailwind-variants").ClassValue;
             srOnly?: import("tailwind-variants").ClassValue;
-            queue?: import("tailwind-variants").ClassValue;
             queueSlot?: import("tailwind-variants").ClassValue;
             stateItem?: import("tailwind-variants").ClassValue;
             eventBody?: import("tailwind-variants").ClassValue;
             eventMeta?: import("tailwind-variants").ClassValue;
             eventMessage?: import("tailwind-variants").ClassValue;
+            dataSummary?: import("tailwind-variants").ClassValue;
+            dataList?: import("tailwind-variants").ClassValue;
+            dataRow?: import("tailwind-variants").ClassValue;
             entityList?: import("tailwind-variants").ClassValue;
             metrics?: import("tailwind-variants").ClassValue;
         };
@@ -90,6 +98,10 @@ export declare const operationalView: import("tailwind-variants").TVReturnType<{
     eventMeta: string;
     eventMessage: string;
     note: string;
+    data: string;
+    dataSummary: string;
+    dataList: string;
+    dataRow: string;
     entityList: string;
     root: string;
     header: string;
@@ -107,6 +119,7 @@ export declare const operationalView: import("tailwind-variants").TVReturnType<{
         [key: string]: import("tailwind-variants").ClassValue | {
             title?: import("tailwind-variants").ClassValue;
             caption?: import("tailwind-variants").ClassValue;
+            data?: import("tailwind-variants").ClassValue;
             figure?: import("tailwind-variants").ClassValue;
             header?: import("tailwind-variants").ClassValue;
             svg?: import("tailwind-variants").ClassValue;
@@ -117,6 +130,7 @@ export declare const operationalView: import("tailwind-variants").TVReturnType<{
             grid?: import("tailwind-variants").ClassValue;
             note?: import("tailwind-variants").ClassValue;
             overlay?: import("tailwind-variants").ClassValue;
+            queue?: import("tailwind-variants").ClassValue;
             count?: import("tailwind-variants").ClassValue;
             event?: import("tailwind-variants").ClassValue;
             engine?: import("tailwind-variants").ClassValue;
@@ -128,12 +142,14 @@ export declare const operationalView: import("tailwind-variants").TVReturnType<{
             nodeTitle?: import("tailwind-variants").ClassValue;
             nodeText?: import("tailwind-variants").ClassValue;
             srOnly?: import("tailwind-variants").ClassValue;
-            queue?: import("tailwind-variants").ClassValue;
             queueSlot?: import("tailwind-variants").ClassValue;
             stateItem?: import("tailwind-variants").ClassValue;
             eventBody?: import("tailwind-variants").ClassValue;
             eventMeta?: import("tailwind-variants").ClassValue;
             eventMessage?: import("tailwind-variants").ClassValue;
+            dataSummary?: import("tailwind-variants").ClassValue;
+            dataList?: import("tailwind-variants").ClassValue;
+            dataRow?: import("tailwind-variants").ClassValue;
             entityList?: import("tailwind-variants").ClassValue;
             metrics?: import("tailwind-variants").ClassValue;
         };
@@ -158,6 +174,10 @@ export declare const operationalView: import("tailwind-variants").TVReturnType<{
     eventMeta: string;
     eventMessage: string;
     note: string;
+    data: string;
+    dataSummary: string;
+    dataList: string;
+    dataRow: string;
     entityList: string;
     root: string;
     header: string;
@@ -190,6 +210,10 @@ export declare const operationalView: import("tailwind-variants").TVReturnType<{
     eventMeta: string;
     eventMessage: string;
     note: string;
+    data: string;
+    dataSummary: string;
+    dataList: string;
+    dataRow: string;
     entityList: string;
     root: string;
     header: string;

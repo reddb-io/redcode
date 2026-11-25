@@ -96,7 +96,7 @@ export function General(props: {
                 <Select
                   {...association}
                   data-action="settings-language"
-                  controlSize="sm"
+                  size="sm"
                   options={state.locales}
                   value={language.locale}
                   onValueChange={(value) => {
@@ -200,7 +200,7 @@ export function General(props: {
                     <Input
                       key={values.navigationGap}
                       type="number"
-                      controlSize="sm"
+                      size="sm"
                       className="w-16 tabular-nums"
                       aria-label={language.t("settings.general.row.navigationGap.exact")}
                       min={0}
@@ -231,7 +231,7 @@ export function General(props: {
                 <Select
                   {...association}
                   data-action="settings-workspace-destination"
-                  controlSize="sm"
+                  size="sm"
                   value={values.workspaceDestination}
                   options={(["last-used", "local", "new"] as const).map((value) => ({
                     value,
@@ -288,7 +288,7 @@ export function General(props: {
                 <Select
                   {...association}
                   data-action="settings-terminal-placement"
-                  controlSize="sm"
+                  size="sm"
                   value={values.terminalPlacement}
                   options={(["side", "bottom"] as const).map((value) => ({
                     value,
@@ -310,7 +310,7 @@ export function General(props: {
                 <Select
                   {...association}
                   data-action="settings-follow-up-behavior"
-                  controlSize="sm"
+                  size="sm"
                   value={values.followUpBehavior}
                   options={(["queue", "steer"] as const).map((value) => ({
                     value,
@@ -377,7 +377,7 @@ export function General(props: {
                 <Select
                   {...association}
                   data-action="settings-timeline-width"
-                  controlSize="sm"
+                  size="sm"
                   options={(["comfortable", "wide", "full"] as const).map((value) => ({
                     value,
                     label: language.t(`settings.timeline.width.${value}`),

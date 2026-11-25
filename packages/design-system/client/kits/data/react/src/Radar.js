@@ -98,7 +98,7 @@ function Radar(props) {
                   textAnchor: Math.abs(l.x - cx) < 1 ? "middle" : l.x > cx ? "start" : "end",
                   dominantBaseline: "middle",
                   fill: mutedInk,
-                  className: "text-xs",
+                  className: "text-caption",
                   children: short(axis.label, 22)
                 }
               )

@@ -38,7 +38,7 @@ export function SettingsSearchInput(
           inputRef?.(node)
         }}
         type="search"
-        controlSize="sm"
+        size="sm"
         data-overflow-start={overflow.start}
         data-overflow-end={overflow.end}
         onScroll={(event) => {

@@ -9,9 +9,9 @@ const terminalSession = tv({
     body: "relative min-w-0",
     engine: "h-full w-full overflow-hidden bg-background p-[var(--reddb-spatial-inset-md)] font-mono text-caption text-foreground focus-within:outline-2 focus-within:-outline-offset-2 focus-within:outline-focus",
     mount: "h-full w-full min-w-0 bg-background",
-    fallback: "absolute inset-0 m-0 overflow-auto whitespace-pre-wrap break-words bg-background p-[var(--reddb-spatial-inset-md)] font-mono text-caption text-foreground focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus",
+    fallback: "absolute inset-0 m-0 overflow-auto whitespace-pre-wrap wrap-break-word bg-background p-[var(--reddb-spatial-inset-md)] font-mono text-caption text-foreground focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus",
     footer: "flex flex-wrap items-center justify-between gap-[var(--reddb-spatial-gap-md)] border-t border-muted px-[var(--reddb-spatial-inset-md)] py-[var(--reddb-spatial-inset-sm)] text-caption text-ink-muted",
-    transcript: "m-0 overflow-auto whitespace-pre-wrap break-words p-[var(--reddb-spatial-inset-md)] font-mono text-caption text-foreground"
+    transcript: "m-0 overflow-auto whitespace-pre-wrap wrap-break-word p-[var(--reddb-spatial-inset-md)] font-mono text-caption text-foreground"
   }
 }, typeRoleMerge);
 export {

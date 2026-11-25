@@ -1,18 +1,10 @@
-import { type ActivityTimelineRow } from "../../src/activity-timeline";
+import type { ActivityTimelineContract } from "../../src/core/contracts/activitytimeline";
 export type { ActivityTimelineEvent, ActivityTimelineRow } from "../../src/activity-timeline";
-export interface ActivityTimelineProps {
-    /** Accessible title for the timeline. */
-    label: string;
-    /** Activities and their child event intervals. */
-    rows: readonly ActivityTimelineRow[];
-    /** Optional finite, increasing time bounds. */
-    domain?: readonly [number, number];
-    /** Formats exact event times in the accessible list. */
-    formatTime?: (value: number) => string;
-    /** Visible text for the scroll control. */
-    endLabel?: string;
+export interface ActivityTimelineProps extends ActivityTimelineContract {
+    /** Called when the person retries after a failed load. */
+    onretry?: () => void;
     /** Additional outer classes. */
     className?: string;
 }
-export declare function ActivityTimeline({ label, rows, domain, formatTime, endLabel, className }: ActivityTimelineProps): import("react").JSX.Element;
+export declare function ActivityTimeline({ label, rows, domain, formatTime, endLabel, state, errorMessage, retryLabel, loadingRows, onretry, className }: ActivityTimelineProps): import("react").JSX.Element;
 export default ActivityTimeline;

@@ -1,3 +1,4 @@
+import type { CollectionStateContract } from "@reddb-io/design-system/base";
 import type { StateCell } from "../../operational";
 export interface QueueSlot {
     /** Stable slot identity. */
@@ -7,7 +8,8 @@ export interface QueueSlot {
     /** Actual occupant; omit for an empty slot. */
     item?: StateCell;
 }
-export interface QueueViewContract {
+/** The ordered slot collection; its state follows the shared collection contract (ADR 0056). */
+export interface QueueViewContract extends CollectionStateContract {
     /** Accessible name of the ordered slot collection. */
     label: string;
     /** Actual slots in queue order; the component never schedules or reorders them. */

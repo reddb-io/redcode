@@ -32,7 +32,7 @@ export function AgentsMenuView(props: {
         label={language.t("infrastructure.serverFilter")}
         value={view.host}
         onValueChange={props.selectHost}
-        controlSize="sm"
+        size="sm"
         clearable={false}
         className="px-2 pb-4"
         triggerClass="min-h-[var(--reddb-spatial-target-min)]"

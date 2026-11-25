@@ -160,7 +160,7 @@ function ProjectOptions(props: {
           }}
           autoFocus
           type="search"
-          controlSize="sm"
+          size="sm"
           value={view.search}
           onValueChange={controller.setSearch}
           placeholder={language.t("session.new.project.search")}

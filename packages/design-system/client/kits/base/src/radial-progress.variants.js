@@ -1,4 +1,5 @@
 import { tv } from "tailwind-variants";
+import { typeRoleMerge } from "./type-roles.js";
 const SIZE = {
   sm: {
     root: "size-[calc(var(--reddb-spatial-control-height-sm)*2)]",
@@ -6,7 +7,7 @@ const SIZE = {
   },
   md: {
     root: "size-[calc(var(--reddb-spatial-control-height-md)*2)]",
-    value: "text-sm"
+    value: "text-label"
   },
   lg: {
     root: "size-[calc(var(--reddb-spatial-control-height-lg)*2.4)]",
@@ -37,7 +38,7 @@ const radialProgress = tv({
     }
   },
   defaultVariants: { size: "md", tone: "neutral", indeterminate: false }
-});
+}, typeRoleMerge);
 const RADIAL_PROGRESS_SIZES = Object.keys(SIZE);
 export {
   RADIAL_PROGRESS_SIZES,

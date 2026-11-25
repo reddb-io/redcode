@@ -51,5 +51,7 @@ export interface PhoneInputContract {
     /** Message for an incomplete number or a country outside the allowed list. Metadata checks structure/length, not ownership. */
     invalidMessage?: string;
     /** Shared height for the country selector and national-number input. Defaults to md. */
+    size?: InputSize;
+    /** Deprecated alias of `size` (ADR 0026), removed in the next month release. */
     controlSize?: InputSize;
 }

@@ -87,39 +87,41 @@ function CompositeChartPanel({ model, label, layoutMode, readoutMode, orientatio
           ] }),
           actions
         ] }),
-        /* @__PURE__ */ jsxs(
-          "div",
-          {
-            ref: plot,
-            "data-chart-explorer": true,
-            className: `${styles.plot()} ${fills ? "flex-1" : chartAdaptiveHeight(layoutMode, 10, size, height)}`,
-            style: { height: fills ? void 0 : chartHeightStyle(layoutMode, 10, size, height) },
-            role: interactive ? "slider" : void 0,
-            tabIndex: interactive && model.samples.length ? 0 : void 0,
-            "aria-label": interactive ? `Explore ${label}` : void 0,
-            "aria-orientation": interactive ? orientation === "horizontal" ? "vertical" : "horizontal" : void 0,
-            "aria-describedby": interactive ? `${uid}-help` : void 0,
-            "aria-valuemin": interactive ? 0 : void 0,
-            "aria-valuemax": interactive ? Math.max(0, model.samples.length - 1) : void 0,
-            "aria-valuenow": interactive ? inspection.index : void 0,
-            "aria-valuetext": interactive ? inspection.announcement : void 0,
-            onPointerMove: pointer,
-            onPointerDown: pointer,
-            onKeyDown: key,
-            onBlur: () => setKeyboard(false),
-            children: [
-              Engine ? /* @__PURE__ */ jsx(Engine, { model, layout, hiddenSeries, presentation, cursor: interactive ? chartCursor(activeX, model.sampleDomain) : void 0 }) : /* @__PURE__ */ jsx("div", { "data-chart-placeholder": true, "aria-hidden": "true", className: "h-full w-full", children: /* @__PURE__ */ jsx(Skeleton, { shape: compositeSkeletonShape(model, orientation), className: "h-full max-w-none" }) }),
-              inspection.empty && /* @__PURE__ */ jsx("div", { "data-composite-empty": true, className: styles.empty(), children: inspection.empty })
-            ]
-          }
-        ),
-        interactive && /* @__PURE__ */ jsxs("div", { "data-chart-tooltip": true, "aria-live": keyboard ? "polite" : "off", className: readoutMode === "hidden" ? "sr-only" : `${styles.readout()} ${chartReadout(layoutMode, readoutMode)}`, children: [
-          /* @__PURE__ */ jsx("span", { "data-chart-sample": true, children: inspection.sampleLabel }),
-          inspection.readings.map((reading) => /* @__PURE__ */ jsxs("span", { "data-chart-reading": reading.id, children: [
-            reading.label,
-            " ",
-            /* @__PURE__ */ jsx("strong", { className: "font-medium text-foreground", children: reading.value })
-          ] }, reading.id))
+        /* @__PURE__ */ jsxs("div", { "data-chart-body": true, className: `relative flex min-h-0 flex-col ${fills ? "flex-1" : ""}`, children: [
+          /* @__PURE__ */ jsxs(
+            "div",
+            {
+              ref: plot,
+              "data-chart-explorer": true,
+              className: `${styles.plot()} ${fills ? "flex-1" : chartAdaptiveHeight(layoutMode, 10, size, height)}`,
+              style: { height: fills ? void 0 : chartHeightStyle(layoutMode, 10, size, height) },
+              role: interactive ? "slider" : void 0,
+              tabIndex: interactive && model.samples.length ? 0 : void 0,
+              "aria-label": interactive ? `Explore ${label}` : void 0,
+              "aria-orientation": interactive ? orientation === "horizontal" ? "vertical" : "horizontal" : void 0,
+              "aria-describedby": interactive ? `${uid}-help` : void 0,
+              "aria-valuemin": interactive ? 0 : void 0,
+              "aria-valuemax": interactive ? Math.max(0, model.samples.length - 1) : void 0,
+              "aria-valuenow": interactive ? inspection.index : void 0,
+              "aria-valuetext": interactive ? inspection.announcement : void 0,
+              onPointerMove: pointer,
+              onPointerDown: pointer,
+              onKeyDown: key,
+              onBlur: () => setKeyboard(false),
+              children: [
+                Engine ? /* @__PURE__ */ jsx(Engine, { model, layout, hiddenSeries, presentation, cursor: interactive ? chartCursor(activeX, model.sampleDomain) : void 0 }) : /* @__PURE__ */ jsx("div", { "data-chart-placeholder": true, "aria-hidden": "true", className: "h-full w-full", children: /* @__PURE__ */ jsx(Skeleton, { shape: compositeSkeletonShape(model, orientation), className: "h-full max-w-none" }) }),
+                inspection.empty && /* @__PURE__ */ jsx("div", { "data-composite-empty": true, className: styles.empty(), children: inspection.empty })
+              ]
+            }
+          ),
+          interactive && /* @__PURE__ */ jsxs("div", { "data-chart-tooltip": true, "aria-live": keyboard ? "polite" : "off", className: readoutMode === "hidden" ? "sr-only" : `${styles.readout()} ${chartReadout(layoutMode, readoutMode)}`, children: [
+            /* @__PURE__ */ jsx("span", { "data-chart-sample": true, children: inspection.sampleLabel }),
+            inspection.readings.map((reading) => /* @__PURE__ */ jsxs("span", { "data-chart-reading": reading.id, children: [
+              reading.label,
+              " ",
+              /* @__PURE__ */ jsx("strong", { className: "font-medium text-foreground", children: reading.value })
+            ] }, reading.id))
+          ] })
         ] })
       ]
     }

@@ -75,7 +75,7 @@ export function Workspaces(props: { services: WorkspacesServices }) {
             <div className="settings-workspaces-toolbar-actions">
               {!snapshot.projectID && projects.length > 1 && (
                 <Select
-                  controlSize="sm"
+                  size="sm"
                   className="max-w-48"
                   aria-label={language.t("settings.workspaces.filter.all")}
                   value={selected}

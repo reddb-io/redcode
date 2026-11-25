@@ -223,7 +223,7 @@ export function ReasoningRoles(props: { services: ReturnType<typeof createReason
               <Select
                 {...association}
                 data-action="settings-reasoning-mode"
-                controlSize="sm"
+                size="sm"
                 value={reasoning(value)}
                 options={(["single", "dual", "observe"] as const).map((mode) => ({
                   value: mode,
@@ -244,7 +244,7 @@ export function ReasoningRoles(props: { services: ReturnType<typeof createReason
               <Select
                 {...association}
                 data-action="settings-reasoning-principal"
-                controlSize="sm"
+                size="sm"
                 value={principal(value)?.key ?? ""}
                 options={[
                   { value: "", label: language.t("settings.models.reasoning.unset"), disabled: true },
@@ -262,7 +262,7 @@ export function ReasoningRoles(props: { services: ReturnType<typeof createReason
               <Select
                 {...association}
                 data-action="settings-reasoning-fast"
-                controlSize="sm"
+                size="sm"
                 value={fast(value).key}
                 options={fastOptions().map((option) => ({ value: option.key, label: option.label }))}
                 onValueChange={(fast) => form.update({ fast, failure: undefined })}
@@ -279,7 +279,7 @@ export function ReasoningRoles(props: { services: ReturnType<typeof createReason
                   <Select
                     {...association}
                     data-action="settings-reasoning-evaluator"
-                    controlSize="sm"
+                    size="sm"
                     value={evaluator(value)?.key ?? ""}
                     options={[
                       { value: "", label: language.t("settings.models.reasoning.unset"), disabled: true },
@@ -301,7 +301,7 @@ export function ReasoningRoles(props: { services: ReturnType<typeof createReason
                   <div className="flex flex-col gap-2">
                     <Select
                       {...association}
-                      controlSize="sm"
+                      size="sm"
                       value={evaluatorModel(value)}
                       options={[
                         { value: "", label: language.t("settings.models.reasoning.unset"), disabled: true },

@@ -1,11 +1,12 @@
 import { tv } from "tailwind-variants";
+import { typeRoleMerge } from "./type-roles.js";
 const codeBlock = tv({
   slots: {
     // The root does not clip: an overflowing pre draws the canonical focus
     // ring 2px outside itself (wave 5A), and clipping would cut it off.
     root: "min-w-0 [contain:inline-size] rounded-lg border border-muted bg-transparent text-foreground",
     toolbar: "flex items-center justify-between gap-[var(--reddb-spatial-gap-md)] border-b border-muted px-[var(--reddb-spatial-inset-md)] py-[var(--reddb-spatial-inset-sm)]",
-    language: "min-w-0 truncate text-sm text-ink-muted",
+    language: "min-w-0 truncate text-body text-ink-muted",
     // Its own panel is the root: the pre states no edge or ground, so a
     // document around it (Prose) cannot add a second one.
     // While it overflows it is a focusable region (wave 5A) with the ink ring.
@@ -14,10 +15,10 @@ const codeBlock = tv({
       "m-0 overflow-x-auto rounded-t-none rounded-b-lg border-0 bg-transparent p-[var(--reddb-spatial-inset-md)]",
       "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
     ].join(" "),
-    gutter: "select-none pr-[var(--reddb-spatial-gap-md)] text-right font-mono text-sm leading-relaxed text-ink-muted",
-    code: "block whitespace-pre font-mono text-sm leading-relaxed text-foreground"
+    gutter: "select-none pr-[var(--reddb-spatial-gap-md)] text-right text-code leading-relaxed text-ink-muted",
+    code: "block whitespace-pre text-code leading-relaxed text-foreground"
   }
-});
+}, typeRoleMerge);
 const CODE_TOKEN_CLASSES = {
   keyword: "text-primary-text",
   string: "text-[var(--reddb-color-feedback-success-foreground)]",

@@ -7,4 +7,4 @@ export interface ToggleGroupProps extends ToggleGroupContract, Omit<ComponentPro
     /** Called with a newly selected option; reset does not emit a user change. */
     onValueChange?: (value: string) => void;
 }
-export declare function ToggleGroup({ legend, options, value, defaultValue, name, disabled, help, error, className, listClass, optionClass, onValueChange, ref, ...rest }: ToggleGroupProps): import("react").JSX.Element;
+export declare function ToggleGroup({ legend, options, value, defaultValue, name, disabled, help, error, size, className, overflow, listClass, optionClass, onValueChange, ref, ...rest }: ToggleGroupProps): import("react").JSX.Element;

@@ -1,8 +1,8 @@
 import { tv } from "tailwind-variants";
 import { typeRoleMerge } from "./type-roles.js";
-const QUIET_HOVER = "hover:bg-foreground/8";
-const QUIET_PRESSED = "active:bg-foreground/12";
-const QUIET_OPEN = "[&[aria-haspopup][aria-expanded=true]]:bg-foreground/10";
+const QUIET_HOVER = "hover:bg-state-hover";
+const QUIET_PRESSED = "active:bg-state-pressed";
+const QUIET_OPEN = "[&[aria-haspopup][aria-expanded=true]]:bg-state-open";
 const QUIET_FOCUS = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus";
 const QUIET_DISABLED = "disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50";
 const INK = {
@@ -21,7 +21,7 @@ const FOCUS = {
 };
 const SELECTED = {
   /** Current, selected or pressed: the selected surface, which the pointer does not lighten. */
-  true: "bg-foreground/10 hover:bg-foreground/10 font-medium text-foreground hover:text-foreground",
+  true: "bg-state-selected hover:bg-state-selected font-medium text-foreground hover:text-foreground",
   false: ""
 };
 const quietControl = tv({

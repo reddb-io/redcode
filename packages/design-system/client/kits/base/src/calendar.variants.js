@@ -1,4 +1,5 @@
 import { tv } from "tailwind-variants";
+import { typeRoleMerge } from "./type-roles.js";
 const calendar = tv({
   slots: {
     root: [
@@ -7,16 +8,19 @@ const calendar = tv({
     ].join(" "),
     header: "mb-[var(--reddb-spatial-gap-sm)] flex items-center justify-between gap-[var(--reddb-spatial-gap-sm)]",
     navigation: "w-[var(--reddb-spatial-control-height-sm)] shrink-0 px-0",
-    heading: "min-w-0 text-center text-sm font-medium",
+    heading: "min-w-0 text-center text-label",
     months: "grid gap-[var(--reddb-spatial-gap-md)]",
     grid: "w-full",
     gridHead: "text-ink-muted",
     gridRow: "grid grid-cols-7",
-    headCell: "flex h-[var(--reddb-spatial-control-height-sm)] items-center justify-center text-xs font-regular",
+    headCell: "flex h-[var(--reddb-spatial-control-height-sm)] items-center justify-center text-caption font-regular",
     cell: "p-0 text-center",
     day: [
-      "relative inline-flex size-[var(--reddb-spatial-control-height-sm)] items-center justify-center rounded-md",
-      "text-sm tabular-nums",
+      // A day is one control square, but never wider than its column: when the
+      // grid is narrower than seven squares, neighbouring days shrink side by
+      // side instead of overlapping each other's targets.
+      "relative mx-auto flex h-[var(--reddb-spatial-control-height-sm)] w-[var(--reddb-spatial-control-height-sm)] max-w-full items-center justify-center rounded-md",
+      "text-label font-regular tabular-nums",
       // Rest, hover, pressed and focus are the quiet-control contract the
       // component wraps this slot in (wave 6A); a chosen day keeps the accent.
       "data-[selected]:bg-primary data-[selected]:font-medium data-[selected]:text-on-primary",
@@ -28,7 +32,7 @@ const calendar = tv({
       "data-[today]:after:absolute data-[today]:after:bottom-1 data-[today]:after:size-1 data-[today]:after:rounded-full data-[today]:after:bg-current"
     ].join(" ")
   }
-});
+}, typeRoleMerge);
 export {
   calendar
 };

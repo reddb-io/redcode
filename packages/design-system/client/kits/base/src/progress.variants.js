@@ -1,11 +1,12 @@
 import { tv } from "tailwind-variants";
+import { typeRoleMerge } from "./type-roles.js";
 import { MEASURE_TONE_FILL } from "./meter.variants.js";
 const progress = tv({
   slots: {
     root: "w-full",
     summary: "mb-[var(--reddb-spatial-gap-sm)] flex items-center justify-between gap-[var(--reddb-spatial-gap-md)]",
-    label: "text-sm text-foreground",
-    value: "text-sm font-medium text-foreground",
+    label: "text-label font-regular text-foreground",
+    value: "text-label text-foreground",
     track: "h-[var(--reddb-spatial-gap-md)] w-full overflow-hidden rounded-full bg-muted",
     indicator: "h-full rounded-full transition-[width] motion-reduce:transition-none"
   },
@@ -24,7 +25,7 @@ const progress = tv({
     }
   },
   defaultVariants: { tone: "neutral", indeterminate: false }
-});
+}, typeRoleMerge);
 export {
   progress
 };

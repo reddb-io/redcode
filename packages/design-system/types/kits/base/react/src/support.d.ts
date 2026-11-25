@@ -19,6 +19,8 @@ export type { NavigationMenuEntry, NavigationMenuLink } from "../../src/navigati
 export { popover } from "../../src/popover.variants";
 export type { SectionHeadingLevel, SectionHeadingSize } from "../../src/section-heading.variants";
 export type { HeadingLevel } from "../../src/heading.variants";
+export type { ToggleGroupSize } from "../../src/toggle-group.variants";
+export type { TabsSize } from "../../src/tabs.variants";
 export { NAVBAR_ALIGNMENTS, NAVBAR_COLLAPSE, type NavbarCollapse, type NavbarAlign, type NavbarLink } from "../../src/core/navbar";
 export { useNavigation } from "./NavigationScope";
 export { useValue as useControllableValue, useNativeFormReset } from "./state";

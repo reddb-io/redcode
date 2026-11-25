@@ -6,13 +6,15 @@ import {
   Textarea,
   EmptyState,
   StateIllustration,
+  ToggleButton,
+  ToggleGroup,
   quietControl
 } from "@reddb-io/design-system/base";
 import {
   queueEmptyCompact,
   searchEmpty
 } from "@reddb-io/design-system/base/illustrations";
-import { Table } from "./Table.js";
+import { DataTable } from "./DataTable.js";
 import {
   filterQueueMessages,
   queueSummary,
@@ -23,6 +25,9 @@ import {
   queueEmptyCopy
 } from "../../src/queue-explorer.js";
 import { explorerClasses as styles } from "../../src/diff-explorer.variants.js";
+import {
+  queueExplorerModes
+} from "../../src/core/explorer-modes.js";
 function QueueExplorer({
   label,
   messages,
@@ -68,7 +73,7 @@ function QueueExplorer({
   useLayoutEffect(() => {
     if (pendingFocus.current) {
       root.current?.querySelector(
-        `[data-queue-mode="${pendingFocus.current}"]`
+        `[data-queue-modes] [data-toggle-value="${pendingFocus.current}"]`
       )?.focus();
       pendingFocus.current = null;
     }
@@ -104,28 +109,24 @@ function QueueExplorer({
       className: `@container ${styles.root} ${className}`,
       children: error ? /* @__PURE__ */ jsx("p", { role: "alert", className: styles.detail, children: error }) : /* @__PURE__ */ jsxs(Fragment, { children: [
         /* @__PURE__ */ jsxs("div", { className: styles.toolbar, children: [
-          ["events", "messages", "commands", "json"].map((view) => /* @__PURE__ */ jsx(
-            "button",
-            {
-              type: "button",
-              "data-queue-mode": view,
-              className: quietControl({
-                selected: mode === view,
-                class: "px-[var(--reddb-spatial-inset-sm)]"
-              }),
-              "aria-pressed": mode === view,
-              onClick: () => setMode(view),
-              children: view
-            },
-            view
-          )),
           /* @__PURE__ */ jsx(
-            Button,
+            ToggleGroup,
             {
+              "data-queue-modes": true,
+              legend: "Queue view",
+              options: queueExplorerModes,
+              value: mode,
+              className: "[&>legend]:sr-only",
+              onValueChange: setMode
+            }
+          ),
+          /* @__PURE__ */ jsx(
+            ToggleButton,
+            {
+              label: "insert",
               disabled: !onenqueue,
-              "aria-pressed": composer,
-              onClick: () => setComposer(!composer),
-              children: "insert"
+              pressed: composer,
+              onPressedChange: setComposer
             }
           ),
           /* @__PURE__ */ jsxs("label", { children: [
@@ -222,7 +223,7 @@ function QueueExplorer({
             )
           }
         ) : mode === "events" ? /* @__PURE__ */ jsx(
-          Table,
+          DataTable,
           {
             caption: context ? `${context} events` : "Queue events",
             captionHidden: true,

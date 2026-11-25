@@ -113,7 +113,7 @@ function SchemaPlot(props) {
                       x: x + 10,
                       y: y - 5,
                       fill: mutedInk,
-                      className: "font-mono text-xs",
+                      className: "font-mono text-caption",
                       children: group
                     }
                   )
@@ -169,7 +169,7 @@ function SchemaPlot(props) {
                           y: sy - 7,
                           textAnchor: below || forward ? "start" : "end",
                           fill: color,
-                          className: "font-mono text-xs",
+                          className: "font-mono text-caption",
                           children: relation.sourceCardinality ?? ""
                         }
                       ),
@@ -180,7 +180,7 @@ function SchemaPlot(props) {
                           y: ty - 7,
                           textAnchor: below || !forward ? "start" : "end",
                           fill: color,
-                          className: "font-mono text-xs",
+                          className: "font-mono text-caption",
                           children: relation.targetCardinality ?? ""
                         }
                       ),
@@ -191,7 +191,7 @@ function SchemaPlot(props) {
                           y: below ? (source.y + source.height + target.y) / 2 : (target.y + target.height + source.y) / 2,
                           textAnchor: "middle",
                           fill: color,
-                          className: "font-mono text-xs",
+                          className: "font-mono text-caption",
                           children: short(
                             relation.label || relation.onDelete || "",
                             32
@@ -204,7 +204,7 @@ function SchemaPlot(props) {
                           y: mid - 7,
                           textAnchor: "middle",
                           fill: color,
-                          className: "font-mono text-xs",
+                          className: "font-mono text-caption",
                           children: short(
                             relation.label || relation.onDelete || "",
                             28
@@ -257,7 +257,7 @@ function SchemaPlot(props) {
                           x: node.x + 12,
                           y: node.y + node.header * 0.62,
                           fill: ink,
-                          className: "text-sm font-medium",
+                          className: "text-label",
                           children: short(node.label, Math.floor((node.width - 70) / 8))
                         }
                       ),
@@ -268,7 +268,7 @@ function SchemaPlot(props) {
                           y: node.y + node.header * 0.62,
                           textAnchor: "end",
                           fill: mutedInk,
-                          className: "font-mono text-xs",
+                          className: "font-mono text-caption",
                           children: node.kind ?? (kind === "EntityRelationship" ? "entity" : "table")
                         }
                       ),
@@ -281,7 +281,7 @@ function SchemaPlot(props) {
                               x: node.x + 12,
                               y,
                               fill: ink,
-                              className: "font-mono text-xs",
+                              className: "font-mono text-caption",
                               children: [
                                 field.primaryKey ? "# " : field.foreignKey ? "\u2192 " : "",
                                 short(field.label, 18)
@@ -295,7 +295,7 @@ function SchemaPlot(props) {
                               y,
                               textAnchor: "end",
                               fill: mutedInk,
-                              className: "font-mono text-xs",
+                              className: "font-mono text-caption",
                               children: [
                                 short(field.type, 17),
                                 field.unique ? " UQ" : "",
@@ -311,7 +311,7 @@ function SchemaPlot(props) {
                           x: node.x + 12,
                           y: node.y + node.header + node.inset + node.rowHeight * 0.4 + fieldLimit * node.rowHeight,
                           fill: mutedInk,
-                          className: "text-xs",
+                          className: "text-caption",
                           children: [
                             "+ ",
                             node.fields.length - fieldLimit,
@@ -338,7 +338,7 @@ function SchemaPlot(props) {
                               x: node.x + 12,
                               y: y + 20,
                               fill: mutedInk,
-                              className: "font-mono text-xs",
+                              className: "font-mono text-caption",
                               children: "INDEXES"
                             }
                           ),
@@ -349,7 +349,7 @@ function SchemaPlot(props) {
                                 x: node.x + 12,
                                 y: y + 40 + i * 20,
                                 fill: mutedInk,
-                                className: "font-mono text-xs",
+                                className: "font-mono text-caption",
                                 children: short(
                                   index2,
                                   Math.floor(node.width / 7) - 4

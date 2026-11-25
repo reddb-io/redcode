@@ -1,15 +1,13 @@
-import { TextField } from "@opencode/ui/text-field"
+import { ReactView } from "@/runtime/react/view"
+import { ErrorScreen } from "./error.react"
 import type { captureException } from "@sentry/solid"
-import { Logo } from "@opencode/ui/logo"
-import { Button } from "@opencode/ui/button"
-import { Component, createSignal, onCleanup, onMount, Show } from "solid-js"
+import { type Component, onCleanup, onMount } from "solid-js"
 import { createStore } from "solid-js/store"
 import { Predicate } from "effect"
 import { Updater } from "@opencode/gui-extensions/updater"
 import { usePlatform } from "@/runtime/platform/platform"
 import { useLanguage } from "@/runtime/i18n/language"
 import { createIpcClients } from "@/runtime/extension/ipc"
-import { Icon } from "@opencode/ui/icon"
 import { errorDescriptionKey, errorStatus } from "./description"
 
 export type InitError = {
@@ -318,87 +316,27 @@ export const ErrorPage: Component<ErrorPageProps> = (props) => {
   }
 
   return (
-    <div
-      class="relative flex-1 h-full w-full min-h-0 min-w-0 overflow-y-auto flex flex-col items-center justify-start sm:justify-center p-4 sm:p-8 font-sans"
-    >
-      <div class="w-full max-w-3xl flex flex-col items-center justify-center gap-6 sm:gap-8 my-auto">
-        <Logo />
-        <div class="flex flex-col items-center gap-2 text-center">
-          <h1 class="text-heading text-foreground">
-            {language.t(status() ? "error.page.title.status" : "error.page.title")}
-          </h1>
-          <p class="text-body text-ink-muted">
-            {status()
-              ? language.t("error.page.description.status", { status: status()! })
-              : language.t(errorDescriptionKey(props.error))}
-          </p>
-        </div>
-        <TextField
-          value={formattedError()}
-          readOnly
-          copyable
-          multiline
-          class="max-h-96 w-full font-mono text-xs no-scrollbar"
-          label={language.t("error.page.details.label")}
-          hideLabel
-        />
-        <div class="flex flex-row items-center justify-center gap-3 flex-wrap max-w-64">
-          <Button size="large" onClick={platform.restart}>
-            {language.t(platform.platform === "web" ? "error.page.action.reload" : "error.page.action.restart")}
-          </Button>
-          <Show when={platform.platform === "desktop" && platform.exportDebugLogs}>
-            <Button size="large" variant="ghost" onClick={exportDebugLogs}>
-              {language.t("error.page.action.exportLogs")}
-            </Button>
-          </Show>
-          <Show when={store.captureException}>
-            {(capture) => {
-              const [reported, setReported] = createSignal(false)
-
-              return (
-                <Button
-                  size="large"
-                  disabled={reported()}
-                  onClick={() => {
-                    capture()(props.error)
-                    setReported(true)
-                  }}
-                >
-                  {language.t(reported() ? "error.page.action.reported" : "error.page.action.report")}
-                </Button>
-              )
-            }}
-          </Show>
-          <Show when={updater()?.state()?.upgradable}>
-            <Button size="large" variant="ghost" onClick={upgrade}>
-              {language.t("error.page.action.upgrade")}
-            </Button>
-          </Show>
-        </div>
-        <Show when={store.actionError}>
-          {(message) => <p class="text-caption text-feedback-danger-foreground text-center max-w-2xl">{message()}</p>}
-        </Show>
-        <div class="flex flex-col items-center gap-2 text-caption text-ink-muted text-center">
-          <div class="flex flex-wrap items-center justify-center gap-1">
-            {language.t("error.page.report.prefix")}
-            <button
-              type="button"
-              class="flex items-center gap-1 rounded-sm text-foreground underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
-              onClick={() => platform.openExternal("https://github.com/reddb-io/redcode/issues/new")}
-            >
-              <div>{language.t("error.page.report.discord")}</div>
-              <Icon name="discord" class="text-foreground" />
-            </button>
-          </div>
-          <Show when={platform.version}>
-            {(version) => (
-              <p class="text-caption text-ink-muted tabular-nums">
-                {language.t("error.page.version", { version: version() })}
-              </p>
-            )}
-          </Show>
-        </div>
-      </div>
-    </div>
+    <ReactView
+      component={ErrorScreen}
+      props={{
+        t: language.t,
+        locale: language.locale(),
+        title: language.t(status() ? "error.page.title.status" : "error.page.title"),
+        description: status()
+          ? language.t("error.page.description.status", { status: status()! })
+          : language.t(errorDescriptionKey(props.error)),
+        details: formattedError(),
+        restartLabel: language.t(
+          platform.platform === "web" ? "error.page.action.reload" : "error.page.action.restart",
+        ),
+        restart: platform.restart,
+        exportLogs: platform.platform === "desktop" && platform.exportDebugLogs ? exportDebugLogs : undefined,
+        report: store.captureException ? () => store.captureException?.(props.error) : undefined,
+        upgrade: updater()?.state()?.upgradable ? upgrade : undefined,
+        issue: () => platform.openExternal("https://github.com/reddb-io/redcode/issues/new"),
+        actionError: store.actionError,
+        version: platform.version,
+      }}
+    />
   )
 }

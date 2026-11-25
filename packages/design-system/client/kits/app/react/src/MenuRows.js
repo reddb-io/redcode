@@ -8,7 +8,7 @@ function MenuRows({ items, size, slots }) {
     /* @__PURE__ */ jsxs(Menu.Group, { className: slots.group(), children: [
       group.heading !== void 0 && /* @__PURE__ */ jsx(Menu.GroupLabel, { className: slots.heading(), children: group.heading }),
       group.items.map((item) => /* @__PURE__ */ jsxs(Menu.Item, { label: item.label, disabled: item.disabled, onClick: () => item.onselect?.(), className: slots.item(), render: item.href !== void 0 ? /* @__PURE__ */ jsx("a", { href: item.href }) : void 0, children: [
-        hasIcons && /* @__PURE__ */ jsx("span", { "data-menu-item-icon": true, "aria-hidden": "true", className: slots.icon(), children: item.icon && /* @__PURE__ */ jsx(Icon, { icon: item.icon, size, "aria-hidden": "true" }) }),
+        hasIcons && /* @__PURE__ */ jsx("span", { "data-menu-item-icon": true, "aria-hidden": "true", className: slots.icon(), children: item.icon && /* @__PURE__ */ jsx(Icon, { icon: item.icon, size: "text", "aria-hidden": "true" }) }),
         item.label
       ] }, item.id))
     ] })

@@ -37,7 +37,7 @@ function Navbar(props) {
       /* @__PURE__ */ jsxs("div", { "data-navbar-arrangement": "compact", className: styles.compact(), children: [
         /* @__PURE__ */ jsx("div", { "data-navbar-region": "brand", className: styles.brand(), children: brand }),
         /* @__PURE__ */ jsxs(Button, { ref: toggle, variant: "ghost", className: styles.toggle(), "data-navbar-toggle": true, "aria-label": menuLabel, "aria-expanded": active, "aria-controls": `${id}-menu`, onClick: () => setActive(!active), children: [
-          /* @__PURE__ */ jsx(Icon, { icon: "menu", size: "sm", "aria-hidden": "true" }),
+          /* @__PURE__ */ jsx(Icon, { icon: "menu", size: "text", "aria-hidden": "true" }),
           menuLabel
         ] })
       ] }),

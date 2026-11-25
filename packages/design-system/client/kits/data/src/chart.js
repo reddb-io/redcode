@@ -21,7 +21,7 @@ function observeChartRhythm(probe, update) {
   observer.observe(probe);
   return () => observer.disconnect();
 }
-const AXIS_TEXT_PX = 12;
+const AXIS_TEXT_PX = 14;
 const AXIS_CHARACTER_EM = 0.56;
 const AXIS_TICK_ROOM_PX = 6;
 const MIN_VALUE_GUTTER_PX = 24;

@@ -1,4 +1,5 @@
 import { tv } from "tailwind-variants";
+import { typeRoleMerge } from "./type-roles.js";
 const timeline = tv({
   slots: {
     root: "m-0 grid list-none gap-[var(--reddb-spatial-gap-md)] ps-0 text-foreground",
@@ -12,11 +13,11 @@ const timeline = tv({
       "group-last:after:hidden"
     ].join(" "),
     content: "grid min-w-0 gap-[var(--reddb-spatial-gap-sm)]",
-    time: "font-mono text-sm tabular-nums text-ink-muted",
+    time: "text-code tabular-nums text-ink-muted",
     title: "font-medium text-foreground",
-    description: "m-0 text-sm text-ink-muted"
+    description: "m-0 text-body text-ink-muted"
   }
-});
+}, typeRoleMerge);
 export {
   timeline
 };

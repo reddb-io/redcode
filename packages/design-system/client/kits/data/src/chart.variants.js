@@ -1,3 +1,4 @@
+import { typeRoleMerge } from "@reddb-io/design-system/base/recipes";
 import { tv } from "tailwind-variants";
 const chartFigure = tv({
   base: [
@@ -6,7 +7,7 @@ const chartFigure = tv({
     "[--color-surface-200:var(--reddb-color-muted)]",
     "[--color-surface-300:var(--reddb-color-muted)]",
     "[--color-surface-content:var(--reddb-color-foreground)]",
-    "[&_.lc-axis-tick-label]:text-xs [&_.lc-axis-tick-label]:font-regular [&_.lc-axis-tick-label]:text-ink-muted"
+    "[&_.lc-axis-tick-label]:text-caption [&_.lc-axis-tick-label]:font-regular [&_.lc-axis-tick-label]:text-ink-muted"
   ].join(" "),
   variants: {
     /** The Series Role (1–6) the chart's marks are drawn in. */
@@ -29,7 +30,7 @@ const chartFigure = tv({
     }
   },
   defaultVariants: { series: 1, fluid: false }
-});
+}, typeRoleMerge);
 export {
   chartFigure
 };

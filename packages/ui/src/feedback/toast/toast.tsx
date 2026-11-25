@@ -5,7 +5,7 @@ import type { ComponentProps, JSX } from "solid-js"
 import { createContext, onCleanup, onMount, splitProps, useContext } from "solid-js"
 import { Portal } from "solid-js/web"
 import { useI18n } from "../../context/i18n"
-import "../../actions/button/button.css"
+import { button } from "@reddb-io/design-system/contracts/button"
 import "./toast.css"
 
 export interface ToastRegionProps extends ToasterProps {}
@@ -287,6 +287,7 @@ function createToastActions(entry: ActiveToast) {
           data-component="button-v2"
           data-variant={action.variant === "secondary" ? "ghost" : "neutral"}
           data-size="small"
+          class={button({ size: "sm", variant: action.variant === "secondary" ? "ghost" : "secondary" })}
           data-action-variant={action.variant ?? "primary"}
           onClick={() => {
             const onClick = entry.options.actions?.[index]?.onClick

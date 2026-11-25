@@ -3,7 +3,7 @@ import { type LoadingIndicatorSize } from "../../src/loading-indicator.variants"
 export interface LoadingIndicatorProps extends ComponentPropsWithRef<"div"> {
     /** What is being waited for. */
     label?: string;
-    /** Density-responsive glyph size. */
+    /** Spinner and label size: `sm`, `md` (the default) or `lg`. Beside its label the spinner follows the label's type role; with the label hidden it keeps the Density Icon size (ADR 0054). */
     size?: LoadingIndicatorSize;
     /** Hide the sentence visually while retaining its announcement. */
     labelHidden?: boolean;

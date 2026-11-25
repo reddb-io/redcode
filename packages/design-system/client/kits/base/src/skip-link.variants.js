@@ -2,7 +2,7 @@ import { tv } from "tailwind-variants";
 const skipLink = tv({
   base: [
     "sr-only focus:not-sr-only",
-    "focus:fixed focus:start-[var(--reddb-spatial-inset-md)] focus:top-[var(--reddb-spatial-inset-md)] focus:z-50",
+    "focus:fixed focus:start-[var(--reddb-spatial-inset-md)] focus:top-[var(--reddb-spatial-inset-md)] focus:z-[var(--reddb-layer-tooltip)]",
     "focus:h-auto focus:w-auto focus:overflow-visible focus:whitespace-normal",
     "focus:rounded-md focus:border focus:border-muted focus:bg-background focus:text-foreground",
     "focus:px-[var(--reddb-spatial-inset-md)] focus:py-[var(--reddb-spatial-inset-sm)]",

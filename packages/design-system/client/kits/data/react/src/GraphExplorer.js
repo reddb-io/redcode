@@ -8,14 +8,15 @@ import {
   Link,
   EmptyState,
   StateIllustration,
-  quietControl
+  ToggleButton,
+  ToggleGroup
 } from "@reddb-io/design-system/base";
 import {
   graphEmptyCompact,
   searchEmpty
 } from "@reddb-io/design-system/base/illustrations";
 import { Graph } from "./Graph.js";
-import { Table } from "./Table.js";
+import { DataTable } from "./DataTable.js";
 import {
   shapeGraphData,
   detectGraphCommunities
@@ -29,6 +30,9 @@ import {
   graphNodeCentrality
 } from "../../src/graph-explorer.js";
 import { explorerClasses as styles } from "../../src/diff-explorer.variants.js";
+import {
+  graphExplorerViews
+} from "../../src/core/explorer-modes.js";
 function GraphExplorer({
   label,
   data,
@@ -162,20 +166,16 @@ function GraphExplorer({
       children: error ? /* @__PURE__ */ jsx("p", { role: "alert", className: styles.detail, children: error }) : /* @__PURE__ */ jsxs(Fragment, { children: [
         active.summary && /* @__PURE__ */ jsx("p", { role: "status", className: styles.detail, children: active.summary }),
         /* @__PURE__ */ jsxs("div", { className: styles.toolbar, children: [
-          ["canvas", "svg", "table"].map((mode) => /* @__PURE__ */ jsx(
-            "button",
+          /* @__PURE__ */ jsx(
+            ToggleGroup,
             {
-              type: "button",
-              className: quietControl({
-                selected: view === mode,
-                class: "px-[var(--reddb-spatial-inset-sm)]"
-              }),
-              "aria-pressed": view === mode,
-              onClick: () => setView(mode),
-              children: mode
-            },
-            mode
-          )),
+              legend: "Graph view",
+              options: graphExplorerViews,
+              value: view,
+              className: "[&>legend]:sr-only",
+              onValueChange: (next) => setView(next)
+            }
+          ),
           /* @__PURE__ */ jsxs("label", { children: [
             "Filter graph",
             " ",
@@ -205,22 +205,36 @@ function GraphExplorer({
             )
           ] }),
           (filter || hidden.size > 0) && /* @__PURE__ */ jsx(Button, { onClick: clear, children: "Clear graph filters" }),
-          /* @__PURE__ */ jsx(Button, { "aria-pressed": grouped, onClick: () => setGrouped(!grouped), children: "Group communities" }),
-          /* @__PURE__ */ jsx(Button, { "aria-pressed": bundled, onClick: () => setBundled(!bundled), children: "Bundle edges" }),
           /* @__PURE__ */ jsx(
-            Button,
+            ToggleButton,
             {
-              "aria-pressed": collapsed.length > 0,
-              onClick: () => setCollapsed(collapsed.length ? [] : communities),
-              children: collapsed.length ? "Expand communities" : "Collapse communities"
+              label: "Group communities",
+              pressed: grouped,
+              onPressedChange: setGrouped
+            }
+          ),
+          /* @__PURE__ */ jsx(
+            ToggleButton,
+            {
+              label: "Bundle edges",
+              pressed: bundled,
+              onPressedChange: setBundled
+            }
+          ),
+          /* @__PURE__ */ jsx(
+            ToggleButton,
+            {
+              label: collapsed.length ? "Expand communities" : "Collapse communities",
+              pressed: collapsed.length > 0,
+              onPressedChange: (next) => setCollapsed(next ? communities : [])
             }
           ),
           onquery && /* @__PURE__ */ jsx(
-            Button,
+            ToggleButton,
             {
-              "aria-pressed": queryOpen,
-              onClick: () => setQueryOpen(!queryOpen),
-              children: "Query graph"
+              label: "Query graph",
+              pressed: queryOpen,
+              onPressedChange: setQueryOpen
             }
           ),
           override && /* @__PURE__ */ jsx(Button, { onClick: reset, children: "Reset graph" }),
@@ -388,7 +402,7 @@ function GraphExplorer({
           }
         ) : view === "table" ? /* @__PURE__ */ jsxs(Fragment, { children: [
           /* @__PURE__ */ jsx(
-            Table,
+            DataTable,
             {
               caption: label,
               captionHidden: true,
@@ -406,7 +420,7 @@ function GraphExplorer({
             }
           ),
           /* @__PURE__ */ jsx(
-            Table,
+            DataTable,
             {
               caption: `${label} relationships`,
               rows: filtered.edges.map((edge2) => ({

@@ -1,4 +1,4 @@
-import { gridList, list } from "@reddb-io/design-system/base/recipes";
+import { gridList, list, typeRoleMerge } from "@reddb-io/design-system/base/recipes";
 import { tv } from "tailwind-variants";
 const ROOT = list({
   gap: "md",
@@ -14,10 +14,10 @@ const productList = tv({
     // The product's name reads in the Theme's `heading` role, through the
     // Base Heading (ADR 0025).
     name: "min-w-0",
-    price: "shrink-0 text-sm font-medium text-foreground",
-    description: "text-sm text-ink-muted",
+    price: "shrink-0 text-label text-foreground",
+    description: "text-body text-ink-muted",
     actions: "flex flex-wrap items-center gap-[var(--reddb-spatial-gap-sm)]",
-    empty: "text-sm text-ink-muted"
+    empty: "text-body text-ink-muted"
   },
   variants: {
     columns: {
@@ -28,7 +28,7 @@ const productList = tv({
     }
   },
   defaultVariants: { columns: 2 }
-});
+}, typeRoleMerge);
 export {
   productList
 };

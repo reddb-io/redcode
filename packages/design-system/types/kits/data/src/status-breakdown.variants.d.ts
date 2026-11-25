@@ -6,10 +6,10 @@ export declare const statusBreakdown: import("tailwind-variants").TVReturnType<{
             root?: import("tailwind-variants").ClassValue;
             list?: import("tailwind-variants").ClassValue;
             item?: import("tailwind-variants").ClassValue;
+            empty?: import("tailwind-variants").ClassValue;
             total?: import("tailwind-variants").ClassValue;
             segment?: import("tailwind-variants").ClassValue;
             count?: import("tailwind-variants").ClassValue;
-            empty?: import("tailwind-variants").ClassValue;
             swatch?: import("tailwind-variants").ClassValue;
         };
     };
@@ -21,10 +21,10 @@ export declare const statusBreakdown: import("tailwind-variants").TVReturnType<{
             root?: import("tailwind-variants").ClassValue;
             list?: import("tailwind-variants").ClassValue;
             item?: import("tailwind-variants").ClassValue;
+            empty?: import("tailwind-variants").ClassValue;
             total?: import("tailwind-variants").ClassValue;
             segment?: import("tailwind-variants").ClassValue;
             count?: import("tailwind-variants").ClassValue;
-            empty?: import("tailwind-variants").ClassValue;
             swatch?: import("tailwind-variants").ClassValue;
         };
     };
@@ -47,10 +47,10 @@ export declare const statusBreakdown: import("tailwind-variants").TVReturnType<{
             root?: import("tailwind-variants").ClassValue;
             list?: import("tailwind-variants").ClassValue;
             item?: import("tailwind-variants").ClassValue;
+            empty?: import("tailwind-variants").ClassValue;
             total?: import("tailwind-variants").ClassValue;
             segment?: import("tailwind-variants").ClassValue;
             count?: import("tailwind-variants").ClassValue;
-            empty?: import("tailwind-variants").ClassValue;
             swatch?: import("tailwind-variants").ClassValue;
         };
     };

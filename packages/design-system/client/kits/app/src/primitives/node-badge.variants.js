@@ -1,4 +1,5 @@
 import { tv } from "tailwind-variants";
+import { typeRoleMerge } from "@reddb-io/design-system/base/recipes";
 const NODE_STATUS_TONES = {
   /** Reachable, and keeping up. */
   online: "success",
@@ -31,14 +32,14 @@ const LABELLED = {
 };
 const nodeBadge = tv({
   slots: {
-    root: "inline-flex items-center gap-[var(--reddb-spatial-gap-md)] rounded-full border border-muted px-2.5 py-1 text-xs leading-tight whitespace-nowrap",
+    root: "inline-flex items-center gap-[var(--reddb-spatial-gap-md)] rounded-full border border-muted px-2.5 py-1 text-caption leading-tight whitespace-nowrap",
     dot: "size-2 shrink-0 rounded-full border",
     name: "font-mono text-foreground",
     status: ""
   },
   variants: { status: STATUS, labelled: LABELLED },
   defaultVariants: { status: "unknown", labelled: true }
-});
+}, typeRoleMerge);
 const NODE_STATUSES = Object.keys(STATUS);
 export {
   NODE_STATUSES,

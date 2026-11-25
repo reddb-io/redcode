@@ -4,6 +4,7 @@ import { Fragment as Fragment2 } from "react";
 import { useControllableValue } from "@reddb-io/design-system/base";
 import Frame from "./VisualizationFrame.js";
 import Mark from "./VisualizationMark.js";
+import HitStroke from "./HitStroke.js";
 import {
   ink,
   mutedInk,
@@ -13,7 +14,7 @@ import {
 } from "../../src/visualization.js";
 import Canvas from "./ChartCanvas.js";
 import SankeyLayout from "./SankeyLayout.js";
-import { sankeyData } from "../../src/sankey.js";
+import { sankeyData, sankeyRows } from "../../src/sankey.js";
 function Sankey(props) {
   const {
     data,
@@ -38,11 +39,7 @@ function Sankey(props) {
     setSelected(id);
   }
   const flow = sankeyData(data);
-  const rows = data.links.map((l) => ({
-    ...l,
-    value: format(l.value),
-    description: `${data.nodes.find((n) => n.id === l.source)?.label} \u2192 ${data.nodes.find((n) => n.id === l.target)?.label}`
-  }));
+  const rows = sankeyRows(data, format);
   return /* @__PURE__ */ jsx(Fragment, { children: /* @__PURE__ */ jsx(
     Frame,
     {
@@ -81,26 +78,29 @@ function Sankey(props) {
                       const x0 = link.source.x1;
                       const x1 = link.target.x0;
                       const mid = (x0 + x1) / 2;
-                      return /* @__PURE__ */ jsx(Fragment2, { children: /* @__PURE__ */ jsx(
+                      return /* @__PURE__ */ jsx(Fragment2, { children: /* @__PURE__ */ jsxs(
                         Mark,
                         {
                           id: link.id,
                           label: `${link.label}: ${format(link.value)}`,
                           selected,
                           onSelect: interactive ? select : void 0,
-                          children: /* @__PURE__ */ jsx(
-                            "path",
-                            {
-                              d: `M${x0},${link.y0} C${mid},${link.y0} ${mid},${link.y1} ${x1},${link.y1}`,
-                              fill: "none",
-                              stroke: seriesColor(
-                                link.series ?? link.source.series,
-                                link.color ?? (link.series === void 0 ? link.source.color : void 0)
-                              ),
-                              strokeOpacity: selected === link.id ? 0.8 : 0.25,
-                              strokeWidth: Math.max(1, link.width)
-                            }
-                          )
+                          children: [
+                            interactive ? /* @__PURE__ */ jsx(HitStroke, { d: `M${x0},${link.y0} C${mid},${link.y0} ${mid},${link.y1} ${x1},${link.y1}` }) : null,
+                            /* @__PURE__ */ jsx(
+                              "path",
+                              {
+                                d: `M${x0},${link.y0} C${mid},${link.y0} ${mid},${link.y1} ${x1},${link.y1}`,
+                                fill: "none",
+                                stroke: seriesColor(
+                                  link.series ?? link.source.series,
+                                  link.color ?? (link.series === void 0 ? link.source.color : void 0)
+                                ),
+                                strokeOpacity: selected === link.id ? 0.8 : 0.25,
+                                strokeWidth: Math.max(1, link.width)
+                              }
+                            )
+                          ]
                         }
                       ) }, index);
                     }),
@@ -131,7 +131,7 @@ function Sankey(props) {
                                 y: (node.y0 + node.y1) / 2 - 3,
                                 textAnchor: node.x0 < 1 ? "end" : "start",
                                 fill: ink,
-                                className: "text-xs",
+                                className: "text-caption",
                                 children: short(node.label, 15)
                               }
                             ),
@@ -142,7 +142,7 @@ function Sankey(props) {
                                 y: (node.y0 + node.y1) / 2 + 13,
                                 textAnchor: node.x0 < 1 ? "end" : "start",
                                 fill: mutedInk,
-                                className: "font-mono text-xs",
+                                className: "font-mono text-caption",
                                 children: format(node.value)
                               }
                             )

@@ -22,7 +22,7 @@ const POSITION = {
 const indicator = tv({
   slots: {
     root: "relative inline-flex",
-    marker: "absolute z-10 inline-flex"
+    marker: "absolute z-[var(--reddb-layer-raised)] inline-flex"
   },
   variants: { position: POSITION },
   defaultVariants: { position: "top-end" }

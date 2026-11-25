@@ -1,4 +1,5 @@
 import { tv } from "tailwind-variants";
+import { typeRoleMerge } from "./type-roles.js";
 import { TONES } from "./tone.js";
 const VARIANT = {
   outline: {},
@@ -52,18 +53,6 @@ const TONE = {
     description: "text-[var(--reddb-color-feedback-info-foreground)]",
     body: "text-[var(--reddb-color-feedback-info-foreground)]",
     footer: "text-[var(--reddb-color-feedback-info-foreground)]"
-  },
-  /**
-   * @deprecated The accent is an emphasis, not a tone (ADR 0026): kept one
-   * release with its accent fill, then removed. Use a tone, or `neutral`.
-   */
-  brand: {
-    root: "bg-[var(--reddb-color-primary)] text-[var(--reddb-color-on-primary)]",
-    header: "text-[var(--reddb-color-on-primary)]",
-    title: "text-[var(--reddb-color-on-primary)]",
-    description: "text-[var(--reddb-color-on-primary)]",
-    body: "text-[var(--reddb-color-on-primary)]",
-    footer: "text-[var(--reddb-color-on-primary)]"
   }
 };
 const PADDING = {
@@ -122,7 +111,7 @@ const MEDIA_SPAN = {
   background: {
     root: "relative isolate",
     media: "absolute inset-0 size-full",
-    content: "relative z-10"
+    content: "relative z-[var(--reddb-layer-raised)]"
   }
 };
 const card = tv({
@@ -132,10 +121,11 @@ const card = tv({
     media: "relative shrink-0 overflow-hidden [&>*]:block [&>*]:w-full",
     content: "",
     header: "flex flex-col gap-[var(--reddb-spatial-gap-sm)] border-b",
-    titleRow: "flex items-center gap-[var(--reddb-spatial-gap-sm)]",
+    // The title's glyph follows the title (ADR 0054).
+    titleRow: "flex items-center gap-[var(--reddb-glyph-gap)] [--reddb-glyph-size:var(--reddb-type-body-glyph-size)] [--reddb-glyph-gap:var(--reddb-type-body-glyph-gap)]",
     icon: "shrink-0",
-    title: "text-base font-medium leading-tight",
-    description: "max-w-prose text-sm",
+    title: "text-heading leading-tight",
+    description: "max-w-prose text-body",
     // Keep native inline flow (text + emphasis is still one sentence) while
     // spacing direct body blocks. A flex column would split inline content.
     body: "flow-root flex-1 space-y-[var(--reddb-spatial-layout-gap-sm)]",
@@ -158,15 +148,6 @@ const card = tv({
       variant: "outline",
       tone: "neutral",
       class: { root: "border-muted", header: "border-muted", footer: "border-muted" }
-    },
-    {
-      variant: "outline",
-      tone: "brand",
-      class: {
-        root: "border-[var(--reddb-color-primary)]",
-        header: "border-[var(--reddb-color-primary)]",
-        footer: "border-[var(--reddb-color-primary)]"
-      }
     },
     {
       variant: "outline",
@@ -243,10 +224,9 @@ const card = tv({
     ratio: "16/9",
     span: "two-fifths"
   }
-});
+}, typeRoleMerge);
 const CARD_VARIANTS = Object.keys(VARIANT);
 const CARD_TONES = TONES;
-const DEPRECATED_CARD_TONES = ["brand"];
 const CARD_PADDINGS = Object.keys(PADDING);
 const CARD_ACTIONS_ALIGNMENTS = Object.keys(
   ACTIONS_ALIGN
@@ -270,6 +250,5 @@ export {
   CARD_RATIO_VALUES,
   CARD_TONES,
   CARD_VARIANTS,
-  DEPRECATED_CARD_TONES,
   card
 };

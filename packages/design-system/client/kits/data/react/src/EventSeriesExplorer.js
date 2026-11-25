@@ -2,7 +2,7 @@ import { Fragment, jsx, jsxs } from "react/jsx-runtime";
 import { useState } from "react";
 import { Button, quietControl } from "@reddb-io/design-system/base";
 import { TimeSeries } from "./TimeSeries.js";
-import { Table } from "./Table.js";
+import { DataTable } from "./DataTable.js";
 import {
   normalizeEventPoints,
   bucketOptions,
@@ -53,7 +53,7 @@ function EventSeriesExplorer({
               type: "button",
               className: quietControl({
                 selected: mode === "rate",
-                class: "px-[var(--reddb-spatial-inset-sm)]"
+                class: "min-h-[var(--reddb-spatial-control-height-sm)] px-[var(--reddb-spatial-inset-sm)]"
               }),
               "aria-pressed": mode === "rate",
               onClick: () => setMode("rate"),
@@ -69,7 +69,7 @@ function EventSeriesExplorer({
               type: "button",
               className: quietControl({
                 selected: mode === "line",
-                class: "px-[var(--reddb-spatial-inset-sm)]"
+                class: "min-h-[var(--reddb-spatial-control-height-sm)] px-[var(--reddb-spatial-inset-sm)]"
               }),
               "aria-pressed": mode === "line",
               onClick: () => setMode("line"),
@@ -147,8 +147,14 @@ function EventSeriesExplorer({
             interactive: true
           }
         ),
+        /* @__PURE__ */ jsxs("p", { className: `${styles.detail} shrink-0`, children: [
+          visible.length,
+          " inserts",
+          context ? ` \xB7 ${context}` : "",
+          selection !== null ? ` \xB7 bucket ${formatEventTime(selection)}` : ""
+        ] }),
         /* @__PURE__ */ jsx(
-          Table,
+          DataTable,
           {
             caption: `${label} events`,
             captionHidden: true,
@@ -158,13 +164,7 @@ function EventSeriesExplorer({
             pageSize: 80,
             columnVisibility: false
           }
-        ),
-        /* @__PURE__ */ jsxs("p", { className: styles.detail, children: [
-          visible.length,
-          " inserts",
-          context ? ` \xB7 ${context}` : "",
-          selection !== null ? ` \xB7 bucket ${formatEventTime(selection)}` : ""
-        ] })
+        )
       ] })
     }
   );

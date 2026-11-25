@@ -20,10 +20,12 @@ export interface NumberFieldProps extends Omit<ComponentPropsWithRef<"input">, "
     /** Application validation message associated with the native input. */
     error?: string;
     /** Shared control height for the input and both buttons. Defaults to md. */
+    size?: InputSize;
+    /** Deprecated alias of `size` (ADR 0026), removed in the next month release. */
     controlSize?: InputSize;
     /** Accessible decrement action name; defaults to Decrease followed by label. */
     decrementLabel?: string;
     /** Accessible increment action name; defaults to Increase followed by label. */
     incrementLabel?: string;
 }
-export declare function NumberField({ label, value, defaultValue, onValueChange, min, max, step, help, error, controlSize, decrementLabel, incrementLabel, id, required, disabled, readOnly, className, ref, ...rest }: NumberFieldProps): import("react").JSX.Element;
+export declare function NumberField({ label, value, defaultValue, onValueChange, min, max, step, help, error, size: sizeProp, controlSize: legacySize, decrementLabel, incrementLabel, id, required, disabled, readOnly, className, ref, ...rest }: NumberFieldProps): import("react").JSX.Element;

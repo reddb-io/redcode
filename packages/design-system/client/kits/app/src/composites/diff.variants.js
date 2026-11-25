@@ -1,4 +1,5 @@
 import { tv } from "tailwind-variants";
+import { typeRoleMerge } from "@reddb-io/design-system/base/recipes";
 const DIFF_MODES = ["inline", "side-by-side"];
 const CHANGE = {
   context: "bg-transparent text-foreground",
@@ -11,14 +12,14 @@ const diff = tv({
     root: "w-full min-w-0 overflow-hidden rounded-lg border border-muted bg-transparent text-foreground",
     split: "w-full min-w-0",
     pane: "min-w-0",
-    heading: "border-b border-muted px-[var(--reddb-spatial-inset-md)] py-[var(--reddb-spatial-inset-sm)] text-sm font-medium text-foreground",
-    lines: "m-0 overflow-x-auto py-[var(--reddb-spatial-inset-sm)] font-mono text-sm leading-relaxed focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus",
+    heading: "border-b border-muted px-[var(--reddb-spatial-inset-md)] py-[var(--reddb-spatial-inset-sm)] text-label text-foreground",
+    lines: "m-0 overflow-x-auto py-[var(--reddb-spatial-inset-sm)] text-code leading-relaxed focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus",
     line: "grid grid-cols-[auto_1fr] gap-[var(--reddb-spatial-gap-sm)] px-[var(--reddb-spatial-inset-md)] whitespace-pre",
     marker: "select-none"
   },
   variants: { change: CHANGE },
   defaultVariants: { change: "context" }
-});
+}, typeRoleMerge);
 export {
   DIFF_MODES,
   diff

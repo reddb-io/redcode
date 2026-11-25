@@ -7,7 +7,7 @@ const dateRangeField = tv({
     // side by side from the DS's `md` container step (28rem), stacked below.
     // The size container is a wrapper of its own, so the native fieldset —
     // the component's root — keeps its rendering and its intrinsic width.
-    frame: "@container/range-field min-w-0",
+    frame: "@container/range-field w-full min-w-0",
     fields: "grid gap-[var(--reddb-spatial-layout-gap-sm)] @md/range-field:grid-cols-2",
     help: fieldset().help(),
     error: fieldset().error()

@@ -1,7 +1,7 @@
 import { type ComponentPropsWithRef, type ReactNode } from "react";
 import { type IconGlyph } from "./Icon";
 import { type ImageAsset } from "./Image";
-import { type CardActionsAlign, type CardMediaFit, type CardMediaPosition, type CardMediaRatio, type CardMediaSpan, type CardOrientation, type CardPadding, type CardTone, type CardVariant, type DeprecatedCardTone } from "../../src/card.variants";
+import { type CardActionsAlign, type CardMediaFit, type CardMediaPosition, type CardMediaRatio, type CardMediaSpan, type CardOrientation, type CardPadding, type CardTone, type CardVariant } from "../../src/card.variants";
 export interface CardProps extends Omit<ComponentPropsWithRef<"div">, "title" | "children" | "className"> {
     /** Edge treatment. Defaults to `outline`. */
     variant?: CardVariant;
@@ -16,9 +16,9 @@ export interface CardProps extends Omit<ComponentPropsWithRef<"div">, "title" | 
     /**
      * What the Card means: the shared tone vocabulary (ADR 0026), each on its
      * Feedback Role's surface and paired readable foreground. Defaults to
-     * `neutral`. `brand` is deprecated for one release.
+     * `neutral`.
      */
-    tone?: CardTone | DeprecatedCardTone;
+    tone?: CardTone;
     /** Density-owned inset applied to every section. Defaults to `md`. */
     padding?: CardPadding;
     /** Main-axis alignment for footer actions. Defaults to `start`. */

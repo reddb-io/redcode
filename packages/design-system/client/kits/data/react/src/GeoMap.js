@@ -223,11 +223,11 @@ function GeoMap(props) {
           }
         ),
         attribution ? /* @__PURE__ */ jsx(Fragment, { children: /* @__PURE__ */ jsx("p", { className: styles.description(), children: attribution }) }) : null,
-        /* @__PURE__ */ jsxs("details", { className: styles.data(), children: [
+        /* @__PURE__ */ jsxs("details", { className: styles.data(), "data-mark-equivalent": interactive ? "each" : void 0, children: [
           /* @__PURE__ */ jsxs(
             "summary",
             {
-              className: "w-fit cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
+              className: "w-fit min-h-[var(--reddb-spatial-control-height-sm)] content-center cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
               children: [
                 dataLabel,
                 " (",
@@ -243,6 +243,7 @@ function GeoMap(props) {
                 {
                   variant: "ghost",
                   size: "sm",
+                  "data-equivalent-for": point.id,
                   "aria-pressed": selected === point.id,
                   onClick: () => select(point.id),
                   children: point.label

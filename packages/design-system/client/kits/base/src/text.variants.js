@@ -2,6 +2,8 @@ import { tv } from "tailwind-variants";
 import { typeRoleMerge } from "./type-roles.js";
 const ROLE = {
   body: "text-body",
+  label: "text-label",
+  code: "text-code",
   caption: "text-caption"
 };
 const INK = {
@@ -22,14 +24,10 @@ const TEXT_ELEMENTS = ["p", "span", "div", "small"];
 function defaultTextInk(role) {
   return role === "caption" ? "muted" : "default";
 }
-const TEXT_TONES = TEXT_INKS;
-const defaultTextTone = defaultTextInk;
 export {
   TEXT_ELEMENTS,
   TEXT_INKS,
   TEXT_ROLES,
-  TEXT_TONES,
   defaultTextInk,
-  defaultTextTone,
   text
 };

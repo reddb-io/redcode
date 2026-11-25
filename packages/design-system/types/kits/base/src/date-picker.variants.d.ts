@@ -4,8 +4,8 @@ export declare const datePicker: import("tailwind-variants").TVReturnType<{
         [key: string]: import("tailwind-variants").ClassValue | {
             content?: import("tailwind-variants").ClassValue;
             root?: import("tailwind-variants").ClassValue;
-            field?: import("tailwind-variants").ClassValue;
             trigger?: import("tailwind-variants").ClassValue;
+            field?: import("tailwind-variants").ClassValue;
             calendar?: import("tailwind-variants").ClassValue;
         };
     };
@@ -14,8 +14,8 @@ export declare const datePicker: import("tailwind-variants").TVReturnType<{
         [x: string]: import("tailwind-variants").ClassValue | {
             content?: import("tailwind-variants").ClassValue;
             root?: import("tailwind-variants").ClassValue;
-            field?: import("tailwind-variants").ClassValue;
             trigger?: import("tailwind-variants").ClassValue;
+            field?: import("tailwind-variants").ClassValue;
             calendar?: import("tailwind-variants").ClassValue;
         };
     };
@@ -30,8 +30,8 @@ export declare const datePicker: import("tailwind-variants").TVReturnType<{
         [key: string]: import("tailwind-variants").ClassValue | {
             content?: import("tailwind-variants").ClassValue;
             root?: import("tailwind-variants").ClassValue;
-            field?: import("tailwind-variants").ClassValue;
             trigger?: import("tailwind-variants").ClassValue;
+            field?: import("tailwind-variants").ClassValue;
             calendar?: import("tailwind-variants").ClassValue;
         };
     };

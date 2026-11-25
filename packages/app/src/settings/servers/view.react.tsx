@@ -148,7 +148,7 @@ function ServerShell(props: {
             <Select
               {...association}
               data-action="settings-shell"
-              controlSize="sm"
+              size="sm"
               value={state.shell}
               options={options.map((option) => ({
                 value: option.value,

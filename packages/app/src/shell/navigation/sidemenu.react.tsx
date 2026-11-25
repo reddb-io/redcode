@@ -74,7 +74,7 @@ export function NavigationSidemenu(props: NavigationProps) {
             type="search"
             autoComplete="off"
             spellCheck={false}
-            controlSize="sm"
+            size="sm"
             value={view.query}
             placeholder={language.t("navigation.filter.placeholder")}
             className="ps-7 pe-7 bg-transparent [&::-webkit-search-cancel-button]:hidden"

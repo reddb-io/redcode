@@ -62,7 +62,7 @@ export function Notifications(props: {
                   <Select
                     {...association}
                     data-action={`settings-sounds-${channel.kind}`}
-                    controlSize="sm"
+                    size="sm"
                     options={props.sounds}
                     value={channel.sound}
                     onValueChange={channel.onSoundChange}

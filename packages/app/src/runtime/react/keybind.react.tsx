@@ -1,14 +1,6 @@
 /** @jsxImportSource react */
-import "../../../../ui/src/data-display/keybind/keybind.css"
+import { Kbd } from "@reddb-io/design-system/base/Kbd"
 
 export function Keybind(props: { keys: string[] }) {
-  return (
-    <div data-component="keybind-v2" data-variant="neutral">
-      {props.keys.map((key, index) => (
-        <div key={index} data-slot="keybind-v2-key">
-          <span data-slot="keybind-v2-label">{key}</span>
-        </div>
-      ))}
-    </div>
-  )
+  return <Kbd data-component="keybind-v2" keys={props.keys} size="sm" separator="" />
 }

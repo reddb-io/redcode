@@ -45,7 +45,7 @@ export function SessionVaultDockView(props: { services: ReturnType<typeof create
           name="vault-value"
           autoComplete="off"
           autoFocus
-          controlSize="lg"
+          size="lg"
           disabled={view.sending}
           aria-label={language.t("session.vault.request.value", { name: view.name })}
           placeholder={language.t("session.vault.request.placeholder")}

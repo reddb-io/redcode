@@ -104,7 +104,7 @@ function Treemap(props) {
                           x: node.x0 + 8,
                           y: node.y0 + 18,
                           fill: ink,
-                          className: "text-xs",
+                          className: "text-caption",
                           children: short(
                             node.data.label,
                             Math.floor((nw - 16) / 7)
@@ -117,7 +117,7 @@ function Treemap(props) {
                           x: node.x0 + 8,
                           y: node.y0 + 38,
                           fill: mutedInk,
-                          className: "font-mono text-xs",
+                          className: "font-mono text-caption",
                           children: format(node.value ?? 0)
                         }
                       ) }) : null

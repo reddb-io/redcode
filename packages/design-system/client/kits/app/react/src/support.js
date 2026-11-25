@@ -3,9 +3,7 @@ import { taskList } from "../../src/composites/task-list.variants.js";
 import { TASK_STATES, TASK_STATE_LABELS, TASK_STATE_TONES } from "../../src/composites/task-list.behavior.js";
 import {
   listRow,
-  LIST_ROW_SIZES,
-  DEPRECATED_LIST_ROW_DENSITIES,
-  LIST_ROW_DENSITIES
+  LIST_ROW_SIZES
 } from "../../src/primitives/list-row.variants.js";
 import { navItem } from "../../src/primitives/nav-item.variants.js";
 import {
@@ -18,8 +16,7 @@ import {
   pillDismiss,
   PILL_SIZES,
   PILL_TONES,
-  PILL_VARIANTS,
-  DEPRECATED_PILL_VARIANTS
+  PILL_VARIANTS
 } from "../../src/primitives/pill.variants.js";
 import { splitView } from "../../src/primitives/split-view.variants.js";
 import {
@@ -120,10 +117,7 @@ import {
 } from "../../src/primitives/split-view.behavior.js";
 export {
   DEFAULT_ORDER_HISTORY_LABELS,
-  DEPRECATED_LIST_ROW_DENSITIES,
-  DEPRECATED_PILL_VARIANTS,
   DIFF_MODES,
-  LIST_ROW_DENSITIES,
   LIST_ROW_SIZES,
   NODE_STATUSES,
   NODE_STATUS_TONES,

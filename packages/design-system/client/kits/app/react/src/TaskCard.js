@@ -28,7 +28,7 @@ function TaskCard({
       className: [surface ? frame.root() : "", frame.body(), className].filter(Boolean).join(" "),
       children: [
         /* @__PURE__ */ jsxs("div", { className: slots.header(), children: [
-          /* @__PURE__ */ jsx("p", { className: slots.title(), children: task.href ? /* @__PURE__ */ jsx(Link, { href: task.href, children: task.title }) : task.title }),
+          /* @__PURE__ */ jsx("div", { "data-task-card-title": true, className: slots.title(), children: task.href ? /* @__PURE__ */ jsx(Link, { href: task.href, children: task.title }) : task.title }),
           /* @__PURE__ */ jsx(
             StatusIndicator,
             {

@@ -1,4 +1,5 @@
 import { tv } from "tailwind-variants";
+import { typeRoleMerge } from "./type-roles.js";
 function searchSelectOptions(options, query) {
   const normalize = (text) => text.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLocaleLowerCase();
   const terms = normalize(query).trim().split(/\s+/).filter(Boolean);
@@ -15,17 +16,17 @@ const searchSelect = tv({
     summary: "min-w-0 truncate",
     placeholder: "text-ink-muted",
     content: "w-[max(20rem,var(--bits-popover-anchor-width))] max-w-[calc(100vw-2*var(--reddb-spatial-inset-md))] max-h-[min(70dvh,var(--bits-popover-content-available-height))] overflow-y-auto min-w-0 p-[var(--reddb-spatial-inset-sm)]",
-    search: "sticky top-0 z-10 mb-[var(--reddb-spatial-gap-sm)]",
+    search: "sticky top-0 z-[var(--reddb-layer-raised)] mb-[var(--reddb-spatial-gap-sm)]",
     list: "min-w-0",
-    item: "group flex min-h-[var(--reddb-spatial-control-height-md)] cursor-default items-center justify-between gap-[var(--reddb-spatial-gap-md)] rounded-md px-[var(--reddb-spatial-inset-sm)] py-[var(--reddb-spatial-inset-sm)] text-body text-foreground data-[highlighted]:bg-foreground/10 data-[selected]:font-medium data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50",
-    option: "min-w-0 break-words",
+    item: "group flex min-h-[var(--reddb-spatial-control-height-md)] cursor-default items-center justify-between gap-[var(--reddb-spatial-gap-md)] rounded-md px-[var(--reddb-spatial-inset-sm)] py-[var(--reddb-spatial-inset-sm)] text-body text-foreground data-[highlighted]:bg-state-selected data-[selected]:font-medium data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50",
+    option: "min-w-0 wrap-break-word",
     description: "block text-caption font-regular text-ink-muted group-data-[highlighted]:text-foreground",
     empty: "block px-[var(--reddb-spatial-inset-sm)] py-[var(--reddb-spatial-inset-md)] text-body text-ink-muted",
     chips: "m-0 flex list-none flex-wrap gap-[var(--reddb-spatial-gap-sm)] p-0",
-    chip: "max-w-full justify-between gap-[var(--reddb-spatial-gap-sm)] rounded-md bg-muted text-foreground",
+    chip: "min-w-0 max-w-full justify-between gap-[var(--reddb-spatial-gap-sm)] rounded-md bg-muted text-foreground",
     clear: "aspect-square shrink-0 p-0"
   }
-});
+}, typeRoleMerge);
 export {
   searchSelect,
   searchSelectOptions

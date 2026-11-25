@@ -44,6 +44,9 @@ import { Card } from "./Card.js";
 import { Link } from "./Link.js";
 import { Alert } from "./Alert.js";
 import { Notification } from "./Notification.js";
+import { COLLECTION_STATES, collectionView } from "../../src/core/collection-state.js";
+import { Toaster } from "./Toaster.js";
+import { createToastQueue, toastRole } from "../../src/core/toast-queue.js";
 import { EmptyState } from "./EmptyState.js";
 import { MediaObject } from "./MediaObject.js";
 import { ListContainer } from "./ListContainer.js";
@@ -57,6 +60,7 @@ import { Pagination } from "./Pagination.js";
 import { ScrollArea } from "./ScrollArea.js";
 import { Countdown } from "./Countdown.js";
 import { Table } from "./Table.js";
+import { paginationSteps, paginationWindow, validatePagination } from "../../src/core/pagination.js";
 import { ToggleButton } from "./ToggleButton.js";
 import { Rating } from "./Rating.js";
 import { FileInput } from "./FileInput.js";
@@ -158,6 +162,7 @@ export {
   BrowserMockup,
   BulletsSlide,
   Button,
+  COLLECTION_STATES,
   CONTENT_STATES,
   Calendar,
   Card,
@@ -255,6 +260,7 @@ export {
   TimeRangeField,
   Timeline,
   TitleSlide,
+  Toaster,
   ToggleButton,
   ToggleGroup,
   Tooltip,
@@ -265,11 +271,17 @@ export {
   appearanceAttribute,
   appearanceStorageKey,
   applyAppearance,
+  collectionView,
   createNavigationDisclosures,
+  createToastQueue,
   jsonCodeGrammar,
   observeActivity,
+  paginationSteps,
+  paginationWindow,
   ringThickness,
+  toastRole,
   tokenColor,
   useNavigationDisclosure,
-  useReducedMotion
+  useReducedMotion,
+  validatePagination
 };

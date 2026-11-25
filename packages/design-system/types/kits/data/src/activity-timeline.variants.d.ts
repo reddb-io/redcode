@@ -7,6 +7,7 @@ export declare const activityTimeline: import("tailwind-variants").TVReturnType<
             meta?: import("tailwind-variants").ClassValue;
             track?: import("tailwind-variants").ClassValue;
             root?: import("tailwind-variants").ClassValue;
+            alert?: import("tailwind-variants").ClassValue;
             row?: import("tailwind-variants").ClassValue;
             rows?: import("tailwind-variants").ClassValue;
             scroll?: import("tailwind-variants").ClassValue;
@@ -22,6 +23,7 @@ export declare const activityTimeline: import("tailwind-variants").TVReturnType<
             meta?: import("tailwind-variants").ClassValue;
             track?: import("tailwind-variants").ClassValue;
             root?: import("tailwind-variants").ClassValue;
+            alert?: import("tailwind-variants").ClassValue;
             row?: import("tailwind-variants").ClassValue;
             rows?: import("tailwind-variants").ClassValue;
             scroll?: import("tailwind-variants").ClassValue;
@@ -40,6 +42,7 @@ export declare const activityTimeline: import("tailwind-variants").TVReturnType<
     track: string;
     event: string;
     action: string;
+    alert: string;
 }, undefined, {
     [key: string]: {
         [key: string]: import("tailwind-variants").ClassValue | {
@@ -48,6 +51,7 @@ export declare const activityTimeline: import("tailwind-variants").TVReturnType<
             meta?: import("tailwind-variants").ClassValue;
             track?: import("tailwind-variants").ClassValue;
             root?: import("tailwind-variants").ClassValue;
+            alert?: import("tailwind-variants").ClassValue;
             row?: import("tailwind-variants").ClassValue;
             rows?: import("tailwind-variants").ClassValue;
             scroll?: import("tailwind-variants").ClassValue;
@@ -66,6 +70,7 @@ export declare const activityTimeline: import("tailwind-variants").TVReturnType<
     track: string;
     event: string;
     action: string;
+    alert: string;
 }, import("tailwind-variants").TVReturnType<unknown, {
     root: string;
     scroll: string;
@@ -77,4 +82,5 @@ export declare const activityTimeline: import("tailwind-variants").TVReturnType<
     track: string;
     event: string;
     action: string;
+    alert: string;
 }, undefined, unknown, unknown, undefined>>;

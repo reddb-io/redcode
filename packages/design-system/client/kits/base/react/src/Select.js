@@ -5,8 +5,10 @@ import { useAccessibleControl } from "./use-accessible-control.js";
 import { select } from "../../src/select.variants.js";
 import { writeSelectValue } from "../../src/core/choices.js";
 import { afterFormReset } from "../../src/core/native-controls.js";
-function Select({ options = [], value, controlSize = "md", className, children, onChange, onValueChange, ref, ...rest }) {
+import { resolveFieldSize } from "../../src/core/field-size.js";
+function Select({ options = [], value, size, controlSize: legacySize, htmlSize, className, children, onChange, onValueChange, ref, ...rest }) {
   const element = useAccessibleControl("Select", ref);
+  const field = resolveFieldSize("Select", { size, controlSize: legacySize, htmlSize });
   const supplied = useRef(value);
   supplied.current = value;
   useEffect(() => {
@@ -19,9 +21,10 @@ function Select({ options = [], value, controlSize = "md", className, children, 
     "select",
     {
       ...rest,
+      size: field.htmlSize,
       ref: element,
       value,
-      className: select({ size: controlSize, class: className }),
+      className: select({ size: field.size, class: className }),
       onChange: (event) => {
         const next = event.currentTarget.value;
         onChange?.(event);

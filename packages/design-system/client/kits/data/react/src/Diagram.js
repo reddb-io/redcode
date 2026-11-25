@@ -119,7 +119,7 @@ function Diagram(props) {
                           y: connection.labelY,
                           textAnchor: connection.labelAnchor,
                           fill: mutedInk,
-                          className: "text-xs",
+                          className: "text-caption",
                           children: short(e.label, 20)
                         }
                       )
@@ -188,7 +188,7 @@ function Diagram(props) {
                           y: n.y + (n.description ? -3 : 5),
                           textAnchor: "middle",
                           fill: ink,
-                          className: "text-sm font-medium",
+                          className: "text-label",
                           children: short(n.label, Math.floor((n.width - u) / 7.5))
                         }
                       ),
@@ -199,7 +199,7 @@ function Diagram(props) {
                           y: n.y + 18,
                           textAnchor: "middle",
                           fill: mutedInk,
-                          className: "text-xs",
+                          className: "text-caption",
                           children: short(
                             n.description,
                             Math.floor((n.width - u) / 6.5)

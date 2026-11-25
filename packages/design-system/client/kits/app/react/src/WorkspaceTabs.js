@@ -78,7 +78,7 @@ function WorkspaceTabs({
                 "data-workspace-scroll": true,
                 className: s.frame(),
                 style: {
-                  gridTemplateColumns: `repeat(${Math.max(documents.length, 1)},max-content)`
+                  gridTemplateColumns: `repeat(${Math.max(documents.length, 1)},max-content max-content)`
                 },
                 children: [
                   /* @__PURE__ */ jsx(
@@ -96,10 +96,11 @@ function WorkspaceTabs({
                           requestClose(id);
                         }
                       },
-                      children: documents.map((item) => /* @__PURE__ */ jsxs(
+                      children: documents.map((item, index) => /* @__PURE__ */ jsxs(
                         Managed.Tab,
                         {
                           value: item.id,
+                          style: { gridColumn: index * 2 + 1 },
                           nativeButton: !item.href,
                           render: item.href ? /* @__PURE__ */ jsx("a", { className: quietControl({ ink: "foreground" }), href: item.disabled ? void 0 : item.href, "aria-disabled": item.disabled || void 0 }) : void 0,
                           onKeyDown: (event) => {
@@ -153,8 +154,9 @@ function WorkspaceTabs({
                       "div",
                       {
                         "data-workspace-item": item.id,
+                        "data-selected": active === item.id ? "" : void 0,
                         className: s.close(),
-                        style: { gridColumn: index + 1 },
+                        style: { gridColumn: index * 2 + 2 },
                         children: /* @__PURE__ */ jsx(
                           Button,
                           {

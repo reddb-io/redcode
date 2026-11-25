@@ -2,14 +2,14 @@ import { tv } from "tailwind-variants";
 import { typeRoleMerge } from "./type-roles.js";
 const SIZE = {
   sm: { title: "text-base font-medium leading-tight" },
-  md: { title: "text-lg font-medium leading-tight" },
-  lg: { title: "text-2xl font-medium leading-tight" },
+  md: { title: "text-heading leading-tight" },
+  lg: { title: "text-title font-medium leading-tight" },
   // The Theme's display role (ADR 0025): 5xl in Base and Application, and in
   // Marketing a size that grows to the Brand display tier with the heading's
   // own container width (ADR 0021) rather than the window's.
   display: {
     title: "text-display",
-    description: "text-lg"
+    description: "text-heading font-regular"
   }
 };
 const RULE = {
@@ -18,15 +18,19 @@ const RULE = {
 };
 const sectionHeading = tv({
   slots: {
-    root: "@container/section-heading flex flex-wrap items-end justify-between gap-[var(--reddb-spatial-gap-lg)]",
-    group: "flex min-w-0 items-start gap-[var(--reddb-spatial-gap-md)]",
+    // A size container has no intrinsic width, so the heading spans its
+    // section instead of collapsing in a shrink-to-fit parent.
+    root: "@container/section-heading flex w-full flex-wrap items-end justify-between gap-[var(--reddb-spatial-gap-lg)]",
+    // The title keeps a readable measure; actions that do not fit beside it
+    // wrap below it instead of squeezing it (ADR 0052).
+    group: "flex min-w-0 flex-[1_1_16rem] items-start gap-[var(--reddb-spatial-gap-md)]",
     leading: "shrink-0 text-ink-muted",
     text: "flex flex-col gap-[var(--reddb-spatial-gap-sm)]",
     // Weight and line height come with each size: the display role bundles
     // its own, which a shared class here would override.
     title: "text-foreground",
-    description: "max-w-prose text-sm text-ink-muted",
-    actions: "flex flex-wrap items-center gap-[var(--reddb-spatial-gap-md)]"
+    description: "max-w-prose text-body text-ink-muted",
+    actions: "flex max-w-full shrink-0 flex-wrap items-center gap-[var(--reddb-spatial-gap-md)]"
   },
   variants: { size: SIZE, rule: RULE },
   defaultVariants: { size: "md", rule: true }

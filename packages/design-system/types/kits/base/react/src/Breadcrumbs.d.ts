@@ -1,4 +1,5 @@
-import type { BreadcrumbItem } from "../../src/core/breadcrumbs";
+import { type BreadcrumbItem } from "../../src/core/breadcrumbs";
+import { type CollapsibleRowOverflow } from "../../src/core/overflow";
 export type { BreadcrumbItem } from "../../src/core/breadcrumbs";
 export interface BreadcrumbsProps {
     /**
@@ -17,7 +18,16 @@ export interface BreadcrumbsProps {
     structuredData?: boolean | {
         origin: string;
     };
+    /**
+     * What the trail does when it does not fit (ADR 0053): `wrap` adds lines, or `collapse` keeps
+     * one line, measures it and moves the middle crumbs into a labelled "More" menu, always keeping
+     * the first crumb and the current one. A collapsing trail takes the full width its container
+     * gives it. Defaults to `collapse` (ADR 0053).
+     */
+    overflow?: CollapsibleRowOverflow;
+    /** Accessible name and visible text of the "More" menu trigger when crumbs collapse. Defaults to `More`. */
+    moreLabel?: string;
     /** Extra classes merged onto the `nav` root. */
     className?: string;
 }
-export declare function Breadcrumbs({ items, label, structuredData, className }: BreadcrumbsProps): import("react").JSX.Element;
+export declare function Breadcrumbs({ items, label, structuredData, overflow, moreLabel, className }: BreadcrumbsProps): import("react").JSX.Element;

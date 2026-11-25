@@ -1,4 +1,4 @@
-const TYPE_ROLE_UTILITIES = ["display", "title", "heading", "body", "caption", "eyebrow"];
+const TYPE_ROLE_UTILITIES = ["display", "title", "heading", "body", "label", "code", "caption", "eyebrow"];
 const typeRoleMerge = {
   twMergeConfig: {
     extend: {

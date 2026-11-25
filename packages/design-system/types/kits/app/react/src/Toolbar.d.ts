@@ -3,4 +3,4 @@ export interface ToolbarProps extends ToolbarContract {
     /** Additional toolbar classes. */
     className?: string;
 }
-export declare function Toolbar({ label, items, orientation, size, loop, className }: ToolbarProps): import("react").JSX.Element;
+export declare function Toolbar({ label, items, orientation, size, loop, overflow, moreLabel, className }: ToolbarProps): import("react").JSX.Element;

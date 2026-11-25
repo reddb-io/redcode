@@ -7,7 +7,7 @@ const fileInput = tv({
     root: "grid gap-[var(--reddb-spatial-gap-sm)]",
     field: field().root(),
     control: input(),
-    filename: "text-sm text-ink-muted"
+    filename: "text-body text-ink-muted"
   }
 }, typeRoleMerge);
 export {

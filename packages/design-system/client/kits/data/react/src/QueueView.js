@@ -1,5 +1,5 @@
-import { jsx, jsxs } from "react/jsx-runtime";
-import { StatusIndicator, quietControl } from "@reddb-io/design-system/base";
+import { Fragment, jsx, jsxs } from "react/jsx-runtime";
+import { Alert, Button, ContentState, LoadingIndicator, StatusIndicator, collectionView, quietControl } from "@reddb-io/design-system/base";
 import { uniqueEntities } from "../../src/operational.js";
 import { operationalView } from "../../src/operational.variants.js";
 function QueueView({
@@ -9,18 +9,33 @@ function QueueView({
   interactive = false,
   onselectedchange,
   emptyLabel = "Empty slot",
+  state,
+  errorMessage = "Could not load the queue.",
+  retryLabel = "Retry",
+  loadingRows = 5,
+  onretry,
   className
 }) {
-  const visual = operationalView();
+  const visual = operationalView(), view = collectionView(state, slots.length);
   return /* @__PURE__ */ jsxs(
     "section",
     {
       "data-queue-view": true,
+      "data-state": state ?? "ready",
+      "aria-busy": view.busy ? true : void 0,
       "aria-label": label,
       className: visual.root({ class: className }),
       children: [
         /* @__PURE__ */ jsx("p", { className: visual.title(), children: label }),
-        /* @__PURE__ */ jsx("ol", { className: visual.queue(), children: uniqueEntities(slots, "QueueView").map((slot) => /* @__PURE__ */ jsx(
+        state === "refreshing" && !view.placeholder && /* @__PURE__ */ jsx(LoadingIndicator, { size: "sm", label: "Refreshing" }),
+        view.stale && /* @__PURE__ */ jsxs(Alert, { tone: "danger", children: [
+          errorMessage,
+          onretry && /* @__PURE__ */ jsxs(Fragment, { children: [
+            " ",
+            /* @__PURE__ */ jsx(Button, { size: "sm", variant: "secondary", onClick: onretry, children: retryLabel })
+          ] })
+        ] }),
+        view.placeholder ? /* @__PURE__ */ jsx(ContentState, { state: view.placeholder, label, emptyTitle: "No slots", errorMessage, retryLabel, onRetry: onretry, shape: "list", rows: loadingRows, children: /* @__PURE__ */ jsx("span", {}) }) : /* @__PURE__ */ jsx("ol", { className: visual.queue(), children: uniqueEntities(slots, "QueueView").map((slot) => /* @__PURE__ */ jsx(
           "li",
           {
             className: visual.queueSlot(),

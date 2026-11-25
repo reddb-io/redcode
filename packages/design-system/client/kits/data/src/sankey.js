@@ -24,6 +24,15 @@ function sankeyData(data) {
   const used = new Set(links.flatMap((l) => [l.source, l.target]));
   return { nodes: automaticChartColors(data.nodes).filter((n) => used.has(n.id)), links };
 }
+function sankeyRows(data, format) {
+  const label = (id) => data.nodes.find((n) => n.id === id)?.label;
+  const flows = data.links.map((l) => ({ ...l, value: format(l.value), description: `${label(l.source)} \u2192 ${label(l.target)}` }));
+  const drawn = data.links.filter((l) => l.value > 0);
+  const throughput = (id) => Math.max(...["source", "target"].map((end) => drawn.filter((l) => l[end] === id).reduce((sum, l) => sum + l.value, 0)));
+  const stages = data.nodes.filter((n) => drawn.some((l) => l.source === n.id || l.target === n.id)).map((n) => ({ id: n.id, label: n.label, value: format(throughput(n.id)) }));
+  return [...flows, ...stages];
+}
 export {
-  sankeyData
+  sankeyData,
+  sankeyRows
 };

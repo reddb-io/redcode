@@ -202,8 +202,15 @@
   --color-series-6: var(--reddb-color-series-6);
   --color-series-6-on-dark: var(--reddb-color-series-6-on-dark);
   --color-series-6-on-light: var(--reddb-color-series-6-on-light);
+  --color-series-highlight: var(--reddb-color-series-highlight);
   --color-series-highlight-on-dark: var(--reddb-color-series-highlight-on-dark);
   --color-series-highlight-on-light: var(--reddb-color-series-highlight-on-light);
+  --color-state-hover: var(--reddb-color-state-hover);
+  --color-state-open: var(--reddb-color-state-open);
+  --color-state-pressed: var(--reddb-color-state-pressed);
+  --color-state-selected: var(--reddb-color-state-selected);
+  --color-state-strong: var(--reddb-color-state-strong);
+  --color-state-subtle: var(--reddb-color-state-subtle);
   --color-surface-muted: var(--reddb-color-surface-muted);
   --color-teal-400: var(--reddb-color-teal-400);
   --color-teal-600: var(--reddb-color-teal-600);
@@ -304,6 +311,10 @@
   --text-caption--font-weight: var(--reddb-type-caption-font-weight);
   --text-caption--letter-spacing: var(--reddb-type-caption-letter-spacing);
   --text-caption--line-height: var(--reddb-type-caption-line-height);
+  --text-code: var(--reddb-type-code-font-size);
+  --text-code--font-weight: var(--reddb-type-code-font-weight);
+  --text-code--letter-spacing: var(--reddb-type-code-letter-spacing);
+  --text-code--line-height: var(--reddb-type-code-line-height);
   --text-display: var(--reddb-type-display-font-size);
   --text-display--font-weight: var(--reddb-type-display-font-weight);
   --text-display--letter-spacing: var(--reddb-type-display-letter-spacing);
@@ -316,8 +327,19 @@
   --text-heading--font-weight: var(--reddb-type-heading-font-weight);
   --text-heading--letter-spacing: var(--reddb-type-heading-letter-spacing);
   --text-heading--line-height: var(--reddb-type-heading-line-height);
+  --text-label: var(--reddb-type-label-font-size);
+  --text-label--font-weight: var(--reddb-type-label-font-weight);
+  --text-label--letter-spacing: var(--reddb-type-label-letter-spacing);
+  --text-label--line-height: var(--reddb-type-label-line-height);
   --text-title: var(--reddb-type-title-font-size);
   --text-title--font-weight: var(--reddb-type-title-font-weight);
   --text-title--letter-spacing: var(--reddb-type-title-letter-spacing);
   --text-title--line-height: var(--reddb-type-title-line-height);
+}
+/* Type role properties a theme namespace cannot carry (ADR 0055). */
+@utility text-code {
+  font-family: var(--reddb-font-family-mono);
+}
+@utility numeric {
+  font-variant-numeric: tabular-nums lining-nums;
 }

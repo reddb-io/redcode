@@ -1,18 +1,23 @@
 import { Fragment, jsx, jsxs } from "react/jsx-runtime";
 import { useEffect, useRef, useState } from "react";
 import {
+  Alert,
   Button,
   Input,
   Checkbox,
+  ContentState,
   EmptyState,
+  LoadingIndicator,
+  ToggleButton,
   StateIllustration,
-  quietControl
+  collectionView,
+  warnDeprecated
 } from "@reddb-io/design-system/base";
 import {
   tableEmptyCompact,
   searchEmpty
 } from "@reddb-io/design-system/base/illustrations";
-import { Table } from "./Table.js";
+import { DataTable } from "./DataTable.js";
 import {
   tableQueryRequest,
   filterTableRows,
@@ -36,6 +41,11 @@ function TableExplorer({
   onreset,
   describequery,
   identityLabel,
+  state,
+  errorMessage,
+  retryLabel = "Retry",
+  loadingRows = 5,
+  onretry,
   className = ""
 }) {
   const [filters, setFilters] = useState({}), [filtersOpen, setFiltersOpen] = useState(false), [projectionOpen, setProjectionOpen] = useState(false), [projection, setProjection] = useState({}), [limit, setLimit] = useState(200), [busy, setBusy] = useState(false), [queryError, setQueryError] = useState(null);
@@ -48,6 +58,10 @@ function TableExplorer({
     setBusy(false);
     return () => controller.current?.abort();
   }, [context]);
+  useEffect(() => {
+    if (error != null) warnDeprecated("TableExplorer", "error", 'state="error" with errorMessage');
+  }, [error]);
+  const resolvedState = state ?? (error ? "error" : void 0), message = errorMessage ?? (error || "Could not load rows."), view = collectionView(resolvedState, rows.length);
   const visible = filterTableRows(rows, filters), gridColumns = explorerTableColumns(columns, visible), count = Object.values(filters).filter((value) => value.trim()).length, request = tableQueryRequest(
     queryColumns.filter((key) => projection[key] !== false),
     limit
@@ -91,17 +105,19 @@ function TableExplorer({
     {
       ref: root,
       "data-table-explorer": true,
+      "data-state": resolvedState ?? "ready",
+      "aria-busy": view.busy || busy ? true : void 0,
       "aria-label": label,
       className: `${chrome.root} ${className}`,
-      children: error ? /* @__PURE__ */ jsx("p", { role: "alert", className: styles.detail, children: error }) : /* @__PURE__ */ jsxs(Fragment, { children: [
+      children: /* @__PURE__ */ jsxs(Fragment, { children: [
         /* @__PURE__ */ jsxs("div", { className: chrome.toolbar, children: [
           onquery && /* @__PURE__ */ jsxs(Fragment, { children: [
             /* @__PURE__ */ jsx(
-              Button,
+              ToggleButton,
               {
-                "aria-pressed": projectionOpen,
-                onClick: () => setProjectionOpen(!projectionOpen),
-                children: "select"
+                label: "select",
+                pressed: projectionOpen,
+                onPressedChange: setProjectionOpen
               }
             ),
             /* @__PURE__ */ jsx(
@@ -115,22 +131,14 @@ function TableExplorer({
             ),
             onreset && /* @__PURE__ */ jsx(Button, { onClick: reset, children: "reset" })
           ] }),
-          /* @__PURE__ */ jsxs(
-            "button",
+          /* @__PURE__ */ jsx(
+            ToggleButton,
             {
-              type: "button",
               "data-table-filter-toggle": true,
-              className: quietControl({
-                selected: filtersOpen,
-                class: "min-h-[var(--reddb-spatial-control-height-sm)] rounded-sm border border-control-edge px-[var(--reddb-spatial-inset-sm)]"
-              }),
+              label: `filters${count ? ` ${count}` : ""}`,
               "aria-expanded": filtersOpen,
-              "aria-pressed": filtersOpen,
-              onClick: () => setFiltersOpen(!filtersOpen),
-              children: [
-                "filters",
-                count ? ` ${count}` : ""
-              ]
+              pressed: filtersOpen,
+              onPressedChange: setFiltersOpen
             }
           ),
           count > 0 && /* @__PURE__ */ jsx(Button, { title: "Clear all filters", onClick: clear, children: "clear" }),
@@ -139,7 +147,8 @@ function TableExplorer({
             " of ",
             total ?? rows.length,
             " rows"
-          ] })
+          ] }),
+          resolvedState === "refreshing" && !view.placeholder && /* @__PURE__ */ jsx(LoadingIndicator, { size: "sm", label: "Refreshing" })
         ] }),
         projectionOpen && onquery && /* @__PURE__ */ jsxs("div", { className: styles.detail, children: [
           /* @__PURE__ */ jsxs("div", { className: chrome.toolbar, children: [
@@ -198,25 +207,47 @@ function TableExplorer({
             }
           )
         ] }, column.key)) }),
-        !rows.length ? /* @__PURE__ */ jsx(
-          "div",
+        view.stale && /* @__PURE__ */ jsxs(Alert, { tone: "danger", children: [
+          message,
+          onretry && /* @__PURE__ */ jsxs(Fragment, { children: [
+            " ",
+            /* @__PURE__ */ jsx(Button, { size: "sm", variant: "secondary", onClick: onretry, children: retryLabel })
+          ] })
+        ] }),
+        view.placeholder ? /* @__PURE__ */ jsx(
+          ContentState,
           {
-            "data-renderer-empty": "table",
-            "data-empty-reason": "empty",
-            className: styles.detail,
-            children: /* @__PURE__ */ jsx(
-              EmptyState,
+            state: view.placeholder,
+            label,
+            errorMessage: message,
+            retryLabel,
+            onRetry: onretry,
+            shape: "table",
+            rows: loadingRows,
+            columns: Math.min(12, Math.max(1, columns.length)),
+            className: chrome.grid,
+            empty: /* @__PURE__ */ jsx(
+              "div",
               {
-                title: "No rows returned",
-                description: "This query returned no rows. Adjust the query or run it again.",
-                bordered: false,
-                media: /* @__PURE__ */ jsx(StateIllustration, { art: tableEmptyCompact, size: "md" }),
-                actions: onquery ? /* @__PURE__ */ jsx(Button, { disabled: busy, onClick: () => void run(), children: "Run SELECT again" }) : void 0
+                "data-renderer-empty": "table",
+                "data-empty-reason": "empty",
+                className: styles.detail,
+                children: /* @__PURE__ */ jsx(
+                  EmptyState,
+                  {
+                    title: "No rows returned",
+                    description: "This query returned no rows. Adjust the query or run it again.",
+                    bordered: false,
+                    media: /* @__PURE__ */ jsx(StateIllustration, { art: tableEmptyCompact, size: "md" }),
+                    actions: onquery ? /* @__PURE__ */ jsx(Button, { disabled: busy, onClick: () => void run(), children: "Run SELECT again" }) : void 0
+                  }
+                )
               }
-            )
+            ),
+            children: /* @__PURE__ */ jsx("span", {})
           }
         ) : /* @__PURE__ */ jsx(
-          Table,
+          DataTable,
           {
             caption: label,
             className: "font-mono",

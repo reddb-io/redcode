@@ -1,3 +1,4 @@
+import type { ToggleGroupSize } from "@reddb-io/design-system/base";
 import type { FilterOption } from "../../composites/filter.variants";
 /** Portable Filter properties shared by native adapters. */
 export interface FilterContract {
@@ -11,6 +12,11 @@ export interface FilterContract {
     name?: string;
     /** Disables the whole group and every option. Defaults to `false`. */
     disabled?: boolean;
+    /**
+         * The height step of the underlying ToggleGroup, matching Button's and the fields' `size`
+         * (default `md`), so the filter sits level with peers of the same size (ADR 0054).
+         */
+    size?: ToggleGroupSize;
     /**
          * Extra classes, merged over the list slot's own, onto the element that wraps the option
          * buttons.

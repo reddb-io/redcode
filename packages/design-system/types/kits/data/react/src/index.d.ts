@@ -16,6 +16,8 @@ export { SequenceDiagram, type SequenceDiagramProps } from "./SequenceDiagram";
 export { TraceWaterfall, type TraceWaterfallProps } from "./TraceWaterfall";
 export { Waterfall, type WaterfallProps } from "./Waterfall";
 export { HexViewer, type HexViewerProps } from "./HexViewer";
+export { RecordDiff, type RecordDiffProps } from "./RecordDiff";
+/** Deprecated aliases (ADR 0007), removed in the next month release. */
 export { Diff, type DiffProps } from "./Diff";
 export { Treemap, type TreemapProps } from "./Treemap";
 export { Sparkline, type SparklineProps } from "./Sparkline";
@@ -31,6 +33,8 @@ export { PanZoomViewport, type PanZoomViewportProps } from "./PanZoomViewport";
 export { TerminalSession, type TerminalSessionProps } from "./TerminalSession";
 export { GeoMap, type GeoMapProps } from "./GeoMap";
 export { CodeField, type CodeFieldProps } from "./CodeField";
+export { DataTable, type DataTableProps } from "./DataTable";
+/** Deprecated aliases (ADR 0007), removed in the next month release. */
 export { Table, type TableProps } from "./Table";
 export { MetricChart, type MetricChartProps } from "./MetricChart";
 export { Graph, type GraphProps } from "./Graph";

@@ -24,6 +24,7 @@ import {
   graphZoomRatio
 } from "../../src/graph-viewport.js";
 import { graphOverlays, graphPath } from "../../src/graph-overlays.js";
+import HitStroke from "./HitStroke.js";
 import {
   GRAPH_COLOR_TOKENS,
   GRAPH_EDGE_LABEL_MAX_LENGTH,
@@ -336,6 +337,9 @@ function Graph(props) {
   }
   function handleNodeClick(event, id) {
     event.stopPropagation();
+    activateNode(id);
+  }
+  function activateNode(id) {
     interaction("node", "click", id);
     const node = nodeById(id);
     if (node.collapsedSubtree) {
@@ -483,6 +487,7 @@ function Graph(props) {
         searchable ? /* @__PURE__ */ jsx(Fragment, { children: /* @__PURE__ */ jsxs(
           "div",
           {
+            "data-mark-equivalent": "search",
             className: "border-b border-muted p-[var(--reddb-spatial-inset-sm)]",
             children: [
               /* @__PURE__ */ jsx(
@@ -508,10 +513,10 @@ function Graph(props) {
                         label: node.label,
                         pressed: activeFocus === node.id,
                         allowUnpress: false,
-                        onClick: () => focus(node.id)
+                        onClick: () => activateNode(node.id)
                       }
                     ) }, node.id);
-                  }) : /* @__PURE__ */ jsx(Fragment, { children: /* @__PURE__ */ jsx("span", { className: "text-sm text-ink-muted", children: "No matching nodes." }) })
+                  }) : /* @__PURE__ */ jsx(Fragment, { children: /* @__PURE__ */ jsx("span", { className: "text-body text-ink-muted", children: "No matching nodes." }) })
                 }
               ) }) : null
             ]
@@ -576,7 +581,7 @@ function Graph(props) {
                 focused.edges.map((edge, index) => {
                   const source = nodeById(edge.source);
                   const target = nodeById(edge.target);
-                  return /* @__PURE__ */ jsx(Fragment2, { children: /* @__PURE__ */ jsx(
+                  return /* @__PURE__ */ jsx(Fragment2, { children: /* @__PURE__ */ jsxs(
                     "g",
                     {
                       "data-graph-edge": true,
@@ -588,28 +593,36 @@ function Graph(props) {
                       onClick: (event) => handleEdgeClick(event, edge.id),
                       onFocus: () => interaction("edge", "focus", edge.id),
                       onKeyDown: (event) => handleEdgeKeydown(event, edge.id),
-                      children: overlays.paths.has(edge.id) ? /* @__PURE__ */ jsx(
-                        "path",
-                        {
-                          d: graphPath(overlays.paths.get(edge.id), (point) => ({
-                            x: svgX(point),
-                            y: svgY(point)
-                          })),
-                          fill: "none",
-                          stroke: edge.color,
-                          strokeWidth: Math.max(1, edge.weight)
-                        }
-                      ) : /* @__PURE__ */ jsx(
-                        "line",
-                        {
-                          x1: svgX(source),
-                          y1: svgY(source),
-                          x2: svgX(target),
-                          y2: svgY(target),
-                          stroke: edge.color,
-                          strokeWidth: Math.max(1, edge.weight)
-                        }
-                      )
+                      children: [
+                        /* @__PURE__ */ jsx(
+                          HitStroke,
+                          {
+                            d: overlays.paths.has(edge.id) ? graphPath(overlays.paths.get(edge.id), (point) => ({ x: svgX(point), y: svgY(point) })) : `M${svgX(source)},${svgY(source)} L${svgX(target)},${svgY(target)}`
+                          }
+                        ),
+                        overlays.paths.has(edge.id) ? /* @__PURE__ */ jsx(
+                          "path",
+                          {
+                            d: graphPath(overlays.paths.get(edge.id), (point) => ({
+                              x: svgX(point),
+                              y: svgY(point)
+                            })),
+                            fill: "none",
+                            stroke: edge.color,
+                            strokeWidth: Math.max(1, edge.weight)
+                          }
+                        ) : /* @__PURE__ */ jsx(
+                          "line",
+                          {
+                            x1: svgX(source),
+                            y1: svgY(source),
+                            x2: svgX(target),
+                            y2: svgY(target),
+                            stroke: edge.color,
+                            strokeWidth: Math.max(1, edge.weight)
+                          }
+                        )
+                      ]
                     }
                   ) }, edge.id);
                 }),
@@ -650,7 +663,7 @@ function Graph(props) {
                       y: label2.y,
                       textAnchor: "middle",
                       fill: "var(--reddb-color-foreground)",
-                      className: "text-xs",
+                      className: "text-caption",
                       pointerEvents: "bounding-box",
                       children: label2.text
                     }
@@ -664,7 +677,7 @@ function Graph(props) {
           "ul",
           {
             "aria-label": "Graph communities",
-            className: "m-0 flex list-none flex-wrap gap-[var(--reddb-spatial-gap-md)] border-t border-muted p-[var(--reddb-spatial-inset-sm)] text-sm",
+            className: "m-0 flex list-none flex-wrap gap-[var(--reddb-spatial-gap-md)] border-t border-muted p-[var(--reddb-spatial-inset-sm)] text-body",
             children: communities.map((community, index) => {
               return /* @__PURE__ */ jsx(Fragment2, { children: /* @__PURE__ */ jsxs(
                 "li",
@@ -694,7 +707,7 @@ function Graph(props) {
           {
             "data-graph-details": true,
             "aria-live": "polite",
-            className: "border-t border-muted p-[var(--reddb-spatial-inset-sm)] text-sm",
+            className: "border-t border-muted p-[var(--reddb-spatial-inset-sm)] text-body",
             children: [
               /* @__PURE__ */ jsxs("strong", { children: [
                 selectedInteraction.kind === "node" ? "Node" : "Edge",
@@ -704,7 +717,7 @@ function Graph(props) {
               selectedInteraction.metadata ? /* @__PURE__ */ jsx(Fragment, { children: /* @__PURE__ */ jsx(
                 "pre",
                 {
-                  className: "mt-[var(--reddb-spatial-gap-sm)] overflow-auto whitespace-pre-wrap text-xs",
+                  className: "mt-[var(--reddb-spatial-gap-sm)] overflow-auto whitespace-pre-wrap text-caption",
                   children: JSON.stringify(selectedInteraction.metadata, null, 2)
                 }
               ) }) : /* @__PURE__ */ jsx(Fragment, { children: /* @__PURE__ */ jsx(

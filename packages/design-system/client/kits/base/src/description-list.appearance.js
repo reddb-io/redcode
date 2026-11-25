@@ -6,7 +6,7 @@ const GAP = {
 };
 const descriptionList = tv({
   slots: {
-    root: "@container/description-list grid",
+    root: "@container/description-list w-full grid",
     item: "grid @md/description-list:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]",
     term: "font-medium text-foreground",
     detail: "m-0 text-ink-muted"

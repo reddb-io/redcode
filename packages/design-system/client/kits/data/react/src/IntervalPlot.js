@@ -139,7 +139,7 @@ function IntervalPlot(props) {
                     y: 16,
                     textAnchor: "middle",
                     fill: mutedInk,
-                    className: "font-mono text-xs",
+                    className: "font-mono text-caption",
                     children: formatTime(
                       kind === "TraceWaterfall" ? tick - full[0] : tick
                     )
@@ -198,7 +198,7 @@ function IntervalPlot(props) {
                           x: item.depth * 12 + 4,
                           y: y + 12,
                           fill: ink,
-                          className: "text-xs",
+                          className: "text-caption",
                           children: short(
                             item.label,
                             Math.max(
@@ -247,7 +247,7 @@ function IntervalPlot(props) {
                               x: startX + 6,
                               y: y + 12,
                               fill: ink,
-                              className: "font-mono text-xs",
+                              className: "font-mono text-caption",
                               children: formatDuration(item.end - item.start)
                             }
                           ) }) : null,
@@ -257,7 +257,7 @@ function IntervalPlot(props) {
                               x: Math.min(w - 22, startX + bw - 10),
                               y: y + 12,
                               fill: color,
-                              className: "text-xs font-medium",
+                              className: "text-caption font-medium",
                               children: "!"
                             }
                           ) }) : null
@@ -272,7 +272,7 @@ function IntervalPlot(props) {
               const mx = project(marker.time, view, left, w - 12);
               return /* @__PURE__ */ jsxs("g", { className: "pointer-events-none", "data-schedule-marker": marker.id, children: [
                 /* @__PURE__ */ jsx("line", { x1: mx, x2: mx, y1: 28, y2: actualHeight, stroke: markerPaint(marker.tone), strokeWidth: 2, strokeDasharray: "4 3" }),
-                /* @__PURE__ */ jsx("text", { x: mx, y: 30, textAnchor: mx > (left + w) / 2 ? "end" : "start", fill: markerPaint(marker.tone), className: "text-xs", children: marker.label }),
+                /* @__PURE__ */ jsx("text", { x: mx, y: 30, textAnchor: mx > (left + w) / 2 ? "end" : "start", fill: markerPaint(marker.tone), className: "text-caption", children: marker.label }),
                 /* @__PURE__ */ jsx("title", { children: `${marker.label}: ${formatTime(marker.time)}` })
               ] }, marker.id);
             })
@@ -357,7 +357,7 @@ function IntervalPlot(props) {
         "section",
         {
           "aria-label": `${active.label} details`,
-          className: "mt-[var(--reddb-spatial-gap-md)] border-t border-muted pt-[var(--reddb-spatial-inset-md)] text-xs",
+          className: "mt-[var(--reddb-spatial-gap-md)] border-t border-muted pt-[var(--reddb-spatial-inset-md)] text-caption",
           children: [
             /* @__PURE__ */ jsxs("p", { className: "m-0 font-medium", children: [
               active.label,
@@ -375,7 +375,7 @@ function IntervalPlot(props) {
                   ([key, value], index) => {
                     return /* @__PURE__ */ jsxs(Fragment2, { children: [
                       /* @__PURE__ */ jsx("dt", { className: "text-ink-muted", children: key }),
-                      /* @__PURE__ */ jsx("dd", { className: "m-0 break-all", children: value })
+                      /* @__PURE__ */ jsx("dd", { className: "m-0 wrap-anywhere", children: value })
                     ] }, index);
                   }
                 )

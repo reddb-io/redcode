@@ -1,4 +1,5 @@
 import { tv } from "tailwind-variants";
+import { typeRoleMerge } from "./type-roles.js";
 const rating = tv({
   slots: {
     root: "min-w-0",
@@ -11,9 +12,9 @@ const rating = tv({
       "peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-focus",
       "peer-disabled:cursor-not-allowed peer-disabled:opacity-50"
     ].join(" "),
-    output: "text-sm tabular-nums text-ink-muted"
+    output: "text-label font-regular tabular-nums text-ink-muted"
   }
-});
+}, typeRoleMerge);
 export {
   rating
 };

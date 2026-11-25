@@ -1,4 +1,4 @@
-import type { ToggleGroupOption } from "../toggle-group.variants";
+import type { ToggleGroupOption, ToggleGroupSize } from "../toggle-group.variants";
 export interface ToggleGroupContract {
     /** Visible group name, rendered as the native legend. */
     legend: string;
@@ -16,6 +16,13 @@ export interface ToggleGroupContract {
     help?: string;
     /** Current validation error, announced with every option. */
     error?: string;
+    /**
+     * The height step, matching Button's and the fields' `size` (default `md`), so the group sits
+     * level with peers of the same size (ADR 0054).
+     */
+    size?: ToggleGroupSize;
+    /** What the group does when it is wider than its container: `scroll` (one line, the default) or `wrap` (ADR 0053). */
+    overflow?: "scroll" | "wrap";
     /** Extra classes merged onto the segmented row. */
     listClass?: string;
     /** Extra classes merged onto each option's ToggleButton. */

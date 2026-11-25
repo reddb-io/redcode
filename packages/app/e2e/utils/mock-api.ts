@@ -302,6 +302,11 @@ const Group = HttpApiGroup.make("mock")
   .add(
     HttpApiEndpoint.get("sessionMonitors", "/api/session/:sessionID/monitor", { params: SessionParams, success: Json }),
   )
+  .add(HttpApiEndpoint.get("sessionTodoGraph", "/api/session/:sessionID/todo/graph", {
+    params: SessionParams,
+    success: Json,
+    error: MockNotFound.pipe(HttpApiSchema.status(404)),
+  }))
   .add(
     HttpApiEndpoint.get("sessionGet", "/api/session/:sessionID", {
       params: SessionParams,

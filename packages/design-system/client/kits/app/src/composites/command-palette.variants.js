@@ -12,7 +12,7 @@ const commandPalette = tv({
     group: "grid gap-[var(--reddb-spatial-gap-sm)]",
     heading: "px-[var(--reddb-spatial-inset-md)] py-[var(--reddb-spatial-inset-sm)] text-caption text-ink-muted",
     identity: "flex min-w-0 flex-1 flex-col text-start",
-    description: "text-caption text-ink-muted break-words group-data-[highlighted]/command:text-foreground",
+    description: "text-caption text-ink-muted wrap-break-word group-data-[highlighted]/command:text-foreground",
     keys: "flex shrink-0 flex-wrap gap-[var(--reddb-spatial-gap-sm)]"
   }
 }, typeRoleMerge);

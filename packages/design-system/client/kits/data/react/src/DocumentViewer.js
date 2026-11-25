@@ -129,7 +129,7 @@ function DocumentViewer(props) {
                               item.summary.subtitle ? /* @__PURE__ */ jsx(Fragment, { children: /* @__PURE__ */ jsx(
                                 "span",
                                 {
-                                  className: "block truncate text-sm text-ink-muted",
+                                  className: "block truncate text-body text-ink-muted",
                                   children: item.summary.subtitle
                                 }
                               ) }) : null
@@ -138,7 +138,7 @@ function DocumentViewer(props) {
                         ) }, item.index);
                       })
                     }
-                  ) : /* @__PURE__ */ jsx("div", { "data-document-empty": true, className: "px-[var(--reddb-spatial-inset-sm)] py-[var(--reddb-spatial-inset-md)] text-sm text-ink-muted", children: empty ? empty({ clear: clearFilter }) : /* @__PURE__ */ jsxs(Fragment, { children: [
+                  ) : /* @__PURE__ */ jsx("div", { "data-document-empty": true, className: "px-[var(--reddb-spatial-inset-sm)] py-[var(--reddb-spatial-inset-md)] text-body text-ink-muted", children: empty ? empty({ clear: clearFilter }) : /* @__PURE__ */ jsxs(Fragment, { children: [
                     /* @__PURE__ */ jsx("p", { className: "m-0", children: "No documents match." }),
                     query ? /* @__PURE__ */ jsx(Button, { size: "sm", onClick: clearFilter, children: "Clear filter" }) : null
                   ] }) })
@@ -161,7 +161,7 @@ function DocumentViewer(props) {
                         children: activeSummary?.title ?? "No document selected"
                       }
                     ),
-                    activeSummary?.subtitle ? /* @__PURE__ */ jsx(Fragment, { children: /* @__PURE__ */ jsx("p", { className: "m-0 truncate text-sm text-ink-muted", children: activeSummary.subtitle }) }) : null
+                    activeSummary?.subtitle ? /* @__PURE__ */ jsx(Fragment, { children: /* @__PURE__ */ jsx("p", { className: "m-0 truncate text-body text-ink-muted", children: activeSummary.subtitle }) }) : null
                   ]
                 }
               ),
@@ -170,6 +170,7 @@ function DocumentViewer(props) {
                 {
                   label: "Document detail mode",
                   items: modes,
+                  size: "sm",
                   value: activeMode,
                   onValueChange: (mode) => setMode(mode),
                   listClass: "px-[var(--reddb-spatial-inset-md)]",
@@ -179,7 +180,7 @@ function DocumentViewer(props) {
                       "div",
                       {
                         "data-document-body": true,
-                        className: "whitespace-pre-wrap break-words",
+                        className: "whitespace-pre-wrap wrap-break-word",
                         children: activePresentation.body
                       }
                     ) }) : /* @__PURE__ */ jsx(Fragment, { children: value === "fields" ? /* @__PURE__ */ jsx(Fragment, { children: /* @__PURE__ */ jsx(
@@ -192,13 +193,13 @@ function DocumentViewer(props) {
                               "div",
                               {
                                 "data-document-field": true,
-                                className: "grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,2fr)] gap-[var(--reddb-spatial-gap-md)] border-b border-muted py-[var(--reddb-spatial-inset-sm)]",
+                                className: "flex min-w-0 flex-wrap gap-x-[var(--reddb-spatial-gap-md)] gap-y-[var(--reddb-spatial-gap-sm)] border-b border-muted py-[var(--reddb-spatial-inset-sm)]",
                                 children: [
-                                  /* @__PURE__ */ jsx("dt", { className: "font-medium", children: field.key }),
+                                  /* @__PURE__ */ jsx("dt", { className: "min-w-0 flex-[1_1_12ch] font-medium", children: field.key }),
                                   /* @__PURE__ */ jsx(
                                     "dd",
                                     {
-                                      className: "m-0 min-w-0 whitespace-pre-wrap break-words font-mono text-sm",
+                                      className: "m-0 min-w-0 flex-[2_1_24ch] whitespace-pre-wrap wrap-break-word text-code",
                                       children: field.text
                                     }
                                   )
@@ -212,7 +213,7 @@ function DocumentViewer(props) {
                       "pre",
                       {
                         "data-document-raw": true,
-                        className: "m-0 min-w-max whitespace-pre font-mono text-sm",
+                        className: "m-0 min-w-max whitespace-pre text-code",
                         children: activePresentation.raw
                       }
                     ) }) }) }) : /* @__PURE__ */ jsx(Fragment, { children: /* @__PURE__ */ jsx("p", { className: "m-0 text-ink-muted", children: "Select a document to inspect it." }) }) });

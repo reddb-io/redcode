@@ -179,4 +179,14 @@
   --reddb-editable-text-sm: var(--reddb-font-size-sm);
   --reddb-fluid-text-3xl-5xl: clamp(var(--reddb-font-size-3xl), 1.2rem + 2.8125cqi, var(--reddb-font-size-5xl));
   --reddb-fluid-text-5xl-display-sm: clamp(var(--reddb-font-size-5xl), 2.1rem + 3.75cqi, var(--reddb-font-size-display-sm));
+  --reddb-fluid-text-base-lg: clamp(var(--reddb-font-size-base), 0.875rem + 0.5208cqi, var(--reddb-font-size-lg));
+  --reddb-fluid-text-xl-2xl: clamp(var(--reddb-font-size-xl), 1rem + 1.0417cqi, var(--reddb-font-size-2xl));
+  --reddb-layer-dock: 60;
+  --reddb-layer-drawer: 40;
+  --reddb-layer-dropdown: 50;
+  --reddb-layer-overlay: 30;
+  --reddb-layer-raised: 10;
+  --reddb-layer-sticky: 20;
+  --reddb-layer-toast: 70;
+  --reddb-layer-tooltip: 50;
 }

@@ -1,10 +1,11 @@
 import { tv } from "tailwind-variants";
+import { typeRoleMerge } from "./type-roles.js";
 const SIZE = {
   sm: {
     root: "size-[var(--reddb-spatial-control-height-sm)] text-xs"
   },
   md: {
-    root: "size-[var(--reddb-spatial-control-height-md)] text-sm"
+    root: "size-[var(--reddb-spatial-control-height-md)] text-label"
   },
   lg: {
     root: "size-[var(--reddb-spatial-control-height-lg)] text-base"
@@ -18,7 +19,7 @@ const avatar = tv({
   },
   variants: { size: SIZE },
   defaultVariants: { size: "md" }
-});
+}, typeRoleMerge);
 const AVATAR_SIZES = Object.keys(SIZE);
 export {
   AVATAR_SIZES,

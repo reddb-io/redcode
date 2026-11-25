@@ -1,4 +1,5 @@
 import { tv } from "tailwind-variants";
+import { typeRoleMerge } from "@reddb-io/design-system/base/recipes";
 const bottomNavigation = tv({
   slots: {
     root: "w-full border-t border-muted bg-elevation-sunken-surface pb-[env(safe-area-inset-bottom)] text-foreground",
@@ -14,7 +15,7 @@ const bottomNavigation = tv({
     // content above it.
     item: "min-h-[var(--reddb-spatial-control-height-lg)] justify-center rounded-none border-s-0 border-t-2 px-0 text-center flex-col gap-[var(--reddb-spatial-gap-sm)] text-caption [&_[data-nav-label]]:max-w-full"
   }
-});
+}, typeRoleMerge);
 export {
   bottomNavigation
 };

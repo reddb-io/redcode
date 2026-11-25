@@ -5,7 +5,11 @@ const virtualList = tv({ slots: {
   probe: "pointer-events-none invisible absolute h-[var(--reddb-spatial-control-height-md)] w-px",
   list: "m-0 list-none p-0",
   row: "box-border min-w-0 overflow-hidden",
-  empty: "m-0 p-[var(--reddb-spatial-inset-md)] text-body text-ink-muted"
+  empty: "m-0 p-[var(--reddb-spatial-inset-md)] text-body text-ink-muted",
+  // A zero-height sticky band: the refresh indicator floats over the first
+  // row without moving the virtual rows (ADR 0056).
+  status: "pointer-events-none sticky top-0 z-[var(--reddb-layer-sticky)] flex h-0 justify-end overflow-visible",
+  indicator: "m-[var(--reddb-spatial-gap-sm)] rounded-sm bg-background"
 } }, typeRoleMerge);
 export {
   virtualList

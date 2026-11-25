@@ -7,4 +7,4 @@ export interface PhoneInputProps extends PhoneInputContract {
     /** Reports country changes from selection or an international paste. */
     onCountryChange?: (country: PhoneCountry) => void;
 }
-export declare function PhoneInput({ label, value, defaultValue, defaultCountry, countries, locale, name, form, id, help, error, required, disabled, presentation, sourceLabel, emptyLabel, placeholder, autoComplete, countryLabel, searchPlaceholder, emptyText, requiredMessage, invalidMessage, controlSize, className, onValueChange, onCountryChange }: PhoneInputProps): import("react").JSX.Element;
+export declare function PhoneInput({ label, value, defaultValue, defaultCountry, countries, locale, name, form, id, help, error, required, disabled, presentation, sourceLabel, emptyLabel, placeholder, autoComplete, countryLabel, searchPlaceholder, emptyText, requiredMessage, invalidMessage, size: sizeProp, controlSize: legacySize, className, onValueChange, onCountryChange }: PhoneInputProps): import("react").JSX.Element;

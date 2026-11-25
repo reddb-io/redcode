@@ -1,30 +1,17 @@
 import { type VariantProps } from "tailwind-variants";
 /** Density-responsive message rhythm around canonical Base media contracts. */
 export declare const chatMessage: import("tailwind-variants").TVReturnType<{
-    [key: string]: {
-        [key: string]: import("tailwind-variants").ClassValue | {
-            body?: import("tailwind-variants").ClassValue;
-            header?: import("tailwind-variants").ClassValue;
-            time?: import("tailwind-variants").ClassValue;
-            content?: import("tailwind-variants").ClassValue;
-            root?: import("tailwind-variants").ClassValue;
-            actions?: import("tailwind-variants").ClassValue;
-            author?: import("tailwind-variants").ClassValue;
+    speaker: {
+        user: {};
+        assistant: {
+            root: string;
+        };
+        system: {
+            root: string;
+            body: string;
         };
     };
-} | {
-    [x: string]: {
-        [x: string]: import("tailwind-variants").ClassValue | {
-            body?: import("tailwind-variants").ClassValue;
-            header?: import("tailwind-variants").ClassValue;
-            time?: import("tailwind-variants").ClassValue;
-            content?: import("tailwind-variants").ClassValue;
-            root?: import("tailwind-variants").ClassValue;
-            actions?: import("tailwind-variants").ClassValue;
-            author?: import("tailwind-variants").ClassValue;
-        };
-    };
-} | {}, {
+}, {
     root: string;
     content: string;
     header: string;
@@ -32,19 +19,21 @@ export declare const chatMessage: import("tailwind-variants").TVReturnType<{
     time: string;
     body: string;
     actions: string;
+    note: string;
+    failure: string;
+    announcement: string;
 }, undefined, {
-    [key: string]: {
-        [key: string]: import("tailwind-variants").ClassValue | {
-            body?: import("tailwind-variants").ClassValue;
-            header?: import("tailwind-variants").ClassValue;
-            time?: import("tailwind-variants").ClassValue;
-            content?: import("tailwind-variants").ClassValue;
-            root?: import("tailwind-variants").ClassValue;
-            actions?: import("tailwind-variants").ClassValue;
-            author?: import("tailwind-variants").ClassValue;
+    speaker: {
+        user: {};
+        assistant: {
+            root: string;
+        };
+        system: {
+            root: string;
+            body: string;
         };
     };
-} | {}, {
+}, {
     root: string;
     content: string;
     header: string;
@@ -52,7 +41,21 @@ export declare const chatMessage: import("tailwind-variants").TVReturnType<{
     time: string;
     body: string;
     actions: string;
-}, import("tailwind-variants").TVReturnType<unknown, {
+    note: string;
+    failure: string;
+    announcement: string;
+}, import("tailwind-variants").TVReturnType<{
+    speaker: {
+        user: {};
+        assistant: {
+            root: string;
+        };
+        system: {
+            root: string;
+            body: string;
+        };
+    };
+}, {
     root: string;
     content: string;
     header: string;
@@ -60,5 +63,8 @@ export declare const chatMessage: import("tailwind-variants").TVReturnType<{
     time: string;
     body: string;
     actions: string;
+    note: string;
+    failure: string;
+    announcement: string;
 }, undefined, unknown, unknown, undefined>>;
 export type ChatMessageVariants = VariantProps<typeof chatMessage>;

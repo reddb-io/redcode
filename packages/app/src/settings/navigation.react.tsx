@@ -52,7 +52,7 @@ export function SettingsNavigationView(props: {
             aria-label={items.find((item) => item.value === state.value)?.label}
             options={items.map((item) => ({ value: item.value, label: item.label, disabled: item.disabled }))}
             onValueChange={change}
-            controlSize="sm"
+            size="sm"
           />
         </div>
       </div>

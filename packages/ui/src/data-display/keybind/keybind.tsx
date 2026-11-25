@@ -1,5 +1,5 @@
 import { type ComponentProps, For, splitProps } from "solid-js"
-import "./keybind.css"
+import { kbd, kbdChord } from "@reddb-io/design-system/contracts/kbd"
 
 export interface KeybindProps extends ComponentProps<"div"> {
   keys: string[]
@@ -14,16 +14,20 @@ export function Keybind(props: KeybindProps) {
       {...rest}
       data-component="keybind-v2"
       data-variant={local.variant || "neutral"}
-      classList={{
-        ...local.classList,
-        [local.class ?? ""]: !!local.class,
-      }}
+      class={kbdChord().root({ class: local.class })}
+      classList={local.classList}
     >
       <For each={local.keys}>
         {(key) => (
-          <div data-slot="keybind-v2-key">
+          <kbd
+            data-slot="keybind-v2-key"
+            class={kbd({
+              size: "sm",
+              class: local.variant === "ghost" ? "border-transparent min-w-0 px-0" : undefined,
+            })}
+          >
             <span data-slot="keybind-v2-label">{key}</span>
-          </div>
+          </kbd>
         )}
       </For>
     </div>

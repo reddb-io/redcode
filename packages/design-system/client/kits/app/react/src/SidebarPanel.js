@@ -11,7 +11,7 @@ function SidebarPanel({ title, badge, badgeLabel, badgeTone = "neutral", status,
     ] }) }),
     /* @__PURE__ */ jsxs("div", { className: styles.header(), children: [
       /* @__PURE__ */ jsxs("div", { className: "flex min-w-0 flex-wrap items-center gap-[var(--reddb-spatial-gap-sm)]", children: [
-        /* @__PURE__ */ jsx(Tag, { className: "m-0 min-w-0 break-words text-heading", children: title }),
+        /* @__PURE__ */ jsx(Tag, { className: "m-0 min-w-0 wrap-break-word text-heading", children: title }),
         badge !== void 0 && /* @__PURE__ */ jsx(Badge, { tone: badgeTone, variant: "filled", role: "img", "aria-label": badgeLabel ?? `${badge} notifications`, children: navigationBadge(badge) }),
         status && /* @__PURE__ */ jsx(StatusIndicator, { label: status.label, tone: status.tone, showLabel: false })
       ] }),

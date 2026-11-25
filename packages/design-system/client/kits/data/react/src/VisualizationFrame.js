@@ -55,15 +55,15 @@ function VisualizationFrame({
       children: [
         /* @__PURE__ */ jsxs("figcaption", { className: "flex flex-wrap items-start justify-between gap-[var(--reddb-spatial-gap-sm)]", children: [
           /* @__PURE__ */ jsxs("div", { className: "min-w-0", children: [
-            /* @__PURE__ */ jsx("p", { className: "m-0 text-sm font-medium", children: label }),
-            description && /* @__PURE__ */ jsx("p", { className: "m-0 mt-[var(--reddb-spatial-gap-sm)] max-w-prose text-xs text-ink-muted", children: description })
+            /* @__PURE__ */ jsx("p", { className: "m-0 text-label", children: label }),
+            description && /* @__PURE__ */ jsx("p", { className: "m-0 mt-[var(--reddb-spatial-gap-sm)] max-w-prose text-caption text-ink-muted", children: description })
           ] }),
           detailHref && /* @__PURE__ */ jsx(
             "a",
             {
               href: detailHref,
               className: quietControl({
-                class: "text-xs text-foreground underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+                class: "inline-flex min-h-[var(--reddb-spatial-target-min)] items-center text-caption text-foreground underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
               }),
               children: "Explore"
             }
@@ -103,7 +103,7 @@ function VisualizationFrame({
           "ul",
           {
             "aria-label": `${label} legend`,
-            className: "m-0 flex list-none flex-wrap gap-[var(--reddb-spatial-gap-md)] p-0 text-xs",
+            className: "m-0 flex list-none flex-wrap gap-[var(--reddb-spatial-gap-md)] p-0 text-caption",
             children: legend.map((item) => /* @__PURE__ */ jsxs(
               "li",
               {
@@ -133,7 +133,7 @@ function VisualizationFrame({
             ))
           }
         ),
-        rows.length > 0 ? /* @__PURE__ */ jsxs("details", { className: "text-xs", children: [
+        rows.length > 0 ? /* @__PURE__ */ jsxs("details", { className: "text-caption", "data-mark-equivalent": onSelect ? "each" : void 0, children: [
           /* @__PURE__ */ jsxs("summary", { className: controls.summary({ class: "w-fit cursor-pointer text-ink-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus" }), children: [
             "Explore data (",
             rows.length,
@@ -146,7 +146,7 @@ function VisualizationFrame({
               style: {
                 maxHeight: "calc(var(--reddb-spatial-control-height-md) * 8)"
               },
-              children: /* @__PURE__ */ jsxs("table", { className: "w-full border-collapse text-start text-xs", children: [
+              children: /* @__PURE__ */ jsxs("table", { className: "w-full border-collapse text-start text-caption", children: [
                 /* @__PURE__ */ jsxs("caption", { className: "sr-only", children: [
                   label,
                   " data"
@@ -194,6 +194,7 @@ function VisualizationFrame({
                               "button",
                               {
                                 type: "button",
+                                "data-equivalent-for": row.id,
                                 "aria-pressed": selected === row.id,
                                 onClick: () => onSelect(row.id),
                                 className: quietControl({
@@ -214,7 +215,7 @@ function VisualizationFrame({
               ] })
             }
           )
-        ] }) : /* @__PURE__ */ jsx("p", { className: "m-0 text-xs text-ink-muted", children: "No data available." })
+        ] }) : /* @__PURE__ */ jsx("p", { className: "m-0 text-caption text-ink-muted", children: "No data available." })
       ]
     }
   );

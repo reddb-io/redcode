@@ -116,7 +116,7 @@ export function AgentUsageView(props: { services: Services }) {
             ]}
           />
           <Select
-            controlSize="sm"
+            size="sm"
             className="w-full min-w-0 @lg/usage-dashboard:w-44"
             aria-label={language.t("usage.project")}
             value={view.project}

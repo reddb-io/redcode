@@ -8,6 +8,7 @@ import { input as inputStyle } from "../../src/input.variants.js";
 import { phoneInput } from "../../src/phone-input.variants.js";
 import { bindPhoneEditing, phoneCountries, phoneCountryName, phoneFlag, phoneInvalid, phoneOptions, phoneProblem, phoneState } from "../../src/core/phone-input.js";
 import { afterFormReset, associatedForm } from "../../src/core/native-controls.js";
+import { resolveFieldSize } from "../../src/core/field-size.js";
 function PhoneInput({
   label,
   value,
@@ -32,11 +33,13 @@ function PhoneInput({
   emptyText = "No matching countries",
   requiredMessage = "Enter a phone number.",
   invalidMessage = "Enter a complete phone number for an allowed country.",
-  controlSize = "md",
+  size: sizeProp,
+  controlSize: legacySize,
   className,
   onValueChange,
   onCountryChange
 }) {
+  const fieldSize = resolveFieldSize("PhoneInput", { size: sizeProp, controlSize: legacySize }).size;
   const [localized, setLocalized] = useState(false);
   useEffect(() => setLocalized(true), []);
   const allowed = phoneCountries(countries);
@@ -100,7 +103,7 @@ function PhoneInput({
           },
           clearable: false,
           disabled,
-          controlSize,
+          size: fieldSize,
           searchPlaceholder,
           emptyText,
           className: slots.country(),
@@ -119,7 +122,7 @@ function PhoneInput({
           disabled,
           placeholder,
           defaultValue: initial.current.display,
-          className: inputStyle({ size: controlSize, class: slots.input() }),
+          className: inputStyle({ size: fieldSize, class: slots.input() }),
           onBlur: () => setInvalid(true),
           onInvalid: (event) => {
             event.preventDefault();

@@ -18,16 +18,16 @@ function Scatter(props) {
       drawing.regions.map((region) => /* @__PURE__ */ jsx("rect", { "data-scatter-region": region.id, x: region.x, y: region.y, width: region.width, height: region.height, fill: tokenColor(region.color, edge), children: /* @__PURE__ */ jsx("title", { children: region.label }) }, region.id)),
       drawing.yTicks.map((tick) => /* @__PURE__ */ jsxs("g", { children: [
         /* @__PURE__ */ jsx("line", { x1: drawing.left, x2: drawing.right, y1: tick.position, y2: tick.position, stroke: edge }),
-        /* @__PURE__ */ jsx("text", { x: drawing.left - 8, y: tick.position, textAnchor: "end", dominantBaseline: "middle", fill: mutedInk, className: "text-xs", children: tick.label })
+        /* @__PURE__ */ jsx("text", { x: drawing.left - 8, y: tick.position, textAnchor: "end", dominantBaseline: "middle", fill: mutedInk, className: "text-caption", children: tick.label })
       ] }, tick.value)),
-      drawing.xTicks.map((tick) => /* @__PURE__ */ jsx("text", { x: tick.position, y: h - 24, textAnchor: "middle", fill: mutedInk, className: "text-xs", children: tick.label }, tick.value)),
-      /* @__PURE__ */ jsx("text", { x: drawing.left, y: 16, fill: mutedInk, className: "text-xs", children: yLabel }),
-      /* @__PURE__ */ jsx("text", { x: drawing.right, y: h - 5, textAnchor: "end", fill: mutedInk, className: "text-xs", children: xLabel }),
+      drawing.xTicks.map((tick) => /* @__PURE__ */ jsx("text", { x: tick.position, y: h - 24, textAnchor: "middle", fill: mutedInk, className: "text-caption", children: tick.label }, tick.value)),
+      /* @__PURE__ */ jsx("text", { x: drawing.left, y: 16, fill: mutedInk, className: "text-caption", children: yLabel }),
+      /* @__PURE__ */ jsx("text", { x: drawing.right, y: h - 5, textAnchor: "end", fill: mutedInk, className: "text-caption", children: xLabel }),
       model.line && /* @__PURE__ */ jsx("path", { "data-regression": true, d: drawing.path(model.line), fill: "none", stroke: mutedInk, strokeWidth, strokeDasharray: "5 5" }),
       model.frontier.length > 0 && /* @__PURE__ */ jsx("path", { "data-pareto": true, d: drawing.path(model.frontier), fill: "none", stroke: ink, strokeWidth, strokeDasharray: "2 4", children: /* @__PURE__ */ jsx("title", { children: "Pareto frontier" }) }),
       drawing.points.map((p) => /* @__PURE__ */ jsxs(Mark, { id: p.id, label: `${p.label}: ${formatX(data.find((item) => item.id === p.id).x)}, ${formatY(data.find((item) => item.id === p.id).y)}`, selected, onSelect: interactive ? select : void 0, children: [
         /* @__PURE__ */ jsx("circle", { cx: p.x, cy: p.y, r: p.radius ?? 5, fill: p.paint, stroke: selected === p.id ? ink : p.paint, strokeWidth: selected === p.id ? 3 : strokeWidth }),
-        p.caption && /* @__PURE__ */ jsx("text", { "data-point-label": p.id, x: p.caption.x, y: p.caption.y, textAnchor: p.caption.anchor, fill: ink, className: "text-xs", children: p.caption.text })
+        p.caption && /* @__PURE__ */ jsx("text", { "data-point-label": p.id, x: p.caption.x, y: p.caption.y, textAnchor: p.caption.anchor, fill: ink, className: "text-caption", children: p.caption.text })
       ] }, p.id))
     ] });
   } });

@@ -9,8 +9,11 @@ import { popover } from "../../src/popover.variants.js";
 import { afterFormReset } from "../../src/core/native-controls.js";
 import { searchSelect, searchSelectOptions } from "../../src/search-select.variants.js";
 import { usePortalAppearance, useValue } from "./state.js";
+import { resolveFieldSize } from "../../src/core/field-size.js";
+import { floatingLayer } from "../../src/popover.variants.js";
 function SearchSelect(props) {
-  const { label, options, multiple = false, value = multiple ? [] : "", name, help, error, required = false, disabled = false, placeholder = "Choose an option", searchPlaceholder = "Search options", emptyText = "No matching options", requiredMessage = "Choose at least one option.", clearable = true, open = false, controlSize = "md", className, triggerClass, contentClass, onValueChange, onOpenChange } = props;
+  const { label, options, multiple = false, value = multiple ? [] : "", name, help, error, required = false, disabled = false, placeholder = "Choose an option", searchPlaceholder = "Search options", emptyText = "No matching options", requiredMessage = "Choose at least one option.", clearable = true, open = false, size: sizeProp, controlSize: legacySize, className, triggerClass, contentClass, onValueChange, onOpenChange } = props;
+  const fieldSize = resolveFieldSize("SearchSelect", { size: sizeProp, controlSize: legacySize }).size;
   const [current, setCurrent, resetCurrent] = useValue(props.value, value, (next) => {
     if (props.multiple) props.onValueChange?.(Array.isArray(next) ? next : []);
     else props.onValueChange?.(typeof next === "string" ? next : "");
@@ -59,14 +62,14 @@ function SearchSelect(props) {
       if (!multiple) changeOpen(false);
     }, inputValue: query, onInputValueChange: setQuery, open: active, onOpenChange: changeOpen, disabled, items: filtered.map((option) => option.value), filter: null, itemToStringLabel: (value2) => options.find((option) => option.value === value2)?.label ?? value2, children: [
       /* @__PURE__ */ jsxs("div", { className: styles.row(), children: [
-        /* @__PURE__ */ jsxs(Managed.Trigger, { ref: anchor, render: (nativeProps) => /* @__PURE__ */ jsx(Button, { ...control, ...nativeProps, role: "button", "aria-haspopup": "dialog", disabled, size: controlSize, className: input({ size: controlSize, class: styles.trigger({ class: triggerClass }) }) }), "aria-label": `${summary}, ${label}${required ? ", required" : ""}`, "data-search-select-trigger": true, children: [
+        /* @__PURE__ */ jsxs(Managed.Trigger, { ref: anchor, render: (nativeProps) => /* @__PURE__ */ jsx(Button, { ...control, ...nativeProps, role: "button", "aria-haspopup": "dialog", disabled, size: fieldSize, className: input({ size: fieldSize, class: styles.trigger({ class: triggerClass }) }) }), "aria-label": `${summary}, ${label}${required ? ", required" : ""}`, "data-search-select-trigger": true, children: [
           /* @__PURE__ */ jsx("span", { className: styles.summary({ class: !selected.length ? styles.placeholder() : void 0 }), children: summary }),
           /* @__PURE__ */ jsx("span", { "aria-hidden": "true", children: "\u2304" })
         ] }),
-        clearable && selected.length > 0 && /* @__PURE__ */ jsx(Button, { variant: "ghost", size: controlSize, disabled, className: styles.clear(), "aria-label": `Clear ${label}`, title: `Clear ${label}`, onClick: () => remove(), "data-search-select-clear": true, children: /* @__PURE__ */ jsx("span", { "aria-hidden": "true", children: "\xD7" }) })
+        clearable && selected.length > 0 && /* @__PURE__ */ jsx(Button, { variant: "ghost", size: fieldSize, disabled, className: styles.clear(), "aria-label": `Clear ${label}`, title: `Clear ${label}`, onClick: () => remove(), "data-search-select-clear": true, children: /* @__PURE__ */ jsx("span", { "aria-hidden": "true", children: "\xD7" }) })
       ] }),
-      /* @__PURE__ */ jsx(Managed.Portal, { container: portal.container, children: /* @__PURE__ */ jsx(Managed.Positioner, { style: { "--bits-popover-anchor-width": "var(--anchor-width)", "--bits-popover-content-available-height": "var(--available-height)" }, ...portal.attributes, sideOffset: 8, collisionPadding: 8, align: "start", children: /* @__PURE__ */ jsxs(Managed.Popup, { role: "dialog", "aria-label": label, initialFocus: search, "data-search-select-surface": true, className: popover({ class: styles.content({ class: contentClass }) }), children: [
-        /* @__PURE__ */ jsx(Managed.Input, { ref: search, "aria-label": `Search ${label}`, placeholder: searchPlaceholder, className: input({ size: controlSize, class: styles.search() }) }),
+      /* @__PURE__ */ jsx(Managed.Portal, { container: portal.container, children: /* @__PURE__ */ jsx(Managed.Positioner, { className: floatingLayer(), style: { "--bits-popover-anchor-width": "var(--anchor-width)", "--bits-popover-content-available-height": "var(--available-height)" }, ...portal.attributes, sideOffset: 8, collisionPadding: 8, align: "start", children: /* @__PURE__ */ jsxs(Managed.Popup, { role: "dialog", "aria-label": label, initialFocus: search, "data-search-select-surface": true, className: popover({ class: styles.content({ class: contentClass }) }), children: [
+        /* @__PURE__ */ jsx(Managed.Input, { ref: search, "aria-label": `Search ${label}`, placeholder: searchPlaceholder, className: input({ size: fieldSize, class: styles.search() }) }),
         /* @__PURE__ */ jsx(Managed.List, { className: styles.list(), children: filtered.map((option) => /* @__PURE__ */ jsxs(Managed.Item, { value: option.value, disabled: option.disabled, className: styles.item(), children: [
           /* @__PURE__ */ jsxs("span", { className: styles.option(), children: [
             option.label,

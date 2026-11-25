@@ -1,4 +1,5 @@
 import { tv } from "tailwind-variants";
+import { typeRoleMerge } from "./type-roles.js";
 const combobox = tv({
   slots: {
     root: "relative min-w-0",
@@ -16,14 +17,14 @@ const combobox = tv({
     item: [
       "flex cursor-default items-center justify-between rounded-md",
       "min-h-[var(--reddb-spatial-control-height-md)] gap-[var(--reddb-spatial-gap-sm)]",
-      "px-[var(--reddb-spatial-inset-md)] text-sm",
+      "px-[var(--reddb-spatial-inset-md)] text-label font-regular",
       // Highlight and selection are neutral: the Brand red marks the primary
       // action, never the option under the cursor (DESIGN.md, "Interactive states").
-      "text-foreground data-[highlighted]:bg-foreground/10 data-[selected]:font-medium",
+      "text-foreground data-[highlighted]:bg-state-selected data-[selected]:font-medium",
       "data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50"
     ].join(" "),
     indicator: "font-medium",
-    empty: "block px-[var(--reddb-spatial-inset-sm)] py-[var(--reddb-spatial-inset-sm)] text-sm text-ink-muted"
+    empty: "block px-[var(--reddb-spatial-inset-sm)] py-[var(--reddb-spatial-inset-sm)] text-body text-ink-muted"
   },
   variants: {
     // The input's clearance and the trigger's square are one control height,
@@ -44,7 +45,7 @@ const combobox = tv({
     }
   },
   defaultVariants: { size: "md" }
-});
+}, typeRoleMerge);
 export {
   combobox
 };

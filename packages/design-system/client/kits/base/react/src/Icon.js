@@ -1,15 +1,10 @@
 "use client";
 import { Fragment, jsx, jsxs } from "react/jsx-runtime";
-import { useEffect } from "react";
 import { iconColor, iconDimension } from "../../src/core/icon.js";
-import { warnDeprecated } from "../../src/deprecation.js";
 import { ICON_SIZES, ICON_COLORS } from "../../src/core/icon.js";
-function Icon({ icon: Glyph, size = "md", color = "foreground", className, ...rest }) {
+function Icon({ icon: Glyph, size = "md", color = "current", className, ...rest }) {
   const dimension = iconDimension(size);
   const resolvedColor = iconColor(color);
-  useEffect(() => {
-    if (color === "muted") warnDeprecated("Icon", 'color="muted"', 'color="ink-muted"');
-  }, [color]);
   if (typeof Glyph !== "string") return /* @__PURE__ */ jsx(Glyph, { ...rest, "data-icon": true, size: dimension, color: resolvedColor, strokeWidth: 2, className });
   /*! @license Built-in icon geometry: Copyright (c) 2026 Lucide Icons and Contributors.
    * Permission to use, copy, modify, and/or distribute this software for any

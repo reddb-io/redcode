@@ -21,8 +21,8 @@ const TONE = {
   danger: ""
 };
 const SIZE = {
-  sm: "min-h-[var(--reddb-spatial-control-height-sm)] px-[var(--reddb-spatial-inset-sm)] text-sm",
-  md: "min-h-[var(--reddb-spatial-control-height-md)] px-[var(--reddb-spatial-inset-md)] text-sm",
+  sm: "min-h-[var(--reddb-spatial-control-height-sm)] px-[var(--reddb-spatial-inset-sm)] text-label",
+  md: "min-h-[var(--reddb-spatial-control-height-md)] px-[var(--reddb-spatial-inset-md)] text-label",
   lg: "min-h-[var(--reddb-spatial-control-height-lg)] px-[var(--reddb-spatial-inset-lg)] text-base"
 };
 const BLOCK = {
@@ -33,9 +33,21 @@ const BLOCK = {
 };
 const button = tv({
   base: [
-    "inline-flex items-center justify-center gap-[var(--reddb-spatial-gap-md)]",
+    // A glyph beside the label follows the label role (ADR 0054): an
+    // `Icon size="text"` inside takes the pairing's size, and the gap is its gap.
+    "inline-flex items-center justify-center gap-[var(--reddb-glyph-gap)] [--reddb-glyph-size:var(--reddb-type-label-glyph-size)] [--reddb-glyph-gap:var(--reddb-type-label-glyph-gap)]",
     "rounded-md border border-transparent",
-    "h-auto min-w-0 max-w-full font-medium leading-tight whitespace-normal [overflow-wrap:anywhere]",
+    // A label wraps between words, and inside a word only when that word alone
+    // is wider than the space the Button can have (PR 655's 200% text). Unlike
+    // `overflow-wrap: anywhere`, `break-word` leaves the Button's min-content at
+    // its longest word, so a row that cannot fit wraps or overflows instead of
+    // squeezing every label to a letter. A caller that truncates a label adds
+    // `min-w-0` to let the Button shrink (ADR 0052, wave 1).
+    "h-auto max-w-full font-medium leading-tight whitespace-normal wrap-break-word",
+    // Never narrower than the target floor (ADR 0022): a glyph-only or one-digit
+    // Button is as tall as its control height, which a coarse pointer raises to
+    // 44px, and its padding alone left it 38px wide.
+    "min-w-[var(--reddb-spatial-target-min)]",
     // No colour transition (quiet-control.variants.ts): states and a Color
     // Scheme switch land at full contrast at once.
     // One ink focus ring for every variant and tone (ADR 0023): 2px, offset
@@ -141,19 +153,17 @@ const buttonSpinner = tv({
   },
   variants: {
     size: {
-      sm: { root: "size-[var(--reddb-spatial-icon-size-sm)]" },
-      md: { root: "size-[var(--reddb-spatial-icon-size-md)]" },
-      lg: { root: "size-[var(--reddb-spatial-icon-size-lg)]" }
+      sm: { root: "size-[var(--reddb-glyph-size)]" },
+      md: { root: "size-[var(--reddb-glyph-size)]" },
+      lg: { root: "size-[var(--reddb-glyph-size)]" }
     }
   },
   defaultVariants: { size: "md" }
 });
 const BUTTON_VARIANTS = Object.keys(VARIANT);
 const BUTTON_TONES = Object.keys(TONE);
-const BUTTON_INTENTS = BUTTON_TONES;
 const BUTTON_SIZES = Object.keys(SIZE);
 export {
-  BUTTON_INTENTS,
   BUTTON_SIZES,
   BUTTON_TONES,
   BUTTON_VARIANTS,

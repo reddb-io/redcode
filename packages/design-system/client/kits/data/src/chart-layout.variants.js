@@ -5,7 +5,7 @@ const chartSurface = tv({
   variants: { fill: { true: "h-full", false: "" } }
 });
 const overlay = [
-  "pointer-events-none invisible absolute inset-x-0 bottom-0 z-10",
+  "pointer-events-none invisible absolute end-[var(--reddb-spatial-inset-sm)] top-[var(--reddb-spatial-inset-sm)] z-[var(--reddb-layer-raised)] w-fit max-w-[calc(100%-var(--reddb-spatial-inset-sm)*2)]",
   "group-hover/chart:visible group-focus-within/chart:visible group-data-[chart-inspecting]/chart:visible",
   "border border-muted bg-elevation-overlay-surface px-[var(--reddb-spatial-inset-sm)]"
 ].join(" ");

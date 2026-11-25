@@ -1,4 +1,5 @@
 import { tv } from "tailwind-variants";
+import { typeRoleMerge } from "./type-roles.js";
 const table = tv({
   slots: {
     root: [
@@ -8,12 +9,12 @@ const table = tv({
       "min-w-0 max-w-full overflow-x-auto rounded-md [contain:inline-size]",
       "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
     ].join(" "),
-    table: "w-full min-w-max text-left text-sm text-foreground",
+    table: "w-full min-w-max text-left text-body text-foreground",
     caption: [
       "caption-top px-[var(--reddb-spatial-inset-md)]",
       "pb-[var(--reddb-spatial-inset-sm)] text-left font-medium text-foreground"
     ].join(" "),
-    header: "sticky top-0 z-10 border-b border-elevation-sunken-border bg-elevation-sunken-surface shadow-elevation-sunken",
+    header: "sticky top-0 z-[var(--reddb-layer-raised)] border-b border-elevation-sunken-border bg-elevation-sunken-surface shadow-elevation-sunken",
     row: "border-b border-muted",
     head: [
       "px-[var(--reddb-spatial-inset-md)] py-[var(--reddb-spatial-inset-sm)]",
@@ -24,7 +25,7 @@ const table = tv({
       "align-middle text-foreground"
     ].join(" ")
   }
-});
+}, typeRoleMerge);
 export {
   table
 };

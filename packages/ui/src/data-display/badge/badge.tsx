@@ -1,5 +1,5 @@
 import { type ComponentProps, splitProps } from "solid-js"
-import "./badge.css"
+import { badge } from "@reddb-io/design-system/contracts/badge"
 
 export interface BadgeProps extends ComponentProps<"span"> {
   appearance?: "standard" | "compact"
@@ -15,10 +15,11 @@ export function Badge(props: BadgeProps) {
       data-component="tag"
       data-appearance={split.appearance ?? "compact"}
       data-variant={split.variant ?? "neutral"}
-      classList={{
-        ...split.classList,
-        [split.class ?? ""]: !!split.class,
-      }}
+      class={badge({
+        variant: split.variant === "accent" ? "filled" : "tinted",
+        class: [split.appearance !== "standard" && "py-0", "data-high-contrast:border-control-edge", split.class],
+      })}
+      classList={split.classList}
     >
       {split.children}
     </span>

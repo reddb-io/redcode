@@ -1,7 +1,7 @@
 import { Fragment, jsx, jsxs } from "react/jsx-runtime";
 import { useEffect, useRef, useState } from "react";
 import { Button, Input, quietControl } from "@reddb-io/design-system/base";
-import { Table } from "./Table.js";
+import { DataTable } from "./DataTable.js";
 import {
   filterVectorRows,
   compactValue,
@@ -76,7 +76,7 @@ function VectorExplorer({
       type: "button",
       className: quietControl({
         selected: current === value,
-        class: "px-[var(--reddb-spatial-inset-sm)]"
+        class: "min-h-[var(--reddb-spatial-control-height-sm)] px-[var(--reddb-spatial-inset-sm)]"
       }),
       "aria-pressed": current === value,
       onClick: () => change(value),
@@ -207,7 +207,7 @@ function VectorExplorer({
           ] })
         ] }),
         !visible.length ? /* @__PURE__ */ jsx("p", { className: styles.detail, children: filter ? "No vectors match the filter." : surface === "search" && !incoming ? "No vector search has been run." : "No vector rows returned." }) : mode === "scores" ? /* @__PURE__ */ jsx(
-          Table,
+          DataTable,
           {
             caption: "Vector scores",
             captionHidden: true,

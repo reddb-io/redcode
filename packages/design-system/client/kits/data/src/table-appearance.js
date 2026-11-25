@@ -4,10 +4,12 @@ const dataTableClasses = {
   // Native table columns must not enlarge an ancestor's intrinsic inline size.
   // Keep their width inside this scroll region, as the Base Table does.
   scroll: "min-h-0 min-w-0 max-w-full flex-1 overflow-auto rounded-md border border-elevation-base-border bg-background [contain:inline-size] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
-  header: "sticky top-0 z-10 bg-elevation-sunken-surface text-foreground",
+  header: "sticky top-0 z-[var(--reddb-layer-raised)] bg-elevation-sunken-surface text-foreground",
   head: "border-b border-elevation-base-border border-e border-e-elevation-base-border last:border-e-0",
   row: "border-b border-elevation-base-border last:border-b-0",
-  cell: "border-e border-elevation-base-border last:border-e-0"
+  cell: "border-e border-elevation-base-border last:border-e-0",
+  // The pager is Base Pagination; its row wraps (ADR 0053) and sits at the end.
+  pager: "justify-end text-body"
 };
 const tableExplorerClasses = {
   root: "flex h-full w-full min-h-0 min-w-0 flex-col bg-background text-foreground",

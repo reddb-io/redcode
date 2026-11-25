@@ -1,5 +1,5 @@
-function feedbackTone(tone, legacy) {
-  return tone ?? legacy ?? "neutral";
+function feedbackTone(tone) {
+  return tone ?? "neutral";
 }
 function feedbackAnnouncement(tone) {
   return tone === "danger" ? "alert" : "status";

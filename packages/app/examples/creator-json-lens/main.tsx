@@ -149,7 +149,7 @@ function App() {
             value={path}
             onValueChange={setPath}
             placeholder="/customer/email"
-            controlSize="sm"
+            size="sm"
           />
         </label>
         <div className={`result ${result?.ok === false ? "invalid" : ""}`} aria-live="polite">

@@ -1,4 +1,5 @@
-import { jsx, jsxs } from "react/jsx-runtime";
+import { Fragment, jsx, jsxs } from "react/jsx-runtime";
+import { Button } from "@reddb-io/design-system/base";
 import { operationalView } from "../../src/operational.variants.js";
 import { SceneViewport } from "./SceneViewport.js";
 import Mark from "./VisualizationMark.js";
@@ -86,10 +87,31 @@ function IsometricScene({
             )
           }
         ),
-        /* @__PURE__ */ jsx("ul", { className: visual.entityList(), "aria-label": `${label} entities`, children: scene.boxes.map((box) => /* @__PURE__ */ jsxs("li", { children: [
-          box.label,
-          box.layer ? `: ${box.layer}` : ""
-        ] }, box.id)) })
+        /* @__PURE__ */ jsx(
+          "ul",
+          {
+            className: visual.entityList(),
+            "aria-label": `${label} entities`,
+            "data-mark-equivalent": interactive ? "each" : void 0,
+            children: scene.boxes.map((box) => /* @__PURE__ */ jsx("li", { children: interactive ? /* @__PURE__ */ jsxs(
+              Button,
+              {
+                variant: "ghost",
+                size: "sm",
+                "data-equivalent-for": box.id,
+                "aria-pressed": selected === box.id,
+                onClick: () => onselectedchange?.(box.id),
+                children: [
+                  box.label,
+                  box.layer ? `: ${box.layer}` : ""
+                ]
+              }
+            ) : /* @__PURE__ */ jsxs(Fragment, { children: [
+              box.label,
+              box.layer ? `: ${box.layer}` : ""
+            ] }) }, box.id))
+          }
+        )
       ]
     }
   );

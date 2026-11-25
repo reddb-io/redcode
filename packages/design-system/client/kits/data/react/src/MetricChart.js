@@ -9,7 +9,7 @@ import {
   useControllableValue
 } from "@reddb-io/design-system/base";
 import TimeSeries from "./TimeSeries.js";
-import Table from "./Table.js";
+import DataTable from "./DataTable.js";
 import { formatChartNumber } from "../../src/chart.js";
 import { timeSeriesDatasets } from "../../src/time-series.js";
 import { metricStatistics } from "../../src/metric.js";
@@ -232,7 +232,7 @@ function MetricChart(props) {
                 }
               ),
               /* @__PURE__ */ jsx(
-                Table,
+                DataTable,
                 {
                   caption: `${label}: observed sample statistics`,
                   columns,

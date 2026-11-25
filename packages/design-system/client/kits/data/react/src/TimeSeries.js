@@ -268,7 +268,7 @@ function TimeSeries(props) {
                     "data-chart-legend-item": dataset.id,
                     className: quietControl({
                       ink: "foreground",
-                      class: "inline-flex min-h-[var(--reddb-spatial-control-height-sm)] items-center gap-[var(--reddb-spatial-gap-sm)] rounded-md px-[var(--reddb-spatial-gap-sm)] aria-[pressed=false]:text-ink-muted"
+                      class: "inline-flex min-h-[var(--reddb-spatial-control-height-sm)] min-w-[var(--reddb-spatial-target-min)] max-w-full items-center justify-center gap-[var(--reddb-spatial-gap-sm)] rounded-md px-[var(--reddb-spatial-gap-sm)] aria-[pressed=false]:text-ink-muted"
                     }),
                     onClick: () => toggle(dataset.id),
                     children: [

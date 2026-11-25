@@ -1,4 +1,4 @@
-import { card } from "@reddb-io/design-system/base/recipes";
+import { card, typeRoleMerge } from "@reddb-io/design-system/base/recipes";
 import { tv } from "tailwind-variants";
 const ROOT = card({ variant: "plain", padding: "none" }).root({
   class: "group h-full min-w-0 overflow-hidden"
@@ -11,9 +11,9 @@ const categoryPreview = tv({
     // The destination's name reads in the Theme's `heading` role, through the
     // Base Heading (ADR 0025).
     name: "",
-    description: "text-sm text-ink-muted"
+    description: "text-body text-ink-muted"
   }
-});
+}, typeRoleMerge);
 export {
   categoryPreview
 };

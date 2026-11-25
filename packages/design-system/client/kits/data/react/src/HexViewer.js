@@ -23,7 +23,7 @@ function HexViewer(props) {
       "aria-colcount": 3,
       "aria-rowcount": rows.length + 1,
       className: `w-full overflow-x-auto rounded-lg border border-muted bg-transparent text-foreground ${className}`.trim(),
-      children: /* @__PURE__ */ jsxs("div", { className: "min-w-max font-mono text-sm leading-relaxed", children: [
+      children: /* @__PURE__ */ jsxs("div", { className: "min-w-max text-code leading-relaxed", children: [
         /* @__PURE__ */ jsxs(
           "div",
           {
@@ -47,7 +47,7 @@ function HexViewer(props) {
                 {
                   "data-hex-row": true,
                   role: "row",
-                  className: "grid grid-cols-[max-content_max-content_max-content] gap-[var(--reddb-spatial-gap-lg)] px-[var(--reddb-spatial-inset-md)] whitespace-pre hover:bg-foreground/8",
+                  className: "grid grid-cols-[max-content_max-content_max-content] gap-[var(--reddb-spatial-gap-lg)] px-[var(--reddb-spatial-inset-md)] whitespace-pre hover:bg-state-hover",
                   children: [
                     /* @__PURE__ */ jsx(
                       "span",

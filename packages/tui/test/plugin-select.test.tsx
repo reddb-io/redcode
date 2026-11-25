@@ -15,7 +15,7 @@ import { emptyThemeSource, tmpdir } from "./fixture/fixture"
 import { TestTuiContexts } from "./fixture/tui-environment"
 import { createTuiResolvedConfig } from "./fixture/tui-runtime"
 
-async function mount(root: string) {
+async function mount(root: string, width = 80) {
   const state = path.join(root, "state")
   await mkdir(state, { recursive: true })
   const dialog = Promise.withResolvers<Dialog>()
@@ -41,7 +41,7 @@ async function mount(root: string) {
         </ConfigProvider>
       </TestTuiContexts>
     ),
-    { width: 80, height: 24, kittyKeyboard: true },
+    { width, height: 24, kittyKeyboard: true },
   )
   app.renderer.start()
   return { app, dialog: await dialog.promise }
@@ -381,5 +381,28 @@ test("an action that opens a replacement dialog settles the select and keeps the
     expect(select.app.captureCharFrame()).not.toContain("Projects")
   } finally {
     select.app.renderer.destroy()
+  }
+})
+
+test.each([36, 100])("message dialogs keep their actions reachable at %i columns", async (width) => {
+  await using tmp = await tmpdir()
+  const { app, dialog } = await mount(tmp.path, width)
+  try {
+    const decision = dialog.confirm({
+      title: "Restore changes",
+      message: "Restore these settings?",
+      label: { cancel: "Keep my settings", confirm: "Restore defaults" },
+    })
+    await app.waitForFrame((frame) => frame.includes("Restore Defaults") && frame.includes("Keep My Settings"))
+    app.mockInput.pressArrow("left")
+    app.mockInput.pressEnter()
+    expect(await decision).toBe(false)
+    const alert = dialog.alert({ title: "Settings", message: "Current settings retained" })
+    await app.waitForFrame((frame) => frame.includes("Current settings retained") && frame.includes("ok"))
+    app.mockInput.pressEnter()
+    await alert
+    await app.waitForFrame((frame) => !frame.includes("Current settings retained"))
+  } finally {
+    app.renderer.destroy()
   }
 })

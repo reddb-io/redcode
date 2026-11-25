@@ -29,6 +29,8 @@ export interface SearchSelectContract {
     /** Whether the searchable Popover is open. */
     open?: boolean;
     /** Control height shared with Input and Button; defaults to md. */
+    size?: InputSize;
+    /** Deprecated alias of `size` (ADR 0026), removed in the next month release. */
     controlSize?: InputSize;
     /** Extra classes merged onto the invoking Button. */
     triggerClass?: string;

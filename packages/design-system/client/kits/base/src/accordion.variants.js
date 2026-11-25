@@ -11,7 +11,9 @@ const accordion = tv({
       "data-[state=open]:text-foreground"
     ].join(" "),
     label: "min-w-0 truncate",
-    indicator: "ml-auto shrink-0 text-ink-muted transition-transform group-aria-expanded:rotate-180 motion-reduce:transition-none",
+    // The chevron is a glyph beside the trigger's label, so it follows the
+    // label role through Button's pairing (ADR 0054).
+    indicator: "ml-auto inline-flex shrink-0 text-ink-muted transition-transform group-aria-expanded:rotate-180 motion-reduce:transition-none",
     content: "overflow-hidden pb-[var(--reddb-spatial-inset-md)] text-foreground"
   }
 }, typeRoleMerge);

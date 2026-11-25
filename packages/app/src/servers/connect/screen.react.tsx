@@ -85,7 +85,7 @@ export function ConnectServerView(props: {
                   autoCapitalize="off"
                   spellCheck={false}
                   required
-                  controlSize="lg"
+                  size="lg"
                   className="min-h-11 text-base leading-6"
                   placeholder={language.t(
                     state.method === "link" ? "server.connect.link.placeholder" : "dialog.server.add.placeholder",
@@ -107,7 +107,7 @@ export function ConnectServerView(props: {
                     name="password"
                     type="password"
                     autoComplete="current-password"
-                    controlSize="lg"
+                    size="lg"
                     className="min-h-11 text-base leading-6"
                     value={state.password}
                     disabled={view.busy}

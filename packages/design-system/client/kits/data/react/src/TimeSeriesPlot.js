@@ -141,7 +141,7 @@ function TimeSeriesPlot({
                 textAnchor: "end",
                 fill: "var(--reddb-color-ink-muted)",
                 "data-chart-axis-label": true,
-                className: "text-xs font-regular text-ink-muted",
+                className: "text-caption font-regular text-ink-muted",
                 children: format(tick)
               },
               tick
@@ -154,7 +154,7 @@ function TimeSeriesPlot({
                 textAnchor: "middle",
                 fill: "var(--reddb-color-ink-muted)",
                 "data-chart-axis-label": true,
-                className: "text-xs font-regular text-ink-muted",
+                className: "text-caption font-regular text-ink-muted",
                 children: tickLabel(tick)
               },
               tick

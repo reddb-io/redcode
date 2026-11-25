@@ -1,5 +1,6 @@
-/** Portable virtualization properties shared by native adapters. */
-export interface VirtualListContract<T> {
+import type { CollectionStateContract } from "@reddb-io/design-system/base";
+/** Portable virtualization properties shared by native adapters; its state follows the shared collection contract (ADR 0056). */
+export interface VirtualListContract<T> extends CollectionStateContract {
     /** Accessible name of the keyboard-scrollable list region. */
     label: string;
     /** Complete application-owned collection after filtering and ordering. */

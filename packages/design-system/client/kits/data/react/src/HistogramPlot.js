@@ -40,7 +40,7 @@ function HistogramPlot({
               textAnchor: "end",
               fill: "var(--reddb-color-ink-muted)",
               "data-chart-axis-label": true,
-              className: "text-xs font-regular text-ink-muted",
+              className: "text-caption font-regular text-ink-muted",
               children: formatChartNumber(tick, 0)
             }
           )
@@ -65,7 +65,7 @@ function HistogramPlot({
               textAnchor: "middle",
               fill: "var(--reddb-color-ink-muted)",
               "data-chart-axis-label": true,
-              className: "text-xs font-regular text-ink-muted",
+              className: "text-caption font-regular text-ink-muted",
               children: bin.label
             }
           )

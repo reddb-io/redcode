@@ -9,5 +9,7 @@ export interface ContentStateProps extends ContentStateContract, Omit<ComponentP
     empty?: ReactNode;
     /** Optional error composition receiving the message; it owns error and retry announcements. */
     failure?: (message: string) => ReactNode;
+    /** Called when the person retries after an error; adds a retry action to the default error (ADR 0056). */
+    onRetry?: () => void;
 }
-export declare function ContentState({ state, label, height, shape, rows, columns, animated, emptyTitle, emptyDescription, errorMessage, announcement, children, loading, empty, failure, className, style, ...rest }: ContentStateProps): import("react").JSX.Element;
+export declare function ContentState({ state, label, height, shape, rows, columns, animated, emptyTitle, emptyDescription, errorMessage, announcement, retryLabel, onRetry, children, loading, empty, failure, className, style, ...rest }: ContentStateProps): import("react").JSX.Element;

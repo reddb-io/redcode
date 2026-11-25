@@ -106,7 +106,7 @@ export function ServerDialog(props: {
               key={view.method}
               id={`${id}-address`}
               type="text"
-              controlSize="lg"
+              size="lg"
               className="w-full self-stretch"
               dir={view.method === "link" ? "ltr" : undefined}
               spellCheck={view.method === "link" ? false : undefined}
@@ -134,7 +134,7 @@ export function ServerDialog(props: {
             <Input
               id={`${id}-name`}
               type="text"
-              controlSize="lg"
+              size="lg"
               className="w-full self-stretch"
               value={view.name}
               placeholder={language.t("dialog.server.add.namePlaceholder")}
@@ -150,7 +150,7 @@ export function ServerDialog(props: {
               <Input
                 id={`${id}-password`}
                 type="password"
-                controlSize="lg"
+                size="lg"
                 className="w-full self-stretch"
                 value={view.password}
                 placeholder={language.t("dialog.server.add.passwordPlaceholder")}

@@ -8,6 +8,7 @@ import { navigationMenu } from "../../src/navigation-menu.variants.js";
 import { popover } from "../../src/popover.variants.js";
 import { quietControl } from "../../src/quiet-control.variants.js";
 import { usePortalAppearance, useValue } from "./state.js";
+import { floatingLayer } from "../../src/popover.variants.js";
 function NavigationMenu(props) {
   const { label, items = [], value = "", onValueChange, orientation = "horizontal", size = "md", delayDuration = 200, skipDelayDuration = 300, className } = props;
   const [current, setCurrent] = useValue(props.value, value, onValueChange), styles = navigationMenu({ orientation, size }), root = useRef(null), portal = usePortalAppearance(root, !!current);
@@ -32,7 +33,7 @@ function NavigationMenu(props) {
         ] })
       ] }) }, link.id)) })
     ] }) : /* @__PURE__ */ jsx(Managed.Link, { href: item.href, active: item.active, "aria-current": item.active ? "page" : void 0, "data-navigation-menu-control": true, onClick: () => item.onselect?.(), className: quietControl({ ink: "foreground", class: styles.control() }), children: item.label }) }, item.id)) }),
-    /* @__PURE__ */ jsx(Managed.Portal, { container: portal.container, children: /* @__PURE__ */ jsx(Managed.Positioner, { ...portal.attributes, side: orientation === "vertical" ? "right" : "bottom", align: "start", sideOffset: 8, collisionPadding: 8, children: /* @__PURE__ */ jsx(Managed.Popup, { render: /* @__PURE__ */ jsx("div", {}), children: /* @__PURE__ */ jsx(Managed.Viewport, {}) }) }) })
+    /* @__PURE__ */ jsx(Managed.Portal, { container: portal.container, children: /* @__PURE__ */ jsx(Managed.Positioner, { className: floatingLayer(), ...portal.attributes, side: orientation === "vertical" ? "right" : "bottom", align: "start", sideOffset: 8, collisionPadding: 8, children: /* @__PURE__ */ jsx(Managed.Popup, { render: /* @__PURE__ */ jsx("div", {}), children: /* @__PURE__ */ jsx(Managed.Viewport, {}) }) }) })
   ] });
 }
 export {

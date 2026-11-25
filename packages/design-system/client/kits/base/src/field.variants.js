@@ -1,4 +1,5 @@
 import { tv } from "tailwind-variants";
+import { typeRoleMerge } from "./type-roles.js";
 import { FIELD_LAYOUTS } from "./core/field.js";
 const LAYOUT = {
   stacked: { root: "", label: "", help: "", error: "" },
@@ -13,17 +14,19 @@ const field = tv({
   slots: {
     root: "group/field grid content-start gap-[var(--reddb-spatial-gap-sm)]",
     label: [
-      "text-sm font-medium text-foreground",
+      "text-label text-foreground",
       "group-has-[:is(input,select,textarea,button):disabled]/field:cursor-not-allowed",
       "group-has-[:is(input,select,textarea,button):disabled]/field:text-ink-muted"
     ].join(" "),
     required: "ms-[var(--reddb-spatial-gap-sm)]",
-    help: "text-sm text-ink-muted",
-    error: "text-sm font-medium text-feedback-danger-foreground"
+    // Help reads at the label's size in every direction, in the regular
+    // weight: `body` would set it larger than its label outside Application.
+    help: "text-label font-regular text-ink-muted",
+    error: "text-label text-feedback-danger-foreground"
   },
   variants: { layout: LAYOUT },
   defaultVariants: { layout: "stacked" }
-});
+}, typeRoleMerge);
 export {
   FIELD_LAYOUTS,
   field

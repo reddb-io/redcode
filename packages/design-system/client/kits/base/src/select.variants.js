@@ -11,8 +11,8 @@ const select = tv({
   ].join(" "),
   variants: {
     // The same three steps as Button, so a field and the action beside it
-    // share one control height at every Density stop. Named `controlSize` on
-    // the component: the native \`size\` attribute is still spread through.
+    // share one control height at every Density stop. The component calls it
+    // `size` too (ADR 0026); the native attribute is reached as `htmlSize`.
     size: {
       sm: "h-[var(--reddb-spatial-control-height-sm)] px-[var(--reddb-spatial-inset-sm)] text-editable-sm",
       md: "h-[var(--reddb-spatial-control-height-md)] px-[var(--reddb-spatial-inset-md)] text-editable-md",

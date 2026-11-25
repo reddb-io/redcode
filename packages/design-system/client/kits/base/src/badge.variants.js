@@ -1,9 +1,6 @@
 import { tv } from "tailwind-variants";
+import { typeRoleMerge } from "./type-roles.js";
 const BADGE_VARIANTS = ["tinted", "filled", "outline"];
-const DEPRECATED_BADGE_VARIANTS = {
-  neutral: "tinted",
-  primary: "filled"
-};
 const APPEARANCE = {
   tinted: {
     neutral: "border-transparent bg-muted text-foreground",
@@ -27,13 +24,14 @@ const APPEARANCE = {
     danger: "border-feedback-danger-border bg-transparent text-feedback-danger-foreground"
   }
 };
-const DEPRECATED_PRIMARY = "border-transparent bg-primary text-on-primary";
 const TONE = { neutral: "", info: "", success: "", warning: "", danger: "" };
-const VARIANT = { tinted: "", filled: "", outline: "", neutral: "", primary: "" };
+const VARIANT = { tinted: "", filled: "", outline: "" };
 const badge = tv({
   base: [
-    "inline-flex items-center gap-[var(--reddb-spatial-gap-sm)] rounded-md border px-2 py-0.5",
-    "text-xs font-medium leading-tight whitespace-nowrap"
+    // A glyph beside the badge's text follows the caption role (ADR 0054):
+    // `Icon size="text"` inside takes its size, and the gap is its gap.
+    "inline-flex items-center gap-[var(--reddb-glyph-gap)] [--reddb-glyph-size:var(--reddb-type-caption-glyph-size)] [--reddb-glyph-gap:var(--reddb-type-caption-glyph-gap)] rounded-md border px-[var(--reddb-spatial-gap-md)] py-0.5",
+    "text-caption font-medium leading-tight whitespace-nowrap"
   ].join(" "),
   variants: { tone: TONE, variant: VARIANT },
   compoundVariants: [
@@ -43,19 +41,11 @@ const badge = tv({
         tone,
         class: className
       }))
-    ),
-    // The deprecated neutral variant is the tinted badge, tone for tone.
-    ...Object.entries(APPEARANCE.tinted).map(([tone, className]) => ({
-      variant: "neutral",
-      tone,
-      class: className
-    })),
-    { variant: "primary", class: DEPRECATED_PRIMARY }
+    )
   ],
   defaultVariants: { tone: "neutral", variant: "tinted" }
-});
+}, typeRoleMerge);
 export {
   BADGE_VARIANTS,
-  DEPRECATED_BADGE_VARIANTS,
   badge
 };

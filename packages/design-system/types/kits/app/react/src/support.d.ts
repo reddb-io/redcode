@@ -1,10 +1,10 @@
 export { sidebarPanel } from "../../src/composites/sidebar-panel.variants";
 export { taskList, type TaskListVariants } from "../../src/composites/task-list.variants";
 export { TASK_STATES, TASK_STATE_LABELS, TASK_STATE_TONES, type TaskState, type TaskListItem } from "../../src/composites/task-list.behavior";
-export { listRow, LIST_ROW_SIZES, type ListRowSize, DEPRECATED_LIST_ROW_DENSITIES, LIST_ROW_DENSITIES, type ListRowDensity, } from "../../src/primitives/list-row.variants";
+export { listRow, LIST_ROW_SIZES, type ListRowSize, } from "../../src/primitives/list-row.variants";
 export { navItem } from "../../src/primitives/nav-item.variants";
 export { nodeBadge, NODE_STATUSES, NODE_STATUS_TONES, type NodeStatus, } from "../../src/primitives/node-badge.variants";
-export { pill, pillDismiss, PILL_SIZES, PILL_TONES, PILL_VARIANTS, DEPRECATED_PILL_VARIANTS, type DeprecatedPillVariant, type PillSize, type PillTone, type PillVariant, } from "../../src/primitives/pill.variants";
+export { pill, pillDismiss, PILL_SIZES, PILL_TONES, PILL_VARIANTS, type PillSize, type PillTone, type PillVariant, } from "../../src/primitives/pill.variants";
 export { splitView } from "../../src/primitives/split-view.variants";
 export { bottomNavigation, type BottomNavigationVariants, } from "../../src/composites/bottom-navigation.variants";
 export { actionPanel, type ActionPanelVariants, } from "../../src/composites/action-panel.variants";
@@ -30,7 +30,7 @@ export { commandPalette, type CommandPaletteVariants, } from "../../src/composit
 export { contextMenu, type ContextMenuSize, type ContextMenuVariants, } from "../../src/composites/context-menu.variants";
 export { menubar, type MenubarSize, type MenubarVariants } from "../../src/composites/menubar.variants";
 export { speedDial, type SpeedDialSize, type SpeedDialVariants, } from "../../src/composites/speed-dial.variants";
-export { toolbar, type ToolbarSize, type ToolbarVariants } from "../../src/composites/toolbar.variants";
+export { toolbar, type ToolbarOverflow, type ToolbarSize, type ToolbarVariants } from "../../src/composites/toolbar.variants";
 export { sidebarNavigation, type SidebarNavigationVariants, } from "../../src/composites/sidebar-navigation.variants";
 export { sidebarRail, type SidebarRailVariants, } from "../../src/composites/sidebar-rail.variants";
 export { storeNavigation, type StoreNavigationVariants, } from "../../src/composites/store-navigation.variants";

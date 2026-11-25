@@ -17,4 +17,6 @@ export interface ContentStateContract extends Omit<SkeletonContract, "label"> {
     errorMessage?: string;
     /** Override the live message for the current state; an empty string silences it. Default errors use the alert instead. */
     announcement?: string;
+    /** Visible and accessible label of the default error's retry action, shown when a retry handler is given. Defaults to Retry. */
+    retryLabel?: string;
 }

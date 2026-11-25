@@ -12,12 +12,11 @@ function kpiDeltaSentiment(delta, polarity = "higher-is-better") {
   const better = polarity === "higher-is-better" ? "increase" : "decrease";
   return direction === better ? "improvement" : "regression";
 }
-import { DEPRECATED_KPI_CARD_TONES, KPI_CARD_TONES } from "../kpi-card.variants.js";
+import { KPI_CARD_TONES } from "../kpi-card.variants.js";
 function formatKpiDelta(delta, suffix = "%") {
   return `${delta > 0 ? "+" : ""}${delta}${suffix}`;
 }
 export {
-  DEPRECATED_KPI_CARD_TONES,
   KPI_CARD_TONES,
   formatKpiDelta,
   kpiDeltaDirection,

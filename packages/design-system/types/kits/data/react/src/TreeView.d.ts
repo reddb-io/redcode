@@ -16,7 +16,9 @@ export interface TreeViewProps extends TreeViewContract {
     leading?: (node: TreeNode) => ReactNode;
     /** Caller-owned detail after a node label. */
     trailing?: (node: TreeNode) => ReactNode;
-    /** Additional root tree classes. */
+    /** Called when the person retries after a failed load. */
+    onretry?: () => void;
+    /** Additional root tree classes (or classes on the loading, empty or error state that replaces the tree). */
     className?: string;
 }
 export declare function TreeView(props: TreeViewProps): import("react").JSX.Element;

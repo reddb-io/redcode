@@ -1442,6 +1442,9 @@ function mockHandlers(
             ),
           }),
         sessionMonitors: () => Effect.succeed({ data: [] }),
+        sessionTodoGraph: (ctx) => config.sessions.some((session) => session.id === ctx.params.sessionID)
+          ? Effect.succeed({ data: { sessionID: ctx.params.sessionID, tasks: [], nodes: [], assignments: [] } })
+          : Effect.fail(new MockNotFound({ message: "Session not found" })),
         sessionGet: (ctx) =>
           Effect.suspend(() => {
             config.onSession?.(ctx.params.sessionID)

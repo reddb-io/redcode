@@ -90,7 +90,7 @@ export function CommandPalette(props: {
             value={view.query}
             autoComplete="off"
             spellCheck={false}
-            controlSize="lg"
+            size="lg"
             placeholder={view.placeholder}
             aria-label={view.placeholder}
             aria-autocomplete="list"

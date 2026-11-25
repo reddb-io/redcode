@@ -18,9 +18,9 @@ export declare const shoppingCart: import("tailwind-variants").TVReturnType<{
             description?: import("tailwind-variants").ClassValue;
             actions?: import("tailwind-variants").ClassValue;
             item?: import("tailwind-variants").ClassValue;
+            empty?: import("tailwind-variants").ClassValue;
             controls?: import("tailwind-variants").ClassValue;
             total?: import("tailwind-variants").ClassValue;
-            empty?: import("tailwind-variants").ClassValue;
             identity?: import("tailwind-variants").ClassValue;
             price?: import("tailwind-variants").ClassValue;
             itemActions?: import("tailwind-variants").ClassValue;
@@ -39,9 +39,9 @@ export declare const shoppingCart: import("tailwind-variants").TVReturnType<{
             description?: import("tailwind-variants").ClassValue;
             actions?: import("tailwind-variants").ClassValue;
             item?: import("tailwind-variants").ClassValue;
+            empty?: import("tailwind-variants").ClassValue;
             controls?: import("tailwind-variants").ClassValue;
             total?: import("tailwind-variants").ClassValue;
-            empty?: import("tailwind-variants").ClassValue;
             identity?: import("tailwind-variants").ClassValue;
             price?: import("tailwind-variants").ClassValue;
             itemActions?: import("tailwind-variants").ClassValue;
@@ -77,9 +77,9 @@ export declare const shoppingCart: import("tailwind-variants").TVReturnType<{
             description?: import("tailwind-variants").ClassValue;
             actions?: import("tailwind-variants").ClassValue;
             item?: import("tailwind-variants").ClassValue;
+            empty?: import("tailwind-variants").ClassValue;
             controls?: import("tailwind-variants").ClassValue;
             total?: import("tailwind-variants").ClassValue;
-            empty?: import("tailwind-variants").ClassValue;
             identity?: import("tailwind-variants").ClassValue;
             price?: import("tailwind-variants").ClassValue;
             itemActions?: import("tailwind-variants").ClassValue;

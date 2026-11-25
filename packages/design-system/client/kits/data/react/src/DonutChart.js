@@ -32,7 +32,7 @@ function DonutChart(props) {
       plot(),
       legendContent,
       /* @__PURE__ */ jsxs("details", { className: "text-caption", children: [
-        /* @__PURE__ */ jsxs("summary", { children: [
+        /* @__PURE__ */ jsxs("summary", { className: "w-fit min-h-[var(--reddb-spatial-control-height-sm)] content-center cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus", children: [
           "Explore data (",
           data.length,
           ")"

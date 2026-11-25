@@ -1,4 +1,5 @@
 import { tv } from "tailwind-variants";
+import { hitArea } from "./hit-area.variants.js";
 const INTERACTIVE = {
   /**
    * The `href` form. The ink focus outline (ADR 0023) is drawn on this
@@ -6,7 +7,12 @@ const INTERACTIVE = {
    * outside the clearspace by construction; its 2px offset only moves it
    * further out.
    */
-  true: "rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
+  true: [
+    "rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
+    // A masthead Mark is 24–36px tall: the home link's hit area reaches the
+    // target floor around it (ADR 0022), and the drawing keeps its size.
+    hitArea({ axis: "both" })
+  ].join(" "),
   /** The default: the pure Mark, in a footer or as an avatar. */
   false: ""
 };

@@ -25,7 +25,7 @@ export function SearchSelectView(props: {
       value={view.value}
       disabled={view.disabled}
       clearable={false}
-      controlSize="sm"
+      size="sm"
       className={`gap-0 [&>label]:sr-only ${view.className ?? ""}`}
       triggerClass="min-h-[var(--reddb-spatial-target-min)]"
       placeholder={

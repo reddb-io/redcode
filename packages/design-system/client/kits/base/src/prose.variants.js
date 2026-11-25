@@ -121,6 +121,9 @@ const BLOCKS = [
   "[:where(&)_details]:px-[var(--reddb-spatial-inset-md)]",
   "[:where(&)_details]:py-[var(--reddb-spatial-inset-sm)]",
   "[:where(&)_summary]:cursor-pointer",
+  // The summary is the disclosure's control: it reaches the target floor.
+  "[:where(&)_summary]:min-h-[var(--reddb-spatial-target-min)]",
+  "[:where(&)_summary]:content-center",
   "[:where(&)_summary]:font-medium",
   "[:where(&)_summary:focus-visible]:rounded-sm",
   "[:where(&)_summary:focus-visible]:outline-2",

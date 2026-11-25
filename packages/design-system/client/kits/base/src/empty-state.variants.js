@@ -1,16 +1,17 @@
 import { tv } from "tailwind-variants";
+import { typeRoleMerge } from "./type-roles.js";
 const SIZE = {
   sm: {
     root: "gap-[var(--reddb-spatial-gap-md)] px-[var(--reddb-spatial-inset-md)] py-[var(--reddb-spatial-inset-lg)]",
-    title: "text-sm",
-    description: "text-xs",
-    hint: "text-xs"
+    title: "text-label",
+    description: "text-caption",
+    hint: "text-caption"
   },
   md: {
     root: "gap-[var(--reddb-spatial-gap-lg)] px-[var(--reddb-spatial-inset-lg)] py-10",
-    title: "text-base",
-    description: "text-sm",
-    hint: "text-xs"
+    title: "text-heading",
+    description: "text-body",
+    hint: "text-caption"
   }
 };
 const BORDERED = {
@@ -28,7 +29,7 @@ const emptyState = tv({
   },
   variants: { size: SIZE, bordered: BORDERED },
   defaultVariants: { size: "md", bordered: true }
-});
+}, typeRoleMerge);
 const EMPTY_STATE_SIZES = Object.keys(SIZE);
 export {
   EMPTY_STATE_SIZES,

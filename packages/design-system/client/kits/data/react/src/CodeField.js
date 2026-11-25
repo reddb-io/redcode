@@ -145,7 +145,7 @@ function CodeField(props) {
           "label",
           {
             htmlFor: inputId,
-            className: "text-sm font-medium text-foreground",
+            className: "text-label text-foreground",
             children: [
               label,
               required ? /* @__PURE__ */ jsx(Fragment, { children: /* @__PURE__ */ jsx("span", { "aria-hidden": "true", children: " *" }) }) : null
@@ -167,7 +167,7 @@ function CodeField(props) {
                     ref: gutterElement,
                     "data-code-gutter": true,
                     "aria-hidden": "true",
-                    className: "pointer-events-none absolute inset-y-0 left-0 z-10 w-[calc(3ch+var(--reddb-spatial-inset-md))] overflow-hidden border-r border-muted bg-muted py-[var(--reddb-spatial-inset-sm)] text-right leading-relaxed text-ink-muted select-none",
+                    className: "pointer-events-none absolute inset-y-0 left-0 z-[var(--reddb-layer-raised)] w-[calc(3ch+var(--reddb-spatial-inset-md))] overflow-hidden border-r border-muted bg-muted py-[var(--reddb-spatial-inset-sm)] text-right leading-relaxed text-ink-muted select-none",
                     children: lineNumbers.map((line, index) => {
                       return /* @__PURE__ */ jsx(Fragment2, { children: /* @__PURE__ */ jsx(
                         "span",
@@ -228,7 +228,7 @@ function CodeField(props) {
                     autoCapitalize: "off",
                     spellCheck: "false",
                     "data-code-input": true,
-                    className: `relative z-10 block min-h-[inherit] w-full resize-y border-0 bg-transparent text-editable-md text-transparent caret-foreground outline-hidden placeholder:text-ink-muted disabled:cursor-not-allowed disabled:opacity-50 ${paddingClass} leading-relaxed ${inputClass}`.trim(),
+                    className: `relative z-[var(--reddb-layer-raised)] block min-h-[inherit] w-full resize-y border-0 bg-transparent text-editable-md text-transparent caret-foreground outline-hidden placeholder:text-ink-muted disabled:cursor-not-allowed disabled:opacity-50 ${paddingClass} leading-relaxed ${inputClass}`.trim(),
                     onChange: handleInput,
                     onScroll: syncScroll,
                     onKeyDown: handleKeydown,
@@ -258,7 +258,7 @@ function CodeField(props) {
                     autoCapitalize: "off",
                     spellCheck: "false",
                     "data-code-input": true,
-                    className: `relative z-10 block h-full w-full rounded-md border border-control-edge bg-transparent text-editable-md text-transparent caret-foreground outline-hidden placeholder:text-ink-muted disabled:cursor-not-allowed disabled:opacity-50 ${paddingClass} ${lineClass} ${inputClass}`.trim(),
+                    className: `relative z-[var(--reddb-layer-raised)] block h-full w-full rounded-md border border-control-edge bg-transparent text-editable-md text-transparent caret-foreground outline-hidden placeholder:text-ink-muted disabled:cursor-not-allowed disabled:opacity-50 ${paddingClass} ${lineClass} ${inputClass}`.trim(),
                     onChange: handleInput,
                     onScroll: syncScroll,
                     onKeyDown: handleKeydown,
@@ -275,7 +275,7 @@ function CodeField(props) {
               id: listboxId,
               role: "listbox",
               "aria-label": `${label} suggestions`,
-              className: "absolute z-20 mt-[var(--reddb-spatial-gap-sm)] max-h-64 w-full overflow-y-auto rounded-md border border-elevation-overlay-border bg-elevation-overlay-surface p-[var(--reddb-spatial-inset-sm)] text-sm text-elevation-overlay-foreground shadow-elevation-overlay",
+              className: "absolute z-[var(--reddb-layer-sticky)] mt-[var(--reddb-spatial-gap-sm)] max-h-64 w-full overflow-y-auto rounded-md border border-elevation-overlay-border bg-elevation-overlay-surface p-[var(--reddb-spatial-inset-sm)] text-body text-elevation-overlay-foreground shadow-elevation-overlay",
               children: filteredSuggestions.map((suggestion, index) => {
                 return /* @__PURE__ */ jsx(Fragment2, { children: /* @__PURE__ */ jsx(
                   "div",
@@ -286,7 +286,7 @@ function CodeField(props) {
                     "aria-selected": activeIndex === index,
                     "aria-disabled": suggestion.disabled || void 0,
                     "data-code-suggestion": suggestion.value,
-                    className: `flex min-h-[var(--reddb-spatial-control-height-md)] items-center rounded-md px-[var(--reddb-spatial-inset-md)] ${activeIndex === index ? "bg-foreground/10 text-foreground" : "bg-transparent"} ${suggestion.disabled ? "opacity-50" : "cursor-pointer"}`,
+                    className: `flex min-h-[var(--reddb-spatial-control-height-md)] items-center rounded-md px-[var(--reddb-spatial-inset-md)] ${activeIndex === index ? "bg-state-selected text-foreground" : "bg-transparent"} ${suggestion.disabled ? "opacity-50" : "cursor-pointer"}`,
                     onMouseDown: (event) => event.preventDefault(),
                     onClick: () => choose(index),
                     onKeyDown: (event) => {
@@ -300,7 +300,7 @@ function CodeField(props) {
             }
           ) }) : null
         ] }),
-        help ? /* @__PURE__ */ jsx(Fragment, { children: /* @__PURE__ */ jsx("p", { id: helpId, className: "m-0 text-sm text-ink-muted", children: help }) }) : null
+        help ? /* @__PURE__ */ jsx(Fragment, { children: /* @__PURE__ */ jsx("p", { id: helpId, className: "m-0 text-body text-ink-muted", children: help }) }) : null
       ]
     }
   ) });

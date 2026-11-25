@@ -1,10 +1,6 @@
 "use client";
 import { Fragment, jsx, jsxs } from "react/jsx-runtime";
-import { useEffect } from "react";
-import { warnDeprecated } from "@reddb-io/design-system/base";
-import {
-  kpiCard
-} from "../../src/kpi-card.variants.js";
+import { kpiCard } from "../../src/kpi-card.variants.js";
 import {
   kpiDeltaDirection,
   kpiDeltaSentiment,
@@ -30,15 +26,6 @@ function KpiCard(props) {
     tone,
     sentiment,
     trend: sparkline != null && sparkline !== false
-  });
-  useEffect(() => {
-    if (tone === "brand") {
-      warnDeprecated(
-        "KpiCard",
-        'tone="brand"',
-        "a tone (neutral, info, success, warning, danger); the accent is an emphasis, not a tone"
-      );
-    }
   });
   return /* @__PURE__ */ jsx(Fragment, { children: /* @__PURE__ */ jsxs(
     "section",

@@ -110,6 +110,13 @@
   --reddb-color-series-4: var(--reddb-scheme-not-light, var(--reddb-theme-series-4-light)) var(--reddb-scheme-not-dark, var(--reddb-theme-series-4-dark));
   --reddb-color-series-5: var(--reddb-scheme-not-light, var(--reddb-theme-series-5-light)) var(--reddb-scheme-not-dark, var(--reddb-theme-series-5-dark));
   --reddb-color-series-6: var(--reddb-scheme-not-light, var(--reddb-theme-series-6-light)) var(--reddb-scheme-not-dark, var(--reddb-theme-series-6-dark));
+  --reddb-color-series-highlight: var(--reddb-scheme-not-light, var(--reddb-theme-series-highlight-light)) var(--reddb-scheme-not-dark, var(--reddb-theme-series-highlight-dark));
+  --reddb-color-state-hover: var(--reddb-scheme-not-light, var(--reddb-theme-state-hover-light)) var(--reddb-scheme-not-dark, var(--reddb-theme-state-hover-dark));
+  --reddb-color-state-open: var(--reddb-scheme-not-light, var(--reddb-theme-state-open-light)) var(--reddb-scheme-not-dark, var(--reddb-theme-state-open-dark));
+  --reddb-color-state-pressed: var(--reddb-scheme-not-light, var(--reddb-theme-state-pressed-light)) var(--reddb-scheme-not-dark, var(--reddb-theme-state-pressed-dark));
+  --reddb-color-state-selected: var(--reddb-scheme-not-light, var(--reddb-theme-state-selected-light)) var(--reddb-scheme-not-dark, var(--reddb-theme-state-selected-dark));
+  --reddb-color-state-strong: var(--reddb-scheme-not-light, var(--reddb-theme-state-strong-light)) var(--reddb-scheme-not-dark, var(--reddb-theme-state-strong-dark));
+  --reddb-color-state-subtle: var(--reddb-scheme-not-light, var(--reddb-theme-state-subtle-light)) var(--reddb-scheme-not-dark, var(--reddb-theme-state-subtle-dark));
   --reddb-shadow-elevation-base: var(--reddb-scheme-not-light, var(--reddb-theme-elevation-base-shadow-light)) var(--reddb-scheme-not-dark, var(--reddb-theme-elevation-base-shadow-dark));
   --reddb-shadow-elevation-overlay: var(--reddb-scheme-not-light, var(--reddb-theme-elevation-overlay-shadow-light)) var(--reddb-scheme-not-dark, var(--reddb-theme-elevation-overlay-shadow-dark));
   --reddb-shadow-elevation-raised: var(--reddb-scheme-not-light, var(--reddb-theme-elevation-raised-shadow-light)) var(--reddb-scheme-not-dark, var(--reddb-theme-elevation-raised-shadow-dark));

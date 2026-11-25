@@ -11,9 +11,9 @@ const sidebarLayout = tv({
     // `3xl` step, one line in proportion from it.
     sidebar: "min-w-0 basis-full @3xl/sidebar-layout:grow-[1] @3xl/sidebar-layout:basis-0",
     content: "min-w-0 basis-full @3xl/sidebar-layout:grow-[3] @3xl/sidebar-layout:basis-0",
-    railRegion: "relative z-30 min-h-dvh w-max min-w-0",
+    railRegion: "relative z-[var(--reddb-layer-overlay)] min-h-dvh w-max min-w-0",
     panel: "min-w-0 border-e border-elevation-sunken-border bg-elevation-sunken-surface shadow-elevation-sunken",
-    main: "min-w-0 break-words"
+    main: "min-w-0 wrap-break-word"
   },
   variants: {
     side: SIDE,
@@ -28,7 +28,7 @@ const sidebarLayout = tv({
           "transition-[grid-template-columns] motion-reduce:transition-none"
         ].join(" "),
         panel: [
-          "max-md:fixed max-md:inset-y-0 max-md:z-40 max-md:w-[min(20rem,calc(100vw_-_var(--_reddb-sidebar-rail-width,calc(var(--reddb-spatial-control-height-md)+2*var(--reddb-spatial-inset-sm)))))]",
+          "max-md:fixed max-md:inset-y-0 max-md:z-[var(--reddb-layer-drawer)] max-md:w-[min(20rem,calc(100vw_-_var(--_reddb-sidebar-rail-width,calc(var(--reddb-spatial-control-height-md)+2*var(--reddb-spatial-inset-sm)))))]",
           "max-md:overflow-y-auto max-md:p-[var(--reddb-spatial-inset-sm)]",
           "max-md:transition-transform motion-reduce:transition-none"
         ].join(" ")
@@ -165,11 +165,11 @@ const SIDEBAR_SIDES = Object.keys(SIDE);
 const responsiveNavigationLayout = tv({
   slots: {
     root: "grid min-h-dvh min-w-0 grid-cols-[minmax(0,1fr)] pb-[var(--reddb-spatial-control-height-lg)] md:grid-cols-[auto_minmax(0,1fr)] md:pb-0",
-    header: "sticky top-0 z-20 col-span-full min-w-0",
+    header: "sticky top-0 z-[var(--reddb-layer-sticky)] col-span-full min-w-0",
     rail: "sticky top-[var(--_reddb-navigation-header-height,0px)] hidden h-dvh min-h-0 md:block",
     panel: "sticky top-[var(--_reddb-navigation-header-height,0px)] hidden h-dvh min-h-0 min-w-0 overflow-y-auto border-e border-muted bg-elevation-sunken-surface md:block",
     main: "min-w-0 p-[var(--reddb-spatial-inset-md)] [&_a]:scroll-mb-[var(--_reddb-navigation-bottom-height,0px)] [&_button]:scroll-mb-[var(--_reddb-navigation-bottom-height,0px)] [&_input]:scroll-mb-[var(--_reddb-navigation-bottom-height,0px)]",
-    bottom: "fixed inset-x-0 bottom-0 z-30 md:hidden",
+    bottom: "fixed inset-x-0 bottom-0 z-[var(--reddb-layer-overlay)] md:hidden",
     more: "grid gap-[var(--reddb-spatial-gap-sm)]",
     drawer: "max-w-[min(42ch,calc(100vw_-_var(--reddb-spatial-inset-lg)))] pb-[max(var(--reddb-spatial-inset-md),env(safe-area-inset-bottom))]",
     menu: "min-h-0 min-w-0"

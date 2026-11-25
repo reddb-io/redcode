@@ -10,6 +10,10 @@ import {
   MultiColumnLayout
 } from "./MultiColumnLayout.js";
 import { ChatMessage } from "./ChatMessage.js";
+import { PromptComposer } from "./PromptComposer.js";
+import { ToolActivity } from "./ToolActivity.js";
+import { ApprovalPrompt } from "./ApprovalPrompt.js";
+import { UsageMeter } from "./UsageMeter.js";
 import { Review } from "./Review.js";
 import { Incentive } from "./Incentive.js";
 import { Filter } from "./Filter.js";
@@ -69,6 +73,7 @@ export {
   ActivityFeed,
   ApplicationShell,
   ApplicationWorkspace,
+  ApprovalPrompt,
   BottomNavigation,
   CardHeading,
   CategoryFilter,
@@ -100,6 +105,7 @@ export {
   ProductList,
   ProductOverview,
   ProductQuickview,
+  PromptComposer,
   PropertyPanel,
   Review,
   SettingsRow,
@@ -115,7 +121,9 @@ export {
   TaskCard,
   TaskList,
   TelemetryRow,
+  ToolActivity,
   Toolbar,
+  UsageMeter,
   WorkspaceTabs,
   createWorkspaceSession
 };

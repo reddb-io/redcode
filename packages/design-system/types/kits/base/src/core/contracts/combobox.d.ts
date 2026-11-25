@@ -24,6 +24,8 @@ export interface ComboboxContract {
     /** Whether the anchored listbox is open. */
     open?: boolean;
     /** The control height step, matching Button's `size` (default `md`). */
+    size?: ComboboxSize;
+    /** Deprecated alias of `size` (ADR 0026), removed in the next month release. */
     controlSize?: ComboboxSize;
     /** Extra classes merged onto the typeahead input. */
     inputClass?: string;

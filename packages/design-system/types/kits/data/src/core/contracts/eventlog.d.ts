@@ -1,5 +1,7 @@
+import type { CollectionStateContract } from "@reddb-io/design-system/base";
 import type { LogEvent } from "../../operational";
-export interface EventLogContract {
+/** The event history; its state follows the shared collection contract (ADR 0056). */
+export interface EventLogContract extends CollectionStateContract {
     /** Accessible name of this event history. */
     label: string;
     /** Caller-ordered events with stable ids and machine-readable timestamps. */

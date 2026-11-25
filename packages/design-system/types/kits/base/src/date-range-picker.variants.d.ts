@@ -2,18 +2,20 @@ import { type VariantProps } from "tailwind-variants";
 export declare const dateRangePicker: import("tailwind-variants").TVReturnType<{
     [key: string]: {
         [key: string]: import("tailwind-variants").ClassValue | {
+            content?: import("tailwind-variants").ClassValue;
             root?: import("tailwind-variants").ClassValue;
-            field?: import("tailwind-variants").ClassValue;
             trigger?: import("tailwind-variants").ClassValue;
+            field?: import("tailwind-variants").ClassValue;
             calendar?: import("tailwind-variants").ClassValue;
         };
     };
 } | {
     [x: string]: {
         [x: string]: import("tailwind-variants").ClassValue | {
+            content?: import("tailwind-variants").ClassValue;
             root?: import("tailwind-variants").ClassValue;
-            field?: import("tailwind-variants").ClassValue;
             trigger?: import("tailwind-variants").ClassValue;
+            field?: import("tailwind-variants").ClassValue;
             calendar?: import("tailwind-variants").ClassValue;
         };
     };
@@ -21,13 +23,15 @@ export declare const dateRangePicker: import("tailwind-variants").TVReturnType<{
     root: string;
     field: string;
     trigger: string;
+    content: string;
     calendar: string;
 }, undefined, {
     [key: string]: {
         [key: string]: import("tailwind-variants").ClassValue | {
+            content?: import("tailwind-variants").ClassValue;
             root?: import("tailwind-variants").ClassValue;
-            field?: import("tailwind-variants").ClassValue;
             trigger?: import("tailwind-variants").ClassValue;
+            field?: import("tailwind-variants").ClassValue;
             calendar?: import("tailwind-variants").ClassValue;
         };
     };
@@ -35,11 +39,13 @@ export declare const dateRangePicker: import("tailwind-variants").TVReturnType<{
     root: string;
     field: string;
     trigger: string;
+    content: string;
     calendar: string;
 }, import("tailwind-variants").TVReturnType<unknown, {
     root: string;
     field: string;
     trigger: string;
+    content: string;
     calendar: string;
 }, undefined, unknown, unknown, undefined>>;
 export type DateRangePickerVariants = VariantProps<typeof dateRangePicker>;

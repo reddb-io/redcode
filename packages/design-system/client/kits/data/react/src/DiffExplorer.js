@@ -17,13 +17,13 @@ function DiffExplorer({ label, entries, context, emptyLabel = "No changes to ins
   const visible = showUnchanged ? fields : fields.filter((field) => field.status !== "unchanged");
   return /* @__PURE__ */ jsx("section", { "data-diff-explorer": true, "aria-label": label, className: `@container ${styles.root} ${className}`, children: entries.length === 0 ? /* @__PURE__ */ jsx("p", { className: styles.detail, children: emptyLabel }) : /* @__PURE__ */ jsxs(Fragment, { children: [
     /* @__PURE__ */ jsxs("div", { className: styles.toolbar, children: [
-      /* @__PURE__ */ jsx("button", { type: "button", className: quietControl({ selected: mode === "summary", class: "px-[var(--reddb-spatial-inset-sm)]" }), "aria-pressed": mode === "summary", onClick: () => setMode("summary"), children: "Diff" }),
-      /* @__PURE__ */ jsx("button", { type: "button", className: quietControl({ selected: mode === "raw", class: "px-[var(--reddb-spatial-inset-sm)]" }), "aria-pressed": mode === "raw", onClick: () => setMode("raw"), children: "Raw" }),
+      /* @__PURE__ */ jsx("button", { type: "button", className: quietControl({ selected: mode === "summary", class: "min-h-[var(--reddb-spatial-control-height-sm)] px-[var(--reddb-spatial-inset-sm)]" }), "aria-pressed": mode === "summary", onClick: () => setMode("summary"), children: "Diff" }),
+      /* @__PURE__ */ jsx("button", { type: "button", className: quietControl({ selected: mode === "raw", class: "min-h-[var(--reddb-spatial-control-height-sm)] px-[var(--reddb-spatial-inset-sm)]" }), "aria-pressed": mode === "raw", onClick: () => setMode("raw"), children: "Raw" }),
       /* @__PURE__ */ jsxs("label", { children: [
         "Filter ",
         /* @__PURE__ */ jsx(Input, { type: "search", "aria-label": "Filter", ref: filterInput, value: filter, onChange: (event) => setFilter(event.currentTarget.value) })
       ] }),
-      filter && /* @__PURE__ */ jsx("button", { type: "button", className: quietControl({ class: "px-[var(--reddb-spatial-inset-sm)]" }), onClick: () => {
+      filter && /* @__PURE__ */ jsx("button", { type: "button", className: quietControl({ class: "min-h-[var(--reddb-spatial-control-height-sm)] px-[var(--reddb-spatial-inset-sm)]" }), onClick: () => {
         setFilter("");
         filterInput.current?.focus();
       }, children: "Clear filter" }),

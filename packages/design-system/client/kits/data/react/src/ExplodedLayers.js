@@ -180,7 +180,7 @@ function ExplodedLayers(props) {
                             x: layer.labelX,
                             y: layer.cy - 2,
                             fill: mutedInk,
-                            className: "font-mono text-xs",
+                            className: "font-mono text-caption",
                             children: String(layer.index + 1).padStart(2, "0")
                           }
                         ),
@@ -190,7 +190,7 @@ function ExplodedLayers(props) {
                             x: layer.labelX + 28,
                             y: layer.cy - 2,
                             fill: ink,
-                            className: "text-sm font-medium",
+                            className: "text-label",
                             children: titleLines.map((line, index2) => {
                               return /* @__PURE__ */ jsx(Fragment2, { children: /* @__PURE__ */ jsx(
                                 "tspan",
@@ -209,7 +209,7 @@ function ExplodedLayers(props) {
                             x: layer.labelX + 28,
                             y: layer.cy + 20 + (titleLines.length - 1) * 18,
                             fill: mutedInk,
-                            className: "text-xs",
+                            className: "text-caption",
                             children: descriptionLines.map((line, index2) => {
                               return /* @__PURE__ */ jsx(Fragment2, { children: /* @__PURE__ */ jsx(
                                 "tspan",

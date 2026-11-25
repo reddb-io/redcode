@@ -142,7 +142,7 @@ function mountGraphEngine(host, initialData, interact, initialOptions = { layout
       rect.style.strokeOpacity = ".5";
       rect.setAttribute("aria-hidden", "true");
       text.setAttribute("fill", "var(--reddb-color-foreground)");
-      text.setAttribute("class", "text-xs");
+      text.setAttribute("class", "text-caption");
       text.setAttribute("aria-hidden", "true");
       text.textContent = `${box.id} (${box.count})`;
       overlay.append(rect, text);

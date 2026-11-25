@@ -25,3 +25,14 @@ export declare function sankeyData(data: SankeyData): {
         href?: string;
     }[];
 };
+/**
+ * The data explorer's rows: every flow, then every stage the chart draws with
+ * its throughput (the larger of what enters and what leaves it). A selectable
+ * stage is a mark too, so it needs a row to stay reachable from a control that
+ * meets the touch floor.
+ */
+export declare function sankeyRows(data: SankeyData, format: (value: number) => string): {
+    id: string;
+    label: string;
+    value: string;
+}[];

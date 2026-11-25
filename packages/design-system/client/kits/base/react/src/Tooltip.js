@@ -5,6 +5,7 @@ import { Tooltip as Managed } from "@base-ui/react/tooltip";
 import { button } from "../../src/button.variants.js";
 import { tooltip } from "../../src/tooltip.variants.js";
 import { usePortalAppearance } from "./state.js";
+import { floatingLayer } from "../../src/popover.variants.js";
 function Tooltip({ label, content, children, child, className, disabled, ...rest }) {
   const id = useId(), anchor = useRef(null), [open, setOpen] = useState(false), portal = usePortalAppearance(anchor, open);
   return /* @__PURE__ */ jsx("span", { "data-tooltip-root": true, className: "relative inline-flex", children: /* @__PURE__ */ jsx(Managed.Provider, { delay: 0, children: /* @__PURE__ */ jsxs(Managed.Root, { open, onOpenChange: setOpen, disabled: Boolean(disabled), children: [
@@ -22,7 +23,7 @@ function Tooltip({ label, content, children, child, className, disabled, ...rest
         children: children ?? label
       }
     ),
-    /* @__PURE__ */ jsx(Managed.Portal, { container: portal.container, children: /* @__PURE__ */ jsx(Managed.Positioner, { ...portal.attributes, side: "top", align: "center", sideOffset: 8, collisionPadding: 8, children: /* @__PURE__ */ jsx(Managed.Popup, { id: `${id}-description`, role: "tooltip", "data-tooltip-surface": true, className: tooltip(), children: content }) }) })
+    /* @__PURE__ */ jsx(Managed.Portal, { container: portal.container, children: /* @__PURE__ */ jsx(Managed.Positioner, { className: floatingLayer({ layer: "tooltip" }), ...portal.attributes, side: "top", align: "center", sideOffset: 8, collisionPadding: 8, children: /* @__PURE__ */ jsx(Managed.Popup, { id: `${id}-description`, role: "tooltip", "data-tooltip-surface": true, className: tooltip(), children: content }) }) })
   ] }) }) });
 }
 export {

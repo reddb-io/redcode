@@ -158,7 +158,7 @@ export function WorkspaceSelector(props: { services: Services }) {
                               {view.workspaces.length >= 10 && (
                                 <Input
                                   type="search"
-                                  controlSize="sm"
+                                  size="sm"
                                   autoFocus
                                   value={search.worktrees}
                                   onValueChange={(value) =>
@@ -245,7 +245,7 @@ export function WorkspaceSelector(props: { services: Services }) {
                 <Input
                   autoFocus
                   type="search"
-                  controlSize="sm"
+                  size="sm"
                   value={search.branches}
                   onValueChange={(value) => {
                     setSearch((previous) => ({ ...previous, branches: value }))

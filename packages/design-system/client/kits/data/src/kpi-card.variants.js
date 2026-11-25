@@ -1,4 +1,4 @@
-import { TONES } from "@reddb-io/design-system/base/recipes";
+import { TONES, typeRoleMerge } from "@reddb-io/design-system/base/recipes";
 import { tv } from "tailwind-variants";
 const kpiCard = tv({
   slots: {
@@ -8,11 +8,11 @@ const kpiCard = tv({
     ].join(" "),
     reading: "flex min-w-0 flex-col justify-between",
     details: "col-span-full grid content-start gap-[var(--reddb-spatial-gap-md)]",
-    label: "m-0 break-words text-caption",
+    label: "m-0 wrap-break-word text-caption",
     // The figure reads in the Theme's title role (ADR 0025): its size, weight,
     // tracking and line height follow the Theme, never a raw step.
-    value: "m-0 break-words text-title tabular-nums",
-    delta: "m-0 inline-flex items-center gap-[var(--reddb-spatial-gap-sm)] text-sm font-medium tabular-nums",
+    value: "m-0 wrap-break-word text-title tabular-nums",
+    delta: "m-0 inline-flex items-center gap-[var(--reddb-spatial-gap-sm)] text-label tabular-nums",
     context: "col-span-full flex min-w-0 flex-wrap items-baseline justify-between gap-x-[var(--reddb-spatial-gap-md)] gap-y-[var(--reddb-spatial-gap-sm)]",
     description: "m-0 text-caption",
     sparkline: "min-w-0 [&_[data-chart-kind=sparkline]]:p-0"
@@ -33,13 +33,6 @@ const kpiCard = tv({
         root: "border-muted bg-elevation-raised-surface text-foreground",
         label: "text-ink-muted",
         description: "text-ink-muted"
-      },
-      /**
-       * @deprecated The accent is an emphasis, not a tone (ADR 0026): kept one
-       * release with its accent fill, then removed. Use a tone, or `neutral`.
-       */
-      brand: {
-        root: "border-[var(--reddb-color-primary)] bg-[var(--reddb-color-primary)] text-[var(--reddb-color-on-primary)] [&_[data-ds-chart]]:[--color-primary:var(--reddb-color-on-primary)]"
       },
       success: {
         root: "border-[var(--reddb-color-feedback-success-border)] bg-[var(--reddb-color-feedback-success-surface)] text-[var(--reddb-color-feedback-success-foreground)] [&_[data-ds-chart]]:[--color-primary:var(--reddb-color-feedback-success-foreground)]"
@@ -83,11 +76,9 @@ const kpiCard = tv({
     }
   ],
   defaultVariants: { tone: "neutral" }
-});
-const DEPRECATED_KPI_CARD_TONES = ["brand"];
+}, typeRoleMerge);
 const KPI_CARD_TONES = TONES;
 export {
-  DEPRECATED_KPI_CARD_TONES,
   KPI_CARD_TONES,
   kpiCard
 };

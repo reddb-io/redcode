@@ -23,7 +23,7 @@ for (const custom of [false, true]) {
     await expect(tooltip).toContainText("Summary")
     const mac = await page.evaluate(() => /(Mac|iPod|iPhone|iPad)/.test(navigator.platform))
     const shortcut = custom ? "F8" : mac ? "Meta+Shift+Y" : "Control+Shift+Y"
-    await expect(tooltip.locator('[data-slot="keybind-v2-label"]')).toHaveText(
+    await expect(tooltip.locator('[data-component="keybind-v2"] kbd')).toHaveText(
       custom ? ["F8"] : mac ? ["⇧", "⌘", "Y"] : ["Ctrl", "Shift", "Y"],
     )
 

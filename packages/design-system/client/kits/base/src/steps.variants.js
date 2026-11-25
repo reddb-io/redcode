@@ -1,4 +1,5 @@
 import { tv } from "tailwind-variants";
+import { typeRoleMerge } from "./type-roles.js";
 const steps = tv({
   slots: {
     root: "text-foreground",
@@ -7,12 +8,12 @@ const steps = tv({
     content: "flex items-center gap-[var(--reddb-spatial-gap-sm)]",
     marker: [
       "inline-flex size-[var(--reddb-spatial-control-height-sm)] shrink-0 items-center justify-center",
-      "rounded-full border border-muted text-sm"
+      "rounded-full border border-muted text-label font-regular"
     ].join(" "),
     current: "font-medium text-foreground",
-    status: "text-sm text-ink-muted"
+    status: "text-body text-ink-muted"
   }
-});
+}, typeRoleMerge);
 export {
   steps
 };

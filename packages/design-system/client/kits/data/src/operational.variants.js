@@ -1,4 +1,5 @@
 import { tv } from "tailwind-variants";
+import { typeRoleMerge } from "@reddb-io/design-system/base/recipes";
 const cellItem = "row-span-3 grid min-w-0 grid-rows-subgrid";
 const operationalView = tv({
   slots: {
@@ -21,20 +22,26 @@ const operationalView = tv({
     eventMeta: "flex min-w-0 [&>time]:shrink-0 [&>span]:min-w-0 [&>span]:truncate gap-[var(--reddb-spatial-gap-md)] text-ink-muted",
     eventMessage: "m-0 truncate text-foreground",
     note: "text-caption text-ink-muted",
+    // A diagram's data explorer: a disclosure whose row buttons are the
+    // floor-sized equivalent of marks drawn under it (WCAG 2.5.8, ADR 0022).
+    data: "mt-[var(--reddb-spatial-gap-md)] text-caption text-ink-muted",
+    dataSummary: "w-fit min-h-[var(--reddb-spatial-control-height-sm)] content-center cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
+    dataList: "m-0 mt-[var(--reddb-spatial-gap-sm)] grid list-none gap-[var(--reddb-spatial-gap-sm)] p-0",
+    dataRow: "flex flex-wrap items-center justify-between gap-[var(--reddb-spatial-gap-sm)] border-b border-muted pb-[var(--reddb-spatial-inset-sm)]",
     entityList: "m-0 flex list-none flex-wrap gap-[var(--reddb-spatial-gap-md)] p-0 text-caption text-ink-muted",
-    root: "min-w-0 [overflow-wrap:anywhere] text-foreground",
+    root: "min-w-0 wrap-break-word text-foreground",
     header: "mb-[var(--reddb-spatial-gap-md)] flex flex-wrap items-baseline justify-between gap-[var(--reddb-spatial-gap-md)]",
-    title: "m-0 break-words text-body font-medium",
-    text: "m-0 break-words text-caption text-ink-muted",
+    title: "m-0 wrap-break-word text-body font-medium",
+    text: "m-0 wrap-break-word text-caption text-ink-muted",
     grid: "m-0 grid list-none gap-[var(--reddb-spatial-gap-sm)] p-0",
     cell: "row-span-3 grid h-full min-w-0 grid-rows-subgrid gap-[var(--reddb-spatial-gap-sm)] rounded-[var(--reddb-radius-md)] border border-control-edge bg-elevation-raised-surface p-[var(--reddb-spatial-inset-sm)] text-start text-foreground",
-    selected: "bg-foreground/10 font-medium outline-2 outline-offset-2 outline-foreground",
+    selected: "bg-state-selected font-medium outline-2 outline-offset-2 outline-foreground",
     event: "flex min-w-0 flex-wrap items-baseline gap-[var(--reddb-spatial-gap-md)] border-b border-muted py-[var(--reddb-spatial-inset-sm)] text-caption",
     figure: "m-0 grid min-w-0 gap-[var(--reddb-spatial-gap-md)]",
     svg: "block h-auto w-full overflow-visible text-foreground",
     metrics: "grid min-w-0 grid-cols-[repeat(auto-fit,minmax(min(100%,14rem),1fr))] gap-[var(--reddb-spatial-layout-gap-md)] [&>[data-kpi-card]]:row-span-2 [&>[data-kpi-card]]:grid-rows-subgrid"
   }
-});
+}, typeRoleMerge);
 export {
   operationalView
 };

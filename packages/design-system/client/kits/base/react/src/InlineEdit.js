@@ -65,7 +65,7 @@ function InlineEdit({ label, icon, presentation = "text", editVisibility = "alwa
             {
               ref: input,
               type: inputType,
-              controlSize: presentation === "input" ? "md" : "sm",
+              size: presentation === "input" ? "md" : "sm",
               value: state.draft,
               onValueChange: (next) => session.change(next),
               "aria-labelledby": `${id}-label`,

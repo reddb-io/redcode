@@ -83,7 +83,7 @@ function MatrixHeatmap(props) {
                 y: 18,
                 textAnchor: "middle",
                 fill: mutedInk,
-                className: "font-mono text-xs",
+                className: "font-mono text-caption",
                 children: short(column.label, Math.max(4, Math.floor(cw / 7)))
               }
             ) }, i);
@@ -98,7 +98,7 @@ function MatrixHeatmap(props) {
                   textAnchor: "end",
                   dominantBaseline: "middle",
                   fill: mutedInk,
-                  className: "font-mono text-xs",
+                  className: "font-mono text-caption",
                   children: short(row.label, 24)
                 }
               ),
@@ -141,7 +141,7 @@ function MatrixHeatmap(props) {
                           textAnchor: "middle",
                           dominantBaseline: "middle",
                           fill: ink,
-                          className: "font-mono text-xs",
+                          className: "font-mono text-caption",
                           children: cell?.value == null ? "\u2014" : format(cell.value)
                         }
                       )
@@ -151,7 +151,7 @@ function MatrixHeatmap(props) {
               })
             ] }, i);
           }),
-          /* @__PURE__ */ jsxs("text", { x: left, y: h - 4, fill: mutedInk, className: "text-xs", children: [
+          /* @__PURE__ */ jsxs("text", { x: left, y: h - 4, fill: mutedInk, className: "text-caption", children: [
             format(scale[0]),
             " \u2192 ",
             format(scale[1]),

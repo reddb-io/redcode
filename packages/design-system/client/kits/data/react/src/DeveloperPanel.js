@@ -1,12 +1,11 @@
 "use client";
 import { Fragment, jsx, jsxs } from "react/jsx-runtime";
 import { useEffect, useId, useRef, useState } from "react";
-import { Button, Icon, Tabs, warnDeprecated, useControllableValue } from "@reddb-io/design-system/base";
-import { DeveloperRequestInspector } from "./DeveloperRequestInspector.js";
+import { Button, Icon, Tabs, useControllableValue } from "@reddb-io/design-system/base";
 import { clampDeveloperPanelHeight, developerPanelHeightForKey } from "../../src/developer-panel.js";
 import { developerPanelClasses as styles } from "../../src/developer-panel.variants.js";
 function DeveloperPanel(props) {
-  const { label = "Developer panel", desktopOnly = false, requests, open: initialOpen = false, contained = false, onRequestsChange, children, contexts = [], contextContent, contextToolbar, toolbarContexts, headerActions, requestActions, className = "" } = props;
+  const { label = "Developer panel", desktopOnly = false, open: initialOpen = false, contained = false, children, contexts = [], contextContent, contextToolbar, toolbarContexts, headerActions, className = "" } = props;
   const [open, setOpen] = useControllableValue(props.open, initialOpen, props.onOpenChange);
   const panelId = useId();
   const root = useRef(null);
@@ -29,13 +28,8 @@ function DeveloperPanel(props) {
       window.removeEventListener("resize", update);
     };
   }, [open, contained]);
-  const hasRequests = requests !== void 0;
-  const entries = requests ?? [];
   const [context, setContext] = useState("requests");
-  const contextItems = [...hasRequests ? [{ value: "requests", label: "Requests" }] : [], ...contexts.filter((item) => !hasRequests || item.value !== "requests")];
-  useEffect(() => {
-    if (hasRequests) warnDeprecated("DeveloperPanel", "requests", "DeveloperRequestInspector inside a Requests context");
-  }, [hasRequests]);
+  const contextItems = [...contexts];
   useEffect(() => {
     const element = root.current;
     if (!element) return;
@@ -75,10 +69,7 @@ function DeveloperPanel(props) {
         setResizedHeight(next);
       }
     } }),
-    !open ? /* @__PURE__ */ jsx("div", { "data-developer-toolbar": true, className: styles.collapsedToolbar, children: /* @__PURE__ */ jsxs(Button, { variant: "ghost", size: "sm", className: "w-full justify-start text-caption font-medium text-foreground", onClick: () => setOpen(true), "aria-expanded": false, children: [
-      label,
-      hasRequests && ` \xB7 ${entries.length}`
-    ] }) }) : contextItems.length === 0 ? /* @__PURE__ */ jsxs(Fragment, { children: [
+    !open ? /* @__PURE__ */ jsx("div", { "data-developer-toolbar": true, className: styles.collapsedToolbar, children: /* @__PURE__ */ jsx(Button, { variant: "ghost", size: "sm", className: "w-full justify-start text-caption font-medium text-foreground", onClick: () => setOpen(true), "aria-expanded": false, children: label }) }) : contextItems.length === 0 ? /* @__PURE__ */ jsxs(Fragment, { children: [
       /* @__PURE__ */ jsxs("div", { "data-developer-toolbar": true, className: styles.toolbar, children: [
         /* @__PURE__ */ jsx(Button, { variant: "ghost", size: "sm", className: "text-body font-medium text-foreground", onClick: () => setOpen(false), "aria-expanded": true, children: label }),
         panelControls
@@ -92,20 +83,18 @@ function DeveloperPanel(props) {
       {
         label: "Developer contexts",
         items: contextItems,
+        size: "sm",
         triggerClass: "text-caption",
         value: context,
         onValueChange: setContext,
         className: styles.contexts,
         listClass: "order-last basis-full self-end [&>button]:shrink-0 @lg:order-none @lg:basis-auto",
         contentClass: styles.contextBody,
-        leading: /* @__PURE__ */ jsxs(Button, { variant: "ghost", size: "sm", className: "self-center text-body font-medium text-foreground", onClick: () => setOpen(false), "aria-expanded": true, children: [
-          label,
-          hasRequests && ` \xB7 ${entries.length}`
-        ] }),
+        leading: /* @__PURE__ */ jsx(Button, { variant: "ghost", size: "sm", className: "self-center text-body font-medium text-foreground", onClick: () => setOpen(false), "aria-expanded": true, children: label }),
         actions: panelControls,
         children: ({ value: activeContext }) => /* @__PURE__ */ jsxs(Fragment, { children: [
           contextToolbar && (!toolbarContexts || toolbarContexts.includes(activeContext)) && /* @__PURE__ */ jsx("div", { className: styles.contextToolbar, children: contextToolbar({ value: activeContext }) }),
-          hasRequests && activeContext === "requests" ? /* @__PURE__ */ jsx("div", { className: styles.customBody, children: /* @__PURE__ */ jsx(DeveloperRequestInspector, { requests: entries, onRequestsChange, requestActions, children }) }) : /* @__PURE__ */ jsx("div", { className: styles.customBody, children: contextContent ? contextContent({ value: activeContext }) : !hasRequests ? children : null })
+          /* @__PURE__ */ jsx("div", { className: styles.customBody, children: contextContent ? contextContent({ value: activeContext }) : children })
         ] })
       }
     )

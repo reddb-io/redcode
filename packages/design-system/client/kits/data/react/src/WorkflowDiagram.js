@@ -2,9 +2,10 @@
 import { Fragment, jsx, jsxs } from "react/jsx-runtime";
 import { operationalView } from "../../src/operational.variants.js";
 import { useEffect, useRef, useState } from "react";
-import { observeActivity } from "@reddb-io/design-system/base";
+import { Button, observeActivity } from "@reddb-io/design-system/base";
 import { SceneViewport } from "./SceneViewport.js";
 import Mark from "./VisualizationMark.js";
+import HitStroke from "./HitStroke.js";
 import { operationalToneInk } from "../../src/operational.js";
 import {
   workflowLayout,
@@ -33,6 +34,7 @@ function WorkflowDiagram({
   className
 }) {
   const visual = operationalView();
+  const taskLabel = (id) => data.nodes.find((node) => node.id === id)?.label ?? id;
   const host = useRef(null), probe = useRef(null), [allowed, setAllowed] = useState(false), rhythm = useChartRhythm(probe), scene = workflowLayout(data, direction, rhythm.row), focus = workflowFocus(scene, focused);
   useEffect(() => {
     if (host.current) return observeActivity(host.current, setAllowed);
@@ -71,6 +73,7 @@ function WorkflowDiagram({
                       selected: selected ?? void 0,
                       onSelect: interactive ? onselectedchange : void 0,
                       children: [
+                        interactive ? /* @__PURE__ */ jsx(HitStroke, { d: channel.path }) : null,
                         /* @__PURE__ */ jsx(
                           "path",
                           {
@@ -209,12 +212,55 @@ function WorkflowDiagram({
             )
           }
         ),
-        /* @__PURE__ */ jsx("ul", { className: visual.srOnly(), "aria-label": `${label} tasks`, children: data.nodes.map((node) => /* @__PURE__ */ jsxs("li", { children: [
-          node.label,
-          ": ",
-          node.state,
-          node.progress == null ? "" : `, ${node.progress}%`
-        ] }, node.id)) })
+        /* @__PURE__ */ jsxs(
+          "details",
+          {
+            className: visual.data(),
+            "data-mark-equivalent": interactive ? "each" : void 0,
+            children: [
+              /* @__PURE__ */ jsxs("summary", { className: visual.dataSummary(), children: [
+                "Explore data (",
+                data.nodes.length + data.edges.length,
+                ")"
+              ] }),
+              /* @__PURE__ */ jsx("ul", { className: visual.dataList(), "aria-label": `${label} tasks`, children: data.nodes.map((node) => /* @__PURE__ */ jsxs("li", { className: visual.dataRow(), children: [
+                interactive ? /* @__PURE__ */ jsx(
+                  Button,
+                  {
+                    variant: "ghost",
+                    size: "sm",
+                    "data-equivalent-for": node.id,
+                    "aria-pressed": selected === node.id,
+                    onClick: () => onselectedchange?.(node.id),
+                    children: node.label
+                  }
+                ) : /* @__PURE__ */ jsx("span", { children: node.label }),
+                /* @__PURE__ */ jsxs("span", { children: [
+                  node.state,
+                  node.progress == null ? "" : `, ${node.progress}%`
+                ] })
+              ] }, node.id)) }),
+              data.edges.length ? /* @__PURE__ */ jsx("ul", { className: visual.dataList(), "aria-label": `${label} channels`, children: data.edges.map((channel) => /* @__PURE__ */ jsxs("li", { className: visual.dataRow(), children: [
+                interactive ? /* @__PURE__ */ jsx(
+                  Button,
+                  {
+                    variant: "ghost",
+                    size: "sm",
+                    "data-equivalent-for": channel.id,
+                    "aria-pressed": selected === channel.id,
+                    onClick: () => onselectedchange?.(channel.id),
+                    children: channel.label
+                  }
+                ) : /* @__PURE__ */ jsx("span", { children: channel.label }),
+                /* @__PURE__ */ jsxs("span", { children: [
+                  taskLabel(channel.source),
+                  " \u2192 ",
+                  taskLabel(channel.target)
+                ] })
+              ] }, channel.id)) }) : null
+            ]
+          }
+        )
       ]
     }
   );

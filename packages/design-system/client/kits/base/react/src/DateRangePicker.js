@@ -22,7 +22,7 @@ function DateRangePicker(props) {
       setEnd(next.end);
       onValueChange?.(next);
     } }),
-    /* @__PURE__ */ jsx(Popover, { triggerLabel, contentLabel: calendarLabel, open: active, onOpenChange: setActive, disabled, side, align, sideOffset, collisionPadding, trigger, triggerClass: styles.trigger({ class: triggerClass }), className: contentClass, children: /* @__PURE__ */ jsx(RangeCalendar, { label: calendarLabel, value, placeholder: placeholder ?? value.start, minValue, maxValue, minDays, maxDays, isDateUnavailable, disabled, onValueChange: (next) => {
+    /* @__PURE__ */ jsx(Popover, { triggerLabel, contentLabel: calendarLabel, open: active, onOpenChange: setActive, disabled, side, align, sideOffset, collisionPadding, trigger, triggerClass: styles.trigger({ class: triggerClass }), className: styles.content({ class: contentClass }), children: /* @__PURE__ */ jsx(RangeCalendar, { label: calendarLabel, value, placeholder: placeholder ?? value.start, minValue, maxValue, minDays, maxDays, isDateUnavailable, disabled, onValueChange: (next) => {
       setStart(next.start?.toString() ?? "");
       setEnd(next.end?.toString() ?? "");
       if (next.start && next.end) {

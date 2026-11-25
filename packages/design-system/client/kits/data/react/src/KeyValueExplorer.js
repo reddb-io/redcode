@@ -37,7 +37,7 @@ function KeyValueExplorer({
               "aria-pressed": mode === view,
               className: quietControl({
                 selected: mode === view,
-                class: "px-[var(--reddb-spatial-inset-sm)]"
+                class: "min-h-[var(--reddb-spatial-control-height-sm)] px-[var(--reddb-spatial-inset-sm)]"
               }),
               onClick: () => setMode(view),
               children: view === "tree" ? "Tree" : "JSON"

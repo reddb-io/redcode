@@ -1,4 +1,5 @@
 import { tv } from "tailwind-variants";
+import { typeRoleMerge } from "./type-roles.js";
 const slider = tv({
   slots: {
     root: "grid min-w-0 gap-[var(--reddb-spatial-gap-sm)]",
@@ -7,9 +8,9 @@ const slider = tv({
       "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
       "disabled:cursor-not-allowed disabled:opacity-50"
     ].join(" "),
-    output: "text-sm tabular-nums text-ink-muted"
+    output: "text-label font-regular tabular-nums text-ink-muted"
   }
-});
+}, typeRoleMerge);
 export {
   slider
 };

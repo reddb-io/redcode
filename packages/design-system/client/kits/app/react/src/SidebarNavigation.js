@@ -8,7 +8,7 @@ function SidebarNavigation({ label, items, currentId, toolbar, toolbarLabel = "S
   return /* @__PURE__ */ jsxs("nav", { ...rest, "aria-label": label, "data-sidebar-navigation": true, className: styles.root({ class: className }), children: [
     toolbar != null && toolbar !== false && /* @__PURE__ */ jsx("div", { role: "group", "aria-label": toolbarLabel, "data-sidebar-toolbar": true, className: styles.toolbar(), children: toolbar }),
     /* @__PURE__ */ jsx("ul", { className: styles.list(), children: resolved.map((item) => {
-      const icon = item.icon && /* @__PURE__ */ jsx(Icon, { icon: item.icon, size: "sm", color: item.current ? "foreground" : "ink-muted", "aria-hidden": "true" });
+      const icon = item.icon && /* @__PURE__ */ jsx(Icon, { icon: item.icon, size: "text", color: item.current ? "foreground" : "ink-muted", "aria-hidden": "true" });
       const glyph = icon && (item.status ? /* @__PURE__ */ jsx(Indicator, { position: "bottom-end", marker: /* @__PURE__ */ jsx(StatusIndicator, { label: item.status.label, tone: item.status.tone, showLabel: false }), children: icon }) : icon);
       const markers = /* @__PURE__ */ jsxs(Fragment, { children: [
         item.status && !item.icon && /* @__PURE__ */ jsx(StatusIndicator, { label: item.status.label, tone: item.status.tone, showLabel: false, "aria-hidden": "true" }),

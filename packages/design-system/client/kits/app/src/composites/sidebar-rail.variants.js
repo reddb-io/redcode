@@ -1,4 +1,5 @@
 import { tv } from "tailwind-variants";
+import { typeRoleMerge } from "@reddb-io/design-system/base/recipes";
 const sidebarRail = tv({
   slots: {
     root: [
@@ -15,7 +16,10 @@ const sidebarRail = tv({
     statusAnchor: "size-full items-center justify-center [&>[data-indicator-marker]]:translate-x-0 [&>[data-indicator-marker]]:translate-y-0",
     badge: "h-[var(--reddb-spatial-icon-size-md)] min-w-[var(--reddb-spatial-icon-size-md)] justify-center rounded-full p-0 tabular-nums",
     face: "inline-flex size-full shrink-0 items-center justify-center",
-    label: "order-last max-w-full whitespace-normal break-words text-center text-caption",
+    // A label longer than the rail hyphenates (in the document's language)
+    // and stops at two lines; the item's accessible name and tooltip carry
+    // it in full (ADR 0052).
+    label: "order-last line-clamp-2 max-w-full whitespace-normal hyphens-auto wrap-break-word text-center text-caption",
     divider: "mb-[var(--reddb-spatial-gap-md)]",
     list: "m-0 flex w-full list-none flex-col items-center gap-[var(--reddb-spatial-gap-md)] p-0",
     // The selected destination wears the shared selection language: neutral
@@ -24,8 +28,8 @@ const sidebarRail = tv({
     // nothing (DESIGN.md, "Interactive states").
     item: [
       "relative size-[var(--reddb-spatial-control-height-md)] shrink-0 overflow-visible rounded-s-none rounded-e-md border-0 border-s-2 border-transparent p-0",
-      "text-sm font-medium text-ink-muted hover:bg-foreground/8 hover:text-foreground",
-      "aria-pressed:border-foreground aria-pressed:bg-foreground/10 aria-pressed:text-foreground aria-[current]:border-foreground aria-[current]:bg-foreground/10 aria-[current]:text-foreground",
+      "text-label text-ink-muted hover:bg-state-hover hover:text-foreground",
+      "aria-pressed:border-foreground aria-pressed:bg-state-selected aria-pressed:text-foreground aria-[current]:border-foreground aria-[current]:bg-state-selected aria-[current]:text-foreground",
       // Focus is the ink focus outline every DS control draws (ADR 0023),
       // drawn inside the item: the middle region scrolls, and the rail's
       // content box is exactly one item wide, so an outline outside the item
@@ -52,7 +56,7 @@ const sidebarRail = tv({
     }
   },
   defaultVariants: { labelled: false }
-});
+}, typeRoleMerge);
 export {
   sidebarRail
 };

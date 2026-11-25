@@ -1,7 +1,7 @@
 import { tv } from "tailwind-variants";
 import { typeRoleMerge } from "@reddb-io/design-system/base/recipes";
 const activityTimeline = tv({ slots: {
-  root: "min-w-0 text-foreground",
+  root: "w-full min-w-0 text-foreground",
   scroll: "overflow-x-auto rounded-md focus-visible:outline-2 focus-visible:outline-focus",
   rows: "m-0 grid min-w-[calc(var(--reddb-spatial-control-height-md)*20)] list-none gap-[var(--reddb-spatial-layout-gap-md)] p-0",
   row: "min-w-0",
@@ -10,7 +10,8 @@ const activityTimeline = tv({ slots: {
   meta: "m-0 text-caption text-ink-muted tabular-nums",
   track: "relative mt-[var(--reddb-spatial-gap-sm)] overflow-hidden",
   event: "absolute",
-  action: "mt-[var(--reddb-spatial-gap-sm)] flex justify-end"
+  action: "mt-[var(--reddb-spatial-gap-sm)] flex items-center justify-end gap-[var(--reddb-spatial-gap-sm)]",
+  alert: "mb-[var(--reddb-spatial-gap-sm)]"
 } }, typeRoleMerge);
 export {
   activityTimeline

@@ -6,8 +6,8 @@ import { Button } from "./Button.js";
 import { tabs } from "../../src/tabs.variants.js";
 import { useValue } from "./state.js";
 function Tabs(props) {
-  const { label, items, value = "", orientation = "horizontal", disabled = false, followHash = false, onValueChange, children, actions, leading, className, listClass, triggerClass, contentClass } = props;
-  const [current, setCurrent] = useValue(props.value, value, onValueChange), id = useId(), element = useRef(null), styles = tabs();
+  const { label, items, value = "", orientation = "horizontal", disabled = false, followHash = false, size = "sm", onValueChange, children, actions, leading, className, overflow = "wrap", listClass, triggerClass, contentClass } = props;
+  const [current, setCurrent] = useValue(props.value, value, onValueChange), id = useId(), element = useRef(null), styles = tabs({ size, overflow });
   useLayoutEffect(() => {
     for (const tab of element.current?.querySelectorAll('[role="tab"]') ?? []) {
       tab.disabled = disabled || !!items.find((item) => item.value === tab.dataset.tabKey)?.disabled;
@@ -46,7 +46,7 @@ function Tabs(props) {
       window.removeEventListener("hashchange", selectFragment);
     };
   }, [followHash, id, setCurrent]);
-  const list = /* @__PURE__ */ jsx(Managed.List, { "aria-label": label, activateOnFocus: true, className: styles.list({ class: `${actions || leading ? "min-w-0 flex-1 border-b-0" : ""} ${listClass ?? ""}` }), children: items.map((item) => /* @__PURE__ */ jsx(Managed.Tab, { value: item.value, "data-tab-key": item.value, disabled: disabled || item.disabled, "data-state": selected === item.value ? "active" : "inactive", className: styles.trigger({ class: triggerClass }), render: (native) => /* @__PURE__ */ jsx(Button, { ...native, variant: "ghost", size: "sm", disabled: disabled || item.disabled }), children: item.label }, item.value)) });
+  const list = /* @__PURE__ */ jsx(Managed.List, { "aria-label": label, "data-overflow": overflow, activateOnFocus: true, className: styles.list({ class: `${actions || leading ? "min-w-0 flex-1 border-b-0" : ""} ${listClass ?? ""}` }), children: items.map((item) => /* @__PURE__ */ jsx(Managed.Tab, { value: item.value, "data-tab-key": item.value, disabled: disabled || item.disabled, "data-state": selected === item.value ? "active" : "inactive", className: styles.trigger({ class: triggerClass }), render: (native) => /* @__PURE__ */ jsx(Button, { ...native, variant: "ghost", size, disabled: disabled || item.disabled }), children: item.label }, item.value)) });
   return /* @__PURE__ */ jsx("div", { ref: element, "data-tabs": true, "aria-label": label, className: styles.root({ class: className }), children: /* @__PURE__ */ jsxs(Managed.Root, { value: selected, onValueChange: (next) => {
     if (typeof next === "string" && next !== selected && !disabled) setCurrent(next);
   }, orientation, "aria-label": label, children: [

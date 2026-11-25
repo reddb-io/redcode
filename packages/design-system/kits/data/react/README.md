@@ -5,7 +5,7 @@ Select `"framework": "react"` in the Sync manifest and keep canonical imports:
 
 ```tsx
 import TimeSeries from "@reddb-io/design-system/data/TimeSeries";
-import Table from "@reddb-io/design-system/data/Table";
+import DataTable from "@reddb-io/design-system/data/DataTable";
 ```
 
 There is no Data barrel in the delivered package. Public component subpaths are

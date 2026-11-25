@@ -21,8 +21,8 @@ export declare const searchSelect: import("tailwind-variants").TVReturnType<{
             placeholder?: import("tailwind-variants").ClassValue;
             description?: import("tailwind-variants").ClassValue;
             item?: import("tailwind-variants").ClassValue;
-            trigger?: import("tailwind-variants").ClassValue;
             empty?: import("tailwind-variants").ClassValue;
+            trigger?: import("tailwind-variants").ClassValue;
             chips?: import("tailwind-variants").ClassValue;
             chip?: import("tailwind-variants").ClassValue;
         };
@@ -41,8 +41,8 @@ export declare const searchSelect: import("tailwind-variants").TVReturnType<{
             placeholder?: import("tailwind-variants").ClassValue;
             description?: import("tailwind-variants").ClassValue;
             item?: import("tailwind-variants").ClassValue;
-            trigger?: import("tailwind-variants").ClassValue;
             empty?: import("tailwind-variants").ClassValue;
+            trigger?: import("tailwind-variants").ClassValue;
             chips?: import("tailwind-variants").ClassValue;
             chip?: import("tailwind-variants").ClassValue;
         };
@@ -77,8 +77,8 @@ export declare const searchSelect: import("tailwind-variants").TVReturnType<{
             placeholder?: import("tailwind-variants").ClassValue;
             description?: import("tailwind-variants").ClassValue;
             item?: import("tailwind-variants").ClassValue;
-            trigger?: import("tailwind-variants").ClassValue;
             empty?: import("tailwind-variants").ClassValue;
+            trigger?: import("tailwind-variants").ClassValue;
             chips?: import("tailwind-variants").ClassValue;
             chip?: import("tailwind-variants").ClassValue;
         };
