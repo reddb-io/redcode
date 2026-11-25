@@ -364,8 +364,10 @@ own interaction contracts.
 
 Terminal components live separately in `packages/tui/src/ui`, `component`,
 `routes` and `feature-plugins`. Alerts, confirmations, help and export results use the common
-terminal message layout and action control. Prompt, select, export options, toasts,
-session tabs, command palette and feature panels retain OpenTUI renderers. List
+terminal message layout and action control. Prompts, selectors and export options share the
+dialog heading. Selector rows use form-field focus and selection colors. Export checkboxes and actions use the form and action theme
+states, with forward and reverse keyboard traversal. Selectors, toasts, session
+tabs, the command palette and feature panels retain their OpenTUI renderers. List
 the current terminal views and locate the direct GUI consumers from the root:
 
 ```sh

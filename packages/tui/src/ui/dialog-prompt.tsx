@@ -1,4 +1,4 @@
-import { MouseButton, TextareaRenderable, TextAttributes, decodePasteBytes, stripAnsiSequences } from "@opentui/core"
+import { MouseButton, TextareaRenderable, decodePasteBytes, stripAnsiSequences } from "@opentui/core"
 import { Keymap } from "../context/keymap"
 import { useTheme } from "../context/theme"
 import { useDialog, type DialogSize } from "./dialog"
@@ -8,6 +8,7 @@ import { useConfig } from "../config"
 import { useRenderer } from "@opentui/solid"
 import { useClipboard } from "../context/clipboard"
 import { useToast } from "./toast"
+import { DialogHeading } from "./dialog-message"
 import { createPasteDedupe } from "../component/prompt/paste-dedupe"
 
 export type DialogPromptProps = {
@@ -139,19 +140,7 @@ export function DialogPrompt(props: DialogPromptProps) {
 
   return (
     <box paddingLeft={2} paddingRight={2} gap={1}>
-      <box flexDirection="row" justifyContent="space-between">
-        <text attributes={TextAttributes.BOLD} fg={theme.text.base}>
-          {props.title}
-        </text>
-        <text
-          fg={theme.text.muted}
-          onMouseUp={() => {
-            if (!props.busy) (props.onCancel ?? dialog.clear)()
-          }}
-        >
-          esc
-        </text>
-      </box>
+      <DialogHeading title={props.title} disabled={props.busy} onDismiss={() => (props.onCancel ?? dialog.clear)()} />
       <box gap={1}>
         {props.description?.()}
         <textarea
@@ -193,7 +182,7 @@ export function DialogPrompt(props: DialogPromptProps) {
           <Spinner color={theme.text.muted}>{props.busyText ?? "Working…"}</Spinner>
         </Show>
       </box>
-      <box paddingBottom={1} gap={1} flexDirection="row">
+      <box paddingBottom={1} gap={1} flexDirection="row" flexWrap="wrap">
         <Show when={!props.busy} fallback={<text fg={theme.text.muted}>processing…</text>}>
           <Show when={shortcuts.get("prompt.paste")}>
             <text fg={theme.text.muted}>

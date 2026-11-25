@@ -8,6 +8,7 @@ import { useRenderer, useTerminalDimensions } from "@opentui/solid"
 import * as fuzzysort from "fuzzysort"
 import { isDeepEqual } from "remeda"
 import { useDialog, type DialogContext } from "./dialog"
+import { DialogHeading } from "./dialog-message"
 import { Locale } from "../util/locale"
 import { getScrollAcceleration } from "../util/scroll"
 import { useConfig } from "../config"
@@ -678,16 +679,11 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
   return (
     <box gap={1} paddingBottom={1} flexGrow={1}>
       <box paddingLeft={4} paddingRight={4}>
-        <box flexDirection="row" justifyContent="space-between">
-          {props.titleView ?? (
-            <text fg={theme.text.base} attributes={TextAttributes.BOLD}>
-              {props.title}
-            </text>
-          )}
-          <text fg={theme.text.muted} onMouseUp={() => (props.onCancel ?? dialog.clear)()}>
-            esc
-          </text>
-        </box>
+        <DialogHeading
+          title={props.title}
+          titleView={props.titleView}
+          onDismiss={() => (props.onCancel ?? dialog.clear)()}
+        />
         <Show when={props.renderFilter !== false}>
           <box paddingTop={1}>
             <input
@@ -755,7 +751,7 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
                       <Show
                         when={options[0]?.categoryView}
                         fallback={
-                          <text fg={theme.hue.accent[200]} attributes={TextAttributes.BOLD}>
+                          <text fg={theme.text.base} attributes={TextAttributes.BOLD}>
                             {category}
                           </text>
                         }
@@ -800,7 +796,7 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
                               active()
                                 ? actionFocused()
                                   ? theme.background.raised.high
-                                  : (option.bg ?? theme.background.action.primary.focused)
+                                  : (option.bg ?? theme.background.formfield.focused)
                                 : RGBA.fromInts(0, 0, 0, 0)
                             }
                           >
@@ -882,7 +878,7 @@ function Option(props: {
 }) {
   const theme = useTheme().surface("dialog")
   const text = createMemo(() => {
-    if (props.active && !props.muted) return props.activeColor ?? theme.text.action.primary.focused
+    if (props.active && !props.muted) return props.activeColor ?? theme.text.formfield.focused
     if (props.muted && (props.active || props.current)) return theme.text.muted
     if (props.current) return theme.text.formfield.selected
     return theme.text.base
