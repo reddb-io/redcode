@@ -15,7 +15,6 @@
 @source not "../../../src/assets";
 @source not "../../../src/i18n";
 @source not "../../../src/**/*.test.{ts,tsx}";
-@source "../../../../design-system/kits/*/src/**/*.variants.ts";
 @import "./utilities.css";
 
 @import "../index.css";
