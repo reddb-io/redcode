@@ -8,6 +8,23 @@ import { expectSessionTitle } from "../utils/waits"
 
 test.use({ viewport: { width: 1440, height: 900 } })
 
+test("finds a workbench panel by description and opens it from the keyboard", async ({ page }) => {
+  await openSession(page, { name: "Launcher", pty: {}, seed: { panes: { ses_launcher: { review: true } } } })
+  const group = page.getByRole("region", { name: "Top panel group" })
+  await group.getByRole("button", { name: "Open a panel", exact: true }).click()
+  const launcher = group.locator('[data-component="workbench-launcher"]')
+  const search = launcher.getByRole("searchbox", { name: "Search options", exact: true })
+  await expect(launcher.getByRole("button", { name: /^Open file\b/ })).toBeVisible()
+  await search.fill("shells")
+  await expect(launcher.getByRole("listitem")).toHaveCount(1)
+  const terminal = launcher.getByRole("button", { name: /^Terminal\b/ })
+  await search.press("ArrowDown")
+  await expect(terminal).toBeFocused()
+  await terminal.press("Enter")
+  await expect(group.getByRole("tab", { name: "Terminal", exact: true })).toHaveAttribute("aria-selected", "true")
+  await expect(launcher).toBeHidden()
+})
+
 for (const input of [
   { action: "Close tab", remaining: ["z.ts", "m.ts"] },
   { action: "Close other tabs", remaining: ["a.ts"] },

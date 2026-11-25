@@ -284,7 +284,7 @@ their presence alone does not justify replacing them.
 | `file-icon` | [components/file-icon.tsx](../packages/ui/src/components/file-icon.tsx) | 13 |
 | `font` | [components/font.tsx](../packages/ui/src/components/font.tsx) | 1 |
 | `hover-card` | [components/hover-card.tsx](../packages/ui/src/components/hover-card.tsx) | 0 |
-| `icon` | [icons/icon/icon.tsx](../packages/ui/src/icons/icon/icon.tsx) | 81 |
+| `icon` | [icons/icon/icon.tsx](../packages/ui/src/icons/icon/icon.tsx) | 80 |
 | `icon-button` | [actions/icon-button/icon-button.tsx](../packages/ui/src/actions/icon-button/icon-button.tsx) | 32 |
 | `image-preview` | [components/image-preview.tsx](../packages/ui/src/components/image-preview.tsx) | 3 |
 | `inline-input` | [forms/inline-input/inline-input.tsx](../packages/ui/src/forms/inline-input/inline-input.tsx) | 1 |
@@ -301,7 +301,7 @@ their presence alone does not justify replacing them.
 | `project-avatar` | [data-display/project-avatar/project-avatar.tsx](../packages/ui/src/data-display/project-avatar/project-avatar.tsx) | 6 |
 | `provider-icon` | [components/provider-icon.tsx](../packages/ui/src/components/provider-icon.tsx) | 2 |
 | `radio` | [forms/radio/radio.tsx](../packages/ui/src/forms/radio/radio.tsx) | 2 |
-| `react-view` | [components/react-view.tsx](../packages/ui/src/components/react-view.tsx) | 21 |
+| `react-view` | [components/react-view.tsx](../packages/ui/src/components/react-view.tsx) | 23 |
 | `resize-handle` | [components/resize-handle.tsx](../packages/ui/src/components/resize-handle.tsx) | 4 |
 | `scroll-view` | [components/scroll-view.tsx](../packages/ui/src/components/scroll-view.tsx) | 10 |
 | `search-select` | [forms/search-select/search-select.tsx](../packages/ui/src/forms/search-select/search-select.tsx) | 0 |
@@ -358,6 +358,15 @@ Opening shows up to 20 saved choices per page. Search covers every page and
 arrow keys, Home and End traverse the entire result set.
 
 ![Before and after the composer variant picker migration in the production web client at desktop and mobile widths](screenshots/composer-choices.webp)
+
+The workbench panel launcher in web and Electron and the mobile session menu
+use native App ListRow, Base Input and Base Pagination. Both source their rows
+from the extension host, with command shortcuts for desktop and nested drawer
+actions on mobile. Workbench entries use the contributing extension and local
+item ID together, since several extensions register an action called `open`.
+The composer and panel launchers share query, pagination and keyboard handling.
+
+![Panel launchers before and after adding search on web and mobile](screenshots/panel-launcher.webp)
 
 The review, updater and pairing extensions use the App SettingsRow for diff
 wrapping, release notes, update checks, screen activity and custom addresses.

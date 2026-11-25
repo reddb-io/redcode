@@ -1,9 +1,9 @@
-import { createMemo, For, Show, type JSX } from "solid-js"
+import { createMemo, type JSX } from "solid-js"
 import { emptyState } from "@reddb-io/design-system/contracts/empty-state"
 import { eyebrow } from "@reddb-io/design-system/contracts/eyebrow"
-import { kbd, kbdChord } from "@reddb-io/design-system/contracts/kbd"
-import { listRow } from "@reddb-io/design-system/contracts/list-row"
-import { quietControl } from "@reddb-io/design-system/contracts/quiet-control"
+import { ReactView } from "@opencode/ui/react-view"
+import { sharedLanguage } from "@/runtime/react/language"
+import { PanelChoices } from "./panel-choices.react"
 import { Icon } from "@opencode/ui/icon"
 import type { IconName } from "@opencode/ui/icons/catalog"
 import { MenuItem, Panel } from "@opencode/gui-extensions/sdk"
@@ -91,20 +91,20 @@ export function createLauncherItems(input: { region: Region; dock: () => string 
       },
     ]
 
-    const contributed = host.list(MenuItem).flatMap((item): LauncherItem[] =>
-      item.menu === "session.panel"
-        ? [
-            {
-              id: `menu:${item.id}`,
-              title: item.title,
-              icon: item.icon,
-              keybind: item.keybind,
-              order: item.order ?? 0,
-              run: () => item.run(),
-            },
-          ]
-        : [],
-    )
+    const contributed = host.items(MenuItem).flatMap((entry): LauncherItem[] => {
+      const item = entry.value
+      if (item.menu !== "session.panel") return []
+      return [
+        {
+          id: `menu:${entry.extension}:${item.id}`,
+          title: item.title,
+          icon: item.icon,
+          keybind: item.keybind,
+          order: item.order ?? 0,
+          run: () => item.run(),
+        },
+      ]
+    })
 
     return [...builtin.filter((item) => item !== false), ...contributed].toSorted((a, b) => a.order - b.order)
   })
@@ -113,6 +113,7 @@ export function createLauncherItems(input: { region: Region; dock: () => string 
 /** The page a workbench group shows while it has no tabs, or after its "+": every panel it can open. */
 export function Launcher(props: { items: readonly LauncherItem[]; onRun: (item: LauncherItem) => void }): JSX.Element {
   const language = useLanguage()
+  const command = useCommand()
   const empty = emptyState({ size: "sm", bordered: false })
 
   return (
@@ -127,47 +128,23 @@ export function Launcher(props: { items: readonly LauncherItem[]; onRun: (item: 
         </div>
         <div class="w-full max-w-sm flex flex-col gap-2 text-start">
           <span class={eyebrow({ class: "px-2" })}>{language.t("workbench.launcher.panels")}</span>
-          <ul class="flex flex-col rounded-lg border border-muted overflow-hidden">
-            <For each={props.items}>
-              {(item) => <LauncherRow item={item} onRun={props.onRun} />}
-            </For>
-          </ul>
+          <ReactView
+            component={PanelChoices}
+            props={{
+              language: sharedLanguage(language),
+              title: language.t("workbench.launcher.panels"),
+              items: props.items.map((item) => ({
+                value: item.id,
+                label: item.title,
+                description: item.description,
+                icon: item.icon,
+                keys: item.keybind ? command.keybindParts(item.keybind) : undefined,
+                run: () => props.onRun(item),
+              })),
+            }}
+          />
         </div>
       </div>
     </div>
-  )
-}
-
-function LauncherRow(props: { item: LauncherItem; onRun: (item: LauncherItem) => void }): JSX.Element {
-  const command = useCommand()
-  const row = listRow({ size: "sm", interactive: true })
-  const keys = createMemo(() => (props.item.keybind ? command.keybindParts(props.item.keybind) : []))
-
-  return (
-    <li class="last:[&>button]:border-b-0">
-      <button
-        type="button"
-        data-action={`workbench-launch-${props.item.id}`}
-        class={quietControl({ ink: "foreground", focus: "inset", class: row.root() })}
-        onClick={() => props.onRun(props.item)}
-      >
-        <span class={row.leading({ class: "size-5 justify-center text-ink-muted" })}>
-          <Show when={props.item.icon}>{(icon) => <Icon name={icon()} />}</Show>
-        </span>
-        <span class={row.text()}>
-          <span class={row.title()}>{props.item.title}</span>
-          <Show when={props.item.description}>
-            {(description) => <span class={row.description()}>{description()}</span>}
-          </Show>
-        </span>
-        <Show when={keys().length > 0}>
-          <span class={row.trailing()}>
-            <kbd class={kbdChord().root()}>
-              <For each={keys()}>{(key) => <kbd class={kbd({ size: "sm" })}>{key}</kbd>}</For>
-            </kbd>
-          </span>
-        </Show>
-      </button>
-    </li>
   )
 }

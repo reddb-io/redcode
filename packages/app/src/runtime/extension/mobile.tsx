@@ -1,7 +1,9 @@
 import { createMemo, For, lazy, Show, Suspense, type JSX } from "solid-js"
 import { createStore } from "solid-js/store"
 import { Tabs } from "@opencode/ui/tabs"
-import { Icon } from "@opencode/ui/icon"
+import { ReactView } from "@opencode/ui/react-view"
+import { sharedLanguage } from "@/runtime/react/language"
+import { PanelChoices } from "./panel-choices.react"
 import {
   Panel,
   type PanelSidebar,
@@ -47,7 +49,7 @@ export function createMobileViews() {
   return {
     entries,
     tabs: createMemo(() => sorted(["tab"])),
-    menu: createMemo(() => sorted(["menu", "drawer"])),
+    menu: createMemo(() => [...sorted(["menu"]), ...sorted(["drawer"])]),
     find: (key: string) => entries().find((entry) => entry.key === key),
   }
 }
@@ -85,6 +87,7 @@ export function MobileViewTabs(props: {
       : "more",
   )
 
+  let menu: HTMLDivElement | undefined
   let trigger: HTMLButtonElement | undefined
 
   return (
@@ -139,52 +142,39 @@ export function MobileViewTabs(props: {
             hideHeader
             open={store.open}
             onOpenChange={(open) => setStore("open", open)}
+            initialFocus={() => menu}
             returnFocus={() => trigger}
           >
             <Show
               when={drawer()}
               keyed
               fallback={
-                <div
-                  data-slot="session-mobile-view-options"
-                  class="flex flex-col gap-0.5 rounded-[6px] bg-v2-background-bg-base p-0.5 shadow-[var(--v2-elevation-raised)] [[data-color-scheme=dark]_&]:bg-v2-background-bg-layer-01"
-                >
-                  <For each={props.views.menu().filter((entry) => entry.mobile.kind === "menu")}>
-                    {(entry) => (
-                      <button
-                        type="button"
-                        class="flex min-h-11 w-full items-center gap-2 rounded-[4px] py-1 ps-3 pe-2 text-start text-[13px] font-[440] leading-[var(--line-height-base)] text-v2-text-text-base hover:bg-[var(--v2-overlay-simple-overlay-hover)] focus-visible:outline-none focus-visible:bg-[var(--v2-overlay-simple-overlay-hover)] aria-pressed:bg-[var(--v2-overlay-simple-overlay-pressed)]"
-                        aria-pressed={props.current === entry.key}
-                        onClick={() => {
-                          props.onSelect(entry.key)
-                          setStore("open", false)
-                        }}
-                      >
-                        <Show when={entry.mobile.icon}>
-                          {(icon) => <Icon name={icon()} class="shrink-0 text-v2-icon-icon-muted" />}
-                        </Show>
-                        <span class="min-w-0 flex-1 truncate">{entry.mobile.title}</span>
-                        <Show when={props.current === entry.key}>
-                          <Icon name="check" class="ms-1 shrink-0 text-v2-icon-icon-muted" />
-                        </Show>
-                      </button>
-                    )}
-                  </For>
-                  <For each={props.views.menu().filter((entry) => entry.mobile.kind === "drawer")}>
-                    {(entry) => (
-                      <button
-                        type="button"
-                        class="flex min-h-11 w-full items-center gap-2 rounded-[4px] py-1 ps-3 pe-2 text-start text-[13px] font-[440] leading-[var(--line-height-base)] text-v2-text-text-base hover:bg-[var(--v2-overlay-simple-overlay-hover)] focus-visible:outline-none focus-visible:bg-[var(--v2-overlay-simple-overlay-hover)]"
-                        onClick={() => setStore("drawer", entry.key)}
-                      >
-                        <Show when={entry.mobile.icon}>
-                          {(icon) => <Icon name={icon()} class="shrink-0 text-v2-icon-icon-muted" />}
-                        </Show>
-                        <span class="min-w-0 flex-1 truncate">{entry.mobile.title}</span>
-                        <Icon name="chevron-right" class="ms-1 shrink-0 text-v2-icon-icon-muted" />
-                      </button>
-                    )}
-                  </For>
+                <div ref={menu} tabindex="-1" class="outline-none">
+                  <Show when={store.open}>
+                    <ReactView
+                      component={PanelChoices}
+                      props={{
+                        language: sharedLanguage(language),
+                        title: language.t("common.moreOptions"),
+                        mobile: true,
+                        items: props.views.menu().map((entry) => ({
+                          value: entry.key,
+                          label: entry.mobile.title,
+                          icon: entry.mobile.icon,
+                          drawer: entry.mobile.kind === "drawer",
+                          selected: entry.mobile.kind === "menu" ? props.current === entry.key : undefined,
+                          run: () => {
+                            if (entry.mobile.kind === "drawer") {
+                              setStore("drawer", entry.key)
+                              return
+                            }
+                            props.onSelect(entry.key)
+                            setStore("open", false)
+                          },
+                        })),
+                      }}
+                    />
+                  </Show>
                 </div>
               }
             >

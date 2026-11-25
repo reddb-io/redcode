@@ -3,6 +3,30 @@ import { fixture, mockStressTimeline } from "../utils/session-fixture"
 import { sessionHref } from "../utils/app"
 import { openWithDirection } from "../utils/direction"
 
+test("filters mobile panels and restores all choices on reopening", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockStressTimeline(page)
+  await page.goto(sessionHref(fixture.targetID))
+  const more = page.getByRole("tab", { name: "More...", exact: true })
+  await more.click()
+  const drawer = page.getByRole("dialog", { name: "More options", exact: true })
+  const search = drawer.getByRole("searchbox", { name: "Search options", exact: true })
+  await expect(drawer.getByRole("button", { name: "Session details", exact: true })).toBeVisible()
+  await search.fill("unavailable panel")
+  await expect(drawer.getByRole("status")).toHaveText("No matching options")
+  await search.fill("files")
+  await expect(drawer.getByRole("button")).toHaveText(["Files"])
+  await search.press("ArrowDown")
+  const files = drawer.getByRole("button", { name: "Files", exact: true })
+  await expect(files).toBeFocused()
+  await files.press("Enter")
+  await expect(page.locator('[data-slot="session-mobile-files"]')).toBeVisible()
+  await more.click()
+  await expect(search).toHaveValue("")
+  await expect(files).toHaveAttribute("aria-pressed", "true")
+  await expect(drawer.getByRole("button", { name: "Session details", exact: true })).toBeVisible()
+})
+
 for (const scheme of ["light", "dark"] as const) {
   for (const direction of ["ltr", "rtl"] as const) {
     test(`mobile session options are compact and readable in ${scheme} ${direction}`, async ({ page }, testInfo) => {
