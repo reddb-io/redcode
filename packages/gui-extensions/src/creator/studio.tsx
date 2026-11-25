@@ -1,5 +1,5 @@
-import { createMemo, Show } from "solid-js"
-import { createStore } from "solid-js/store"
+import { Show } from "solid-js"
+import type { StudioWorkspace } from "./renderer"
 import { Button } from "@opencode/ui/button"
 import { Icon } from "@opencode/ui/icon"
 import { Tabs } from "@opencode/ui/tabs"
@@ -10,33 +10,31 @@ import Components from "./components"
 import Plugins from "./plugins"
 import Create from "./create"
 
-export default function Studio(props: { session: MountedSession; visible: boolean }) {
-  // A session change owns a new wizard state; installations remain project scoped.
-  const identity = createMemo(() => `${props.session.key}\n${props.session.directory}`)
+export default function Studio(props: { session: MountedSession; visible: boolean; workspace: StudioWorkspace }) {
   return (
-    <Show when={identity()} keyed>
-      {(_identity) => <Workspace session={props.session} visible={props.visible} />}
+    <Show when={props.workspace} keyed>
+      {(workspace) => <Workspace session={props.session} visible={props.visible} workspace={workspace} />}
     </Show>
   )
 }
 
-function Workspace(props: { session: MountedSession; visible: boolean }) {
+function Workspace(props: { session: MountedSession; visible: boolean; workspace: StudioWorkspace }) {
   const ctx = useExtension<typeof definition>()
-  const [state, setState] = createStore({ tab: "visual", notice: "" })
+  const workspace = props.workspace
   const create = () => {
     const session = props.session
     ctx.dialogs.open((dialog) => (
       <Create
         session={session}
         close={() => dialog.close()}
-        started={(kind) => setState({ tab: kind, notice: ctx.t("create.started") })}
+        started={(kind) => workspace.setState({ tab: kind, notice: ctx.t("create.started") })}
       />
     ))
   }
   return (
     <Tabs
-      value={state.tab}
-      onChange={(tab) => setState("tab", tab)}
+      value={workspace.state.tab}
+      onChange={(tab) => workspace.setState("tab", tab)}
       variant="pill"
       class="flex size-full min-h-0 flex-col"
     >
@@ -53,9 +51,9 @@ function Workspace(props: { session: MountedSession; visible: boolean }) {
             {ctx.t("studio.plugins.short")}
           </Tabs.Trigger>
         </Tabs.List>
-        <Show when={state.notice}>
-          <Tooltip value={state.notice}>
-            <span role="status" aria-label={state.notice} tabIndex={0} class="shrink-0 text-ink-muted">
+        <Show when={workspace.state.notice}>
+          <Tooltip value={workspace.state.notice}>
+            <span role="status" aria-label={workspace.state.notice} tabIndex={0} class="shrink-0 text-ink-muted">
               <Icon name="info" size="small" />
             </span>
           </Tooltip>

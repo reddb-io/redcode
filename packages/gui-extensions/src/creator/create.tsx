@@ -1,14 +1,14 @@
-import { createMemo, onCleanup, Show } from "solid-js"
+import { ReactView } from "@opencode/ui/react-view"
+import { useNativeDialog } from "@opencode/ui/context/dialog"
+import { CreatorRequestDialog } from "./request-dialog.react"
+import { createMemo, onCleanup } from "solid-js"
 import { createStore } from "solid-js/store"
-import { Button } from "@opencode/ui/button"
-import { Dialog, DialogFooter, DialogHeader, DialogTitleGroup } from "@opencode/ui/dialog"
-import { SearchSelect } from "@opencode/ui/search-select"
-import { TextField } from "@opencode/ui/text-field"
 import { useExtension, type SessionRef } from "../sdk"
 import type definition from "./index"
 
 export default function Create(props: { session: SessionRef; close: () => void; started: (kind: string) => void }) {
   const ctx = useExtension<typeof definition>()
+  const modal = useNativeDialog()
   const controller = new AbortController()
   onCleanup(() => controller.abort())
   const [state, setState] = createStore({ kind: "visual", name: "", brief: "", pending: false, error: "" })
@@ -49,67 +49,44 @@ export default function Create(props: { session: SessionRef; close: () => void; 
     }
   }
   return (
-    <Dialog fit>
-      <DialogHeader>
-        <DialogTitleGroup title={ctx.t("create.title")} description={ctx.t("create.description")} />
-      </DialogHeader>
-      <div class="space-y-3 px-6 pb-4">
-        <SearchSelect
-          label={ctx.t("create.kind")}
-          value={state.kind}
-          onChange={(value) => setState("kind", value)}
-          disabled={state.pending}
-          options={[
+    <ReactView
+      component={CreatorRequestDialog}
+      props={{
+        open: modal.open(),
+        title: ctx.t("create.title"),
+        description: ctx.t("create.description"),
+        submitLabel: ctx.t(state.pending ? "create.pending" : "create.start"),
+        creation: {
+          kindLabel: ctx.t("create.kind"),
+          kind: state.kind,
+          setKind: (value) => setState("kind", value),
+          search: ctx.t("ui.searchSelect.search"),
+          empty: ctx.t("ui.searchSelect.empty"),
+          options: [
             { value: "visual", label: ctx.t("studio.visual"), description: ctx.t("create.visual.description") },
             { value: "server", label: ctx.t("studio.plugins"), description: ctx.t("create.server.description") },
-          ]}
-        />
-        <TextField
-          label={ctx.t("create.name")}
-          value={state.name}
-          onChange={(value) => setState("name", value)}
-          disabled={state.pending}
-        />
-        <TextField
-          label={ctx.t("create.brief")}
-          multiline
-          rows={4}
-          value={state.brief}
-          onChange={(value) => setState("brief", value)}
-          disabled={state.pending}
-        />
-        <p class="break-words text-12-regular text-ink-muted">
-          {ctx.t("create.scope", {
+          ],
+          nameLabel: ctx.t("create.name"),
+          name: state.name,
+          setName: (value) => setState("name", value),
+          scope: ctx.t("create.scope", {
             server: props.session.server.name,
             directory: props.session.location?.directory ?? "",
-          })}
-        </p>
-        <p class="text-12-regular text-ink-muted">
-          {ctx.t("create.conversation", { model: info()?.model?.id ?? ctx.t("create.model.missing") })}
-        </p>
-        <Show when={busy()}>
-          <p role="status" class="text-12-regular text-ink-muted">
-            {ctx.t("create.busy")}
-          </p>
-        </Show>
-        <Show when={state.error}>
-          <p role="alert" class="break-words text-12-regular text-text-danger-base">
-            {state.error}
-          </p>
-        </Show>
-      </div>
-      <DialogFooter>
-        <Button variant="ghost" disabled={state.pending} onClick={props.close}>
-          {ctx.t("common.cancel")}
-        </Button>
-        <Button
-          variant="submit"
-          disabled={state.pending || busy() || !info()?.model || !state.name.trim() || !state.brief.trim()}
-          onClick={() => void submit()}
-        >
-          {ctx.t(state.pending ? "create.pending" : "create.start")}
-        </Button>
-      </DialogFooter>
-    </Dialog>
+          }),
+          conversation: ctx.t("create.conversation", { model: info()?.model?.id ?? ctx.t("create.model.missing") }),
+        },
+        requestLabel: ctx.t("create.brief"),
+        request: state.brief,
+        setRequest: (value) => setState("brief", value),
+        disabled: state.pending || busy() || !info()?.model || !state.name.trim() || !state.brief.trim(),
+        pending: state.pending,
+        busyHint: busy() ? ctx.t("create.busy") : undefined,
+        error: state.error,
+        closeLabel: ctx.t("ui.common.close"),
+        cancelLabel: ctx.t("common.cancel"),
+        close: props.close,
+        submit,
+      }}
+    />
   )
 }

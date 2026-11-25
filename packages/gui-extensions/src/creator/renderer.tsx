@@ -1,8 +1,20 @@
 import { lazy, onCleanup, Suspense } from "solid-js"
+import { createStore } from "solid-js/store"
 import { Icon } from "@opencode/ui/icon"
 import { IconButton } from "@opencode/ui/icon-button"
 import { Tooltip } from "@opencode/ui/tooltip"
-import { Command, MenuItem, onIdle, Panel, SettingsPage, Slot, usePanel, type PanelTab, type Setup } from "../sdk"
+import {
+  Command,
+  MenuItem,
+  onIdle,
+  Panel,
+  SettingsPage,
+  Slot,
+  usePanel,
+  type MountedSession,
+  type PanelTab,
+  type Setup,
+} from "../sdk"
 import type definition from "./index"
 
 const setup: Setup<typeof definition> = (ctx) => {
@@ -12,6 +24,15 @@ const setup: Setup<typeof definition> = (ctx) => {
   onCleanup(onIdle(() => void Components.preload()))
   onCleanup(onIdle(() => void Plugins.preload()))
   onCleanup(onIdle(() => void Studio.preload()))
+  // The drawer and side panel mount separately while sharing the same routing visit.
+  const workspaces = new WeakMap<object, ReturnType<typeof createWorkspace>>()
+  const workspace = (session: MountedSession) => {
+    const current = workspaces.get(session.visit)
+    if (current && current.directory === session.directory) return current
+    const next = createWorkspace(session.directory)
+    workspaces.set(session.visit, next)
+    return next
+  }
   const key = `${ctx.id}:main`
   const open = () => {
     const session = ctx.sessions.current()
@@ -48,7 +69,7 @@ const setup: Setup<typeof definition> = (ctx) => {
       const panel = usePanel()
       return (
         <Suspense>
-          <Studio session={props.session} visible={panel.visible()} />
+          <Studio session={props.session} visible={panel.visible()} workspace={workspace(props.session)} />
         </Suspense>
       )
     },
@@ -107,5 +128,12 @@ const setup: Setup<typeof definition> = (ctx) => {
     ),
   })
 }
+
+function createWorkspace(directory: MountedSession["directory"]) {
+  const [state, setState] = createStore({ tab: "visual", notice: "" })
+  return { directory, state, setState }
+}
+
+export type StudioWorkspace = ReturnType<typeof createWorkspace>
 
 export default setup

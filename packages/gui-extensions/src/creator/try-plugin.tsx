@@ -1,8 +1,8 @@
-import { onCleanup, Show } from "solid-js"
+import { ReactView } from "@opencode/ui/react-view"
+import { useNativeDialog } from "@opencode/ui/context/dialog"
+import { CreatorRequestDialog } from "./request-dialog.react"
+import { onCleanup } from "solid-js"
 import { createStore } from "solid-js/store"
-import { Button } from "@opencode/ui/button"
-import { TextField } from "@opencode/ui/text-field"
-import { Dialog, DialogFooter, DialogHeader, DialogTitleGroup } from "@opencode/ui/dialog"
 import { useExtension, type SessionRef } from "../sdk"
 import type definition from "./index"
 
@@ -13,6 +13,7 @@ export default function TryPlugin(props: {
   close: () => void
 }) {
   const ctx = useExtension<typeof definition>()
+  const modal = useNativeDialog()
   const controller = new AbortController()
   onCleanup(() => controller.abort())
   const [state, setState] = createStore({ request: "", pending: false, error: "" })
@@ -47,48 +48,26 @@ export default function TryPlugin(props: {
     }
   }
   return (
-    <Dialog fit>
-      <DialogHeader>
-        <DialogTitleGroup
-          title={ctx.t("plugins.try.title", { name: props.name })}
-          description={ctx.t("plugins.try.description")}
-        />
-      </DialogHeader>
-      <div class="space-y-3 px-6 pb-4">
-        <p class="break-words font-mono text-12-regular text-ink-muted">
-          {ctx.t("plugins.tools", { tools: props.tools.join(", ") })}
-        </p>
-        <TextField
-          label={ctx.t("plugins.try.case")}
-          multiline
-          rows={4}
-          value={state.request}
-          onChange={(value) => setState("request", value)}
-          disabled={state.pending}
-        />
-        <Show when={busy()}>
-          <p role="status" class="text-12-regular text-ink-muted">
-            {ctx.t("create.busy")}
-          </p>
-        </Show>
-        <Show when={state.error}>
-          <p role="alert" class="break-words text-12-regular text-text-danger-base">
-            {state.error}
-          </p>
-        </Show>
-      </div>
-      <DialogFooter>
-        <Button variant="ghost" disabled={state.pending} onClick={props.close}>
-          {ctx.t("common.cancel")}
-        </Button>
-        <Button
-          variant="submit"
-          disabled={state.pending || busy() || !state.request.trim()}
-          onClick={() => void submit()}
-        >
-          {ctx.t(state.pending ? "plugins.working" : "plugins.try")}
-        </Button>
-      </DialogFooter>
-    </Dialog>
+    <ReactView
+      component={CreatorRequestDialog}
+      props={{
+        open: modal.open(),
+        title: ctx.t("plugins.try.title", { name: props.name }),
+        description: ctx.t("plugins.try.description"),
+        submitLabel: ctx.t(state.pending ? "plugins.working" : "plugins.try"),
+        tools: ctx.t("plugins.tools", { tools: props.tools.join(", ") }),
+        requestLabel: ctx.t("plugins.try.case"),
+        request: state.request,
+        setRequest: (value) => setState("request", value),
+        disabled: state.pending || busy() || !state.request.trim(),
+        pending: state.pending,
+        busyHint: busy() ? ctx.t("create.busy") : undefined,
+        error: state.error,
+        closeLabel: ctx.t("ui.common.close"),
+        cancelLabel: ctx.t("common.cancel"),
+        close: props.close,
+        submit,
+      }}
+    />
   )
 }
