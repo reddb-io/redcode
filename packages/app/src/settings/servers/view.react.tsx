@@ -16,13 +16,13 @@ export function ServerGeneral(props: { services: Services }) {
     <>
       <div className="settings-tab-header">
         <div className="settings-tab-header-row">
-          <div className="flex flex-col gap-1">
+          <div className="flex min-w-0 flex-[1_1_16rem] flex-col gap-1">
             <h2 className="settings-tab-title">{state.nested ? state.name : language.t("settings.section.server")}</h2>
             <span className="text-11-regular text-ink-muted">
               {language.t(state.nested ? "settings.server.description" : "server.access.serversDescription")}
             </span>
           </div>
-          {state.add && <SharedSlot mount={services.add} />}
+          {state.add && <SharedSlot mount={services.add} className="max-w-full shrink-0" />}
         </div>
       </div>
       <div className="settings-tab-body settings-tab-body--sectioned">

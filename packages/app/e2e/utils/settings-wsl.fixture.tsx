@@ -23,6 +23,7 @@ type FixtureMethod = (input: FixtureInput) => number | void
 export function mount(input: {
   server: string
   mode: "failed" | "stopped" | "ready"
+  catalog?: string[]
   wsl?: string | null
   restart?: string | null
   path?: string | null
@@ -83,7 +84,7 @@ export function mount(input: {
       state: {
         runtime: { available: true, version: "2", error: null },
         installed: [],
-        online: [],
+        online: (input.catalog ?? []).map((name) => ({ name, label: name })),
         distroProbes: {},
         pendingRestart: false,
         job: null,
@@ -132,6 +133,9 @@ export function mount(input: {
       }))
 
     const wsl = {
+      installDistro(value) {
+        setStore("calls", (calls) => [...calls, `install:${value.name}`])
+      },
       // Like main: stops the distro's server, updates OpenCode, then starts the server again on a new endpoint.
       installOpencode(value) {
         const name = value.name ?? ""

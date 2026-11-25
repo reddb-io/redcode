@@ -314,7 +314,7 @@ their presence alone does not justify replacing them.
 | `tab-state-indicator` | [navigation/tab-state-indicator.tsx](../packages/ui/src/navigation/tab-state-indicator.tsx) | 0 |
 | `tabs` | [navigation/tabs/tabs.tsx](../packages/ui/src/navigation/tabs/tabs.tsx) | 10 |
 | `text-field` | [components/text-field.tsx](../packages/ui/src/components/text-field.tsx) | 0 |
-| `text-input` | [forms/text-input/text-input.tsx](../packages/ui/src/forms/text-input/text-input.tsx) | 3 |
+| `text-input` | [forms/text-input/text-input.tsx](../packages/ui/src/forms/text-input/text-input.tsx) | 0 |
 | `text-reveal` | [components/text-reveal.tsx](../packages/ui/src/components/text-reveal.tsx) | 1 |
 | `text-shimmer` | [typography/text-shimmer/text-shimmer.tsx](../packages/ui/src/typography/text-shimmer/text-shimmer.tsx) | 8 |
 | `text-strikethrough` | [components/text-strikethrough.tsx](../packages/ui/src/components/text-strikethrough.tsx) | 0 |
@@ -337,7 +337,10 @@ on Enter and blur. Extension stores and desktop IPC still own these settings.
 
 File previews and inline diff layouts use Base ToggleGroup. The compact diff
 toolbar uses the same toggle recipes with labeled icon buttons. The review
-source menu uses Base SearchSelect on desktop and mobile.
+source menu uses Base SearchSelect on desktop and mobile. File filtering uses
+the Base Input and Button recipes with the existing combobox keyboard handling.
+SSH connection options use Base Field and Input. The WSL catalog uses the same
+fields with Base RadioGroup and Pagination, with up to 20 choices per page.
 
 The Creator creation and plugin trial forms share the Base Dialog, Button, Field
 and Textarea. Guided creation also uses the Base Input and SearchSelect. The

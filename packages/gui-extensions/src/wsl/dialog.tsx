@@ -4,7 +4,8 @@ import { Dialog, DialogBody, DialogFooter, DialogHeader, DialogTitle } from "@op
 import { Divider } from "@opencode/ui/divider"
 import { Loader } from "@opencode/ui/loader"
 import { RadioGroup, RadioItem } from "@opencode/ui/radio"
-import { TextInput } from "@opencode/ui/text-input"
+import { ReactView } from "@opencode/ui/react-view"
+import { CatalogActions, DistroCatalog } from "./catalog.react"
 import { createMemo, For, Show } from "solid-js"
 import { createStore } from "solid-js/store"
 import { showToast } from "@opencode/ui/toast"
@@ -92,50 +93,36 @@ export function DialogAddWslServer(props: DialogWslServerProps) {
             fallback={
               <>
                 <DialogBody class="settings-wsl-dialog-body settings-wsl-catalog-picker">
-                  <TextInput
-                    class="settings-wsl-catalog-search"
-                    appearance="large"
-                    placeholder={language.t("onboarding.searchDistros")}
-                    value={controller.catalogSearch()}
-                    disabled={model().busy}
-                    onInput={(event) => controller.setCatalogSearch(event.currentTarget.value)}
+                  <ReactView
+                    component={DistroCatalog}
+                    props={{
+                      title: language.t("onboarding.installDistro"),
+                      searchLabel: language.t("onboarding.searchDistros"),
+                      emptyLabel: language.t("ui.searchSelect.empty"),
+                      previousLabel: language.t("ui.common.back"),
+                      nextLabel: language.t("ui.common.next"),
+                      query: controller.catalogSearch(),
+                      matches: model().filteredInstallableDistros,
+                      selected: model().catalogTarget,
+                      disabled: model().busy,
+                      onQueryChange: controller.setCatalogSearch,
+                      onSelect: controller.setCatalogTarget,
+                    }}
                   />
-                  <div class="settings-wsl-catalog-list">
-                    <RadioGroup
-                      hideLabel
-                      class="settings-wsl-distro-group"
-                      label={language.t("onboarding.installDistro")}
-                      value={model().catalogTarget ?? undefined}
-                      onChange={controller.setCatalogTarget}
-                      disabled={model().busy}
-                    >
-                      <For each={model().filteredInstallableDistros}>
-                        {(item) => (
-                          <RadioItem
-                            class="settings-wsl-distro-row settings-wsl-catalog-row"
-                            value={item.name}
-                            disabled={model().busy}
-                            label={<span class="settings-wsl-distro-label">{item.label}</span>}
-                          />
-                        )}
-                      </For>
-                    </RadioGroup>
-                  </div>
                 </DialogBody>
                 <DialogFooter>
-                  <Button variant="neutral" disabled={model().busy} onClick={controller.closeCatalog}>
-                    {language.t("common.cancel")}
-                  </Button>
-                  <Button
-                    variant={model().installingCatalogDistro ? "loading" : "contrast"}
-                    disabled={!model().installingCatalogDistro && (model().busy || !model().catalogTarget)}
-                    style={{ width: "99px" }}
-                    onClick={controller.installCatalogDistro}
-                  >
-                    <Show when={model().installingCatalogDistro} fallback={language.t("onboarding.installDistro")}>
-                      <Loader />
-                    </Show>
-                  </Button>
+                  <ReactView
+                    component={CatalogActions}
+                    props={{
+                      cancelLabel: language.t("common.cancel"),
+                      installLabel: language.t("onboarding.installDistro"),
+                      busy: model().busy,
+                      installing: model().installingCatalogDistro,
+                      selected: !!model().catalogTarget,
+                      onCancel: controller.closeCatalog,
+                      onInstall: controller.installCatalogDistro,
+                    }}
+                  />
                 </DialogFooter>
               </>
             }

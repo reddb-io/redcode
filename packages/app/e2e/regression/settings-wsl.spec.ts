@@ -56,6 +56,38 @@ for (const mode of ["failed", "stopped", "ready"] as const) {
   })
 }
 
+test("the WSL catalog searches all pages and installs the chosen distribution", async ({ page }) => {
+  await mockOpenCodeServer(page, {
+    directory: "/repo",
+    project: project({ id: "proj_wsl_catalog", directory: "/repo" }),
+    provider: NO_PROVIDER,
+    sessions: [],
+    pageMessages: () => ({ items: [] }),
+  })
+  const query = new URLSearchParams({ server: SERVER, mode: "ready" })
+  for (const name of Array.from({ length: 22 }, (_, index) => `Test Linux ${index + 1}`)) query.append("distro", name)
+  await page.goto(`/e2e/utils/settings-wsl.html?${query}`)
+  const settings = page.getByTestId("settings-screen")
+  await settings.getByRole("button", { name: "Add server", exact: true }).click()
+  await page.getByRole("menuitem", { name: "Add WSL server", exact: true }).click()
+  const dialog = page.getByRole("dialog")
+  await dialog.getByRole("button", { name: /Need another distro/ }).click()
+  const search = dialog.getByRole("searchbox", { name: "Search distros" })
+  const radios = dialog.getByRole("radio")
+  await expect(radios).toHaveCount(20)
+  await dialog.getByRole("button", { name: "Next", exact: true }).press("Enter")
+  await expect(radios).toHaveCount(2)
+  await expect(dialog.getByRole("radio", { name: "Test Linux 22" })).toBeVisible()
+  await search.fill("missing")
+  await expect(dialog.getByRole("status")).toHaveText("No matching options")
+  await expect(dialog.getByRole("button", { name: "Install distro", exact: true })).toBeDisabled()
+  await search.fill("Linux 3")
+  const chosen = dialog.getByRole("radio", { name: "Test Linux 3", exact: true })
+  await expect(chosen).toBeChecked()
+  await dialog.getByRole("button", { name: "Install distro", exact: true }).press("Enter")
+  await expect(page.getByLabel("WSL actions")).toHaveText("install:Test Linux 3")
+})
+
 test("adding a WSL server while the WSL extension is down shows that WSL is unavailable", async ({ page }) => {
   await mockOpenCodeServer(page, {
     directory: "/repo",
@@ -93,8 +125,13 @@ test("adding an SSH server while the SSH extension is down fails instead of conn
   await settings.getByRole("button", { name: "Add server", exact: true }).press("Enter")
   await page.getByRole("menuitem", { name: "Add SSH server", exact: true }).click()
   const dialog = page.getByRole("dialog")
-  await dialog.getByRole("textbox", { name: "Host or SSH command" }).fill("ssh devbox")
-  await dialog.getByRole("button", { name: "Add server", exact: true }).click()
+  const target = dialog.getByRole("textbox", { name: "Host or SSH command" })
+  await expect(target).toBeFocused()
+  await target.fill("ssh devbox")
+  await dialog.getByText("Username, port and SSH key", { exact: true }).click()
+  const port = dialog.getByRole("textbox", { name: "SSH port (optional)" })
+  await port.fill("2222")
+  await port.press("Enter")
   await expect(dialog.getByRole("alert")).toHaveText("Request failed")
   await expect(dialog.getByRole("button", { name: "Add server", exact: true })).toBeEnabled()
 })

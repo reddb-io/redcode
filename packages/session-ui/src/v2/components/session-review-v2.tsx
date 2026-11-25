@@ -1,6 +1,5 @@
 import { useI18n } from "@opencode/ui/context/i18n"
-import { button, toggleButton, toggleGroup } from "@reddb-io/design-system/base/recipes"
-import { TextInput } from "@opencode/ui/text-input"
+import { button, input, toggleButton, toggleGroup } from "@reddb-io/design-system/base/recipes"
 import { Keybind } from "@opencode/ui/keybind"
 import { Icon } from "@opencode/ui/icon"
 import { IconButton } from "@opencode/ui/icon-button"
@@ -68,6 +67,7 @@ export type SessionReviewV2SidebarProps = {
 
 export function SessionReviewV2Sidebar(props: SessionReviewV2SidebarProps) {
   const i18n = useI18n()
+  let filter!: HTMLInputElement
   const [resizing, setResizing] = createSignal(false)
   const width = () => props.width ?? SESSION_REVIEW_V2_SIDEBAR_WIDTH_DEFAULT
   const minWidth = () => props.minWidth ?? SESSION_REVIEW_V2_SIDEBAR_WIDTH_MIN
@@ -94,40 +94,47 @@ export function SessionReviewV2Sidebar(props: SessionReviewV2SidebarProps) {
             {props.stats}
           </div>
           <div data-slot="session-review-v2-sidebar-filter">
-            <TextInput
-              type="search"
-              value={props.filter}
-              onInput={(event) => props.onFilterChange(event.currentTarget.value)}
-              onKeyDown={props.onFilterKeyDown}
-              autofocus={props.filterAutofocus}
-              ref={props.filterRef}
-              role={props.filterControls ? "combobox" : undefined}
-              aria-autocomplete={props.filterControls ? "list" : undefined}
-              aria-controls={props.filterControls}
-              aria-activedescendant={props.filterActiveDescendant}
-              aria-expanded={props.filterControls ? props.filterExpanded : undefined}
-              showClearButton={props.filter.length > 0}
-              clearLabel={i18n.t("ui.list.clearFilter")}
-              onClearClick={() => props.onFilterChange("")}
-              placeholder={i18n.t("ui.sessionReviewV2.filterFiles")}
-              aria-label={i18n.t("ui.sessionReviewV2.filterFiles")}
-              leadingIcon={
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 14 14"
-                  fill="none"
-                  xmlns="http://www.w3.org/2000/svg"
-                  aria-hidden="true"
+            <div class="relative flex min-w-0 items-center">
+              <span aria-hidden="true" class="pointer-events-none absolute start-2 text-ink-muted">
+                <Icon name="magnifying-glass" size="small" />
+              </span>
+              <input
+                type="search"
+                value={props.filter}
+                onInput={(event) => props.onFilterChange(event.currentTarget.value)}
+                onKeyDown={props.onFilterKeyDown}
+                autofocus={props.filterAutofocus}
+                ref={(element) => {
+                  filter = element
+                  props.filterRef?.(element)
+                }}
+                role={props.filterControls ? "combobox" : undefined}
+                aria-autocomplete={props.filterControls ? "list" : undefined}
+                aria-controls={props.filterControls}
+                aria-activedescendant={props.filterActiveDescendant}
+                aria-expanded={props.filterControls ? props.filterExpanded : undefined}
+                class={input({ size: "sm", class: "ps-7 pe-8 [&::-webkit-search-cancel-button]:hidden" })}
+                placeholder={i18n.t("ui.sessionReviewV2.filterFiles")}
+                aria-label={i18n.t("ui.sessionReviewV2.filterFiles")}
+              />
+              <Show when={props.filter}>
+                <button
+                  type="button"
+                  class={button({
+                    variant: "ghost",
+                    size: "sm",
+                    class: "absolute end-0 inset-y-0 aspect-square justify-center p-0",
+                  })}
+                  aria-label={i18n.t("ui.list.clearFilter")}
+                  onClick={() => {
+                    props.onFilterChange("")
+                    filter.focus()
+                  }}
                 >
-                  <path
-                    d="M12.25 12.25L10.0625 10.0625M11.0833 6.41667C11.0833 8.994 8.994 11.0833 6.41667 11.0833C3.83934 11.0833 1.75 8.994 1.75 6.41667C1.75 3.83934 3.83934 1.75 6.41667 1.75C8.994 1.75 11.0833 3.83934 11.0833 6.41667Z"
-                    stroke="currentColor"
-                    stroke-linecap="square"
-                  />
-                </svg>
-              }
-            />
+                  <Icon name="xmark-small" size="small" />
+                </button>
+              </Show>
+            </div>
           </div>
           <div data-slot="session-review-v2-sidebar-notice">{props.notice}</div>
           <ScrollView

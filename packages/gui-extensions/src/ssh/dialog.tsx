@@ -2,7 +2,9 @@ import { Button } from "@opencode/ui/button"
 import { uuid } from "@opencode/util/uuid"
 import { Dialog, DialogBody, DialogFooter, DialogHeader, DialogTitle } from "@opencode/ui/dialog"
 import { Divider } from "@opencode/ui/divider"
-import { TextInput } from "@opencode/ui/text-input"
+import { ReactView } from "@opencode/ui/react-view"
+import { input } from "@reddb-io/design-system/base/recipes"
+import { SshConnectionFields } from "./connection-fields.react"
 import { useDialog } from "@opencode/ui/context/dialog"
 import { createMemo, createSignal, on, onCleanup, onMount, Show } from "solid-js"
 import { createStore } from "solid-js/store"
@@ -137,14 +139,6 @@ export function DialogSsh(props: {
     if (state.started && !state.complete) ssh.cancel(id)
   })
 
-  const keyDown = (event: KeyboardEvent) => {
-    if (event.key !== "Enter" || event.isComposing) return
-    event.preventDefault()
-
-    if (prompt()) return
-    start(item()?.stage === "incompatible")
-  }
-
   return (
     <Dialog fit class="settings-server-dialog">
       <DialogHeader hideClose={true}>
@@ -160,89 +154,35 @@ export function DialogSsh(props: {
               !props.promptOnly && item()?.stage !== "incompatible" && (!prompted().value || (!!error() && !prompt()))
             }
           >
-            <div class="flex w-full min-w-0 flex-col gap-2">
-              <label class="settings-server-dialog-label" for="ssh-target">
-                {extension.t("target")}
-              </label>
-              <TextInput
-                id="ssh-target"
-                type="text"
-                appearance="large"
-                class="!w-full self-stretch"
-                dir="ltr"
-                value={state.target}
-                autofocus
-                placeholder={extension.t("placeholder")}
-                spellcheck={false}
-                autocomplete="off"
-                disabled={busy() || !!prompt()}
-                invalid={!!error()}
-                onInput={(event) => setState("target", event.currentTarget.value)}
-                onKeyDown={keyDown}
-              />
-            </div>
-            <div class="flex w-full min-w-0 flex-col gap-2">
-              <label class="settings-server-dialog-label" for="ssh-name">
-                {extension.t("form.name")}
-              </label>
-              <TextInput
-                id="ssh-name"
-                type="text"
-                appearance="large"
-                class="!w-full self-stretch"
-                dir="auto"
-                value={state.name}
-                placeholder={extension.t("form.namePlaceholder")}
-                disabled={busy() || !!prompt()}
-                onInput={(event) => setState("name", event.currentTarget.value)}
-                onKeyDown={keyDown}
-              />
-            </div>
-            <details>
-              <summary class="cursor-pointer py-2 text-13-regular leading-[var(--line-height-base)]">
-                {extension.t("form.connectionOptions")}
-              </summary>
-              <div class="flex flex-col gap-3 pt-2">
-                <label class="flex flex-col gap-1" for="ssh-user">
-                  {extension.t("form.user")}
-                  <TextInput
-                    id="ssh-user"
-                    value={state.user}
-                    autocomplete="off"
-                    disabled={busy() || !!prompt()}
-                    onInput={(event) => setState("user", event.currentTarget.value)}
-                    onKeyDown={keyDown}
-                  />
-                </label>
-                <label class="flex flex-col gap-1" for="ssh-port">
-                  {extension.t("form.port")}
-                  <TextInput
-                    id="ssh-port"
-                    value={state.port}
-                    inputmode="numeric"
-                    placeholder="22"
-                    disabled={busy() || !!prompt()}
-                    onInput={(event) => setState("port", event.currentTarget.value)}
-                    onKeyDown={keyDown}
-                  />
-                </label>
-                <label class="flex flex-col gap-1" for="ssh-identity">
-                  {extension.t("form.identity")}
-                  <TextInput
-                    id="ssh-identity"
-                    value={state.identity}
-                    autocomplete="off"
-                    spellcheck={false}
-                    disabled={busy() || !!prompt()}
-                    onInput={(event) => setState("identity", event.currentTarget.value)}
-                    onKeyDown={keyDown}
-                  />
-                </label>
-                <p class="text-13-regular leading-[var(--line-height-base)] text-ink-muted">
-                  {extension.t("form.authenticationNote")}
-                </p>
-              </div>
-            </details>
+            <ReactView
+              component={SshConnectionFields}
+              props={{
+                values: {
+                  target: state.target,
+                  name: state.name,
+                  user: state.user,
+                  port: state.port,
+                  identity: state.identity,
+                },
+                labels: {
+                  target: extension.t("target"),
+                  name: extension.t("form.name"),
+                  user: extension.t("form.user"),
+                  port: extension.t("form.port"),
+                  identity: extension.t("form.identity"),
+                },
+                targetPlaceholder: extension.t("placeholder"),
+                namePlaceholder: extension.t("form.namePlaceholder"),
+                optionsLabel: extension.t("form.connectionOptions"),
+                authenticationNote: extension.t("form.authenticationNote"),
+                disabled: busy() || !!prompt(),
+                invalid: !!error(),
+                onChange: (field, value) => setState(field, value),
+                onSubmit: () => {
+                  if (!prompt()) start(item()?.stage === "incompatible")
+                },
+              }}
+            />
           </Show>
           <Show when={item()?.stage === "incompatible"}>
             <div class="flex w-full min-w-0 flex-col gap-2" role="status" aria-live="polite">
@@ -257,7 +197,7 @@ export function DialogSsh(props: {
                   {prompt.text}
                 </pre>
                 <Show when={!prompt.confirm}>
-                  <TextInput
+                  <input
                     id="ssh-response"
                     aria-labelledby="ssh-prompt"
                     ref={(element) =>
@@ -266,8 +206,7 @@ export function DialogSsh(props: {
                       })
                     }
                     type="password"
-                    appearance="large"
-                    class="!w-full self-stretch"
+                    class={input({ size: "md" })}
                     autofocus
                     value={response()}
                     autocomplete="off"
