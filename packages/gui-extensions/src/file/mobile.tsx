@@ -35,7 +35,7 @@ export default function SessionMobileFiles(props: { session: MountedSession; scr
 
   return (
     <div data-slot="session-mobile-files" data-browsing={browsing()} class="flex h-full min-h-0 flex-col">
-      <div data-slot="session-mobile-files-header" class="relative flex h-10 shrink-0 items-center">
+      <div data-slot="session-mobile-files-header" class="relative flex min-h-10 shrink-0 items-center">
         <Button
           size="small"
           variant="ghost"
@@ -57,7 +57,7 @@ export default function SessionMobileFiles(props: { session: MountedSession; scr
           variant="line"
           class="min-w-0 flex-1 !h-auto"
         >
-          <Tabs.List aria-label={ctx.t("mobile.openTabs")} class="!h-10 !px-0 overflow-x-auto">
+          <Tabs.List aria-label={ctx.t("mobile.openTabs")} class="min-h-10 items-center border-0">
             <For each={opened()}>
               {(id) => (
                 <Tabs.Trigger

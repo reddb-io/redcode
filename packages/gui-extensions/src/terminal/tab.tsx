@@ -138,7 +138,7 @@ export function SortableTerminalTab(props: {
               focus()
             }}
             onMiddleClick={close}
-            closeButton={<Tabs.CloseButton class="h-5 w-5" onClick={close} aria-label={extension.t("close")} />}
+            closeButton={<Tabs.CloseButton onClick={close} aria-label={extension.t("close")} />}
             hideCloseButton
           >
             <span

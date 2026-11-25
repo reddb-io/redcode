@@ -217,7 +217,7 @@ hide/show restrictions. The extension SDK's contributed server bodies and
 ## Distribution and builds
 
 `design-system.manifest.json` selects React and the official compiled distribution.
-The current pin is `v2026.10.28`. Its `PhoneInput` formatting dependency,
+The current pin is `v2026.11.28`. Its `PhoneInput` formatting dependency,
 `libphonenumber-js@1.13.15`, is available to both the pinned compiler and the
 vendored runtime package.
 The pinned producer supplies browser ESM, declarations and Tailwind candidates.
@@ -329,6 +329,15 @@ and the Solid key legend use the Badge and Kbd recipes, and the React key legend
 uses native Kbd. The error screen uses native Logo, Textarea and Button on web,
 desktop and narrow mobile viewports. The Solid host still records the fatal
 error and provides the desktop updater and log export.
+
+The workbench, terminal, file browser and mobile session navigation share the
+vendored Tabs and Button recipes. Kobalte retains keyboard selection, tab and
+panel IDs, and the existing panel lifetime. File and terminal tabs keep their
+separate close controls. At a 390px viewport with a touch pointer, the four
+session controls measure 44px high, up from 34px in the preceding production
+build. The mobile regression suite checks the target size and keyboard activation.
+
+![Before and after the workbench tab migration in the production web client at desktop and mobile widths](screenshots/workbench-tabs.webp)
 
 The loading glyph in SSH, WSL, imports, file actions, browser, Office and
 execution panels uses Base LoadingIndicator slots. The upload and context rings

@@ -26,7 +26,6 @@
 @import "../components/resize-handle.css" layer(components);
 @import "../components/scroll-view.css" layer(components);
 @import "../components/sticky-accordion-header.css" layer(components);
-@import "../navigation/tabs/tabs.css" layer(components);
 @import "../components/text-reveal.css" layer(components);
 @import "../components/text-strikethrough.css" layer(components);
 @import "../components/typewriter.css" layer(components);

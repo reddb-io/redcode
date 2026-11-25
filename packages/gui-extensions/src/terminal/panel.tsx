@@ -230,7 +230,7 @@ export default function TerminalPanel(props: { model: TerminalModel; session: Mo
       >
         <Tabs.List
           ref={tabList}
-          class="!border-b-0"
+          class="h-full items-center border-0 px-[var(--reddb-spatial-inset-sm)]"
           onPointerDown={(event: PointerEvent & { currentTarget: HTMLDivElement }) => {
             const active = document.activeElement
 

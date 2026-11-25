@@ -73,7 +73,7 @@ export default function FileSidebar(props: { session: MountedSession; screen: Se
       class="h-full"
       data-scope="filetree"
     >
-      <Tabs.List>
+      <Tabs.List class="items-center p-[var(--reddb-spatial-inset-sm)]">
         <Show when={changes()}>
           <Tabs.Trigger value="changes" class="flex-1" classes={{ button: "w-full" }}>
             {ctx.plural("tree.changes", count())}

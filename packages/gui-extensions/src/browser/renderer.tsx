@@ -6,7 +6,6 @@ import type { Model } from "./model"
 import { PageIcon } from "./page-icon"
 import barStyles from "./bar.css?inline"
 import commentStyles from "./comment.css?inline"
-import tabStyles from "./tabs.css?inline"
 
 const setup: Setup<typeof definition> = (ctx) => {
   const sessions = ctx.sessions
@@ -30,8 +29,6 @@ const setup: Setup<typeof definition> = (ctx) => {
 
   // The native pane is a desktop feature.
   if (ctx.build.platform !== "desktop") return
-  // Tab trigger styles render with the strip, before the pane chunk loads.
-  ctx.add(Style, tabStyles)
   ctx.add(Style, commentStyles)
   ctx.add(Style, barStyles)
   // Everything here serves a mounted session, so the attachment model and the pane's protocol

@@ -448,10 +448,11 @@ function WorkbenchGroupView(props: {
         >
           {/* The leading strip shares the session header's 48px row; a lower group's strip is 40px. */}
           <div
-            class="session-review-v2-tabs-bar sticky top-0 shrink-0 flex items-center"
+            class="session-review-v2-tabs-bar sticky top-0 flex w-full min-w-0 shrink-0 items-center gap-[var(--reddb-spatial-gap-md)] border-b border-muted bg-elevation-base-surface"
             style={{ "--tabs-bar-height": props.leading ? "48px" : "40px", height: "var(--tabs-bar-height)" }}
           >
             <Tabs.List
+              class="h-full w-auto flex-1 items-center border-0 ps-[var(--reddb-spatial-inset-sm)]"
               style={{
                 flex: !props.launcher && props.dockKey && props.group.active() === props.dockKey ? "0 1 auto" : undefined,
                 "max-width": !props.launcher && props.dockKey && props.group.active() === props.dockKey ? "50%" : undefined,
@@ -502,7 +503,7 @@ function WorkbenchGroupView(props: {
                   </span>
                 </Tabs.Trigger>
               </Show>
-              <div class="h-full shrink-0 sticky end-0 z-10 flex items-center justify-center bg-v2-background-bg-base">
+              <div class="h-full shrink-0 sticky end-0 z-10 flex items-center justify-center bg-elevation-base-surface pe-[var(--reddb-spatial-inset-sm)]">
                 <Tooltip value={language.t("workbench.launcher.open")} placement="bottom" class="flex items-center">
                   <IconButton
                     icon={<Icon name="plus" />}
@@ -523,7 +524,7 @@ function WorkbenchGroupView(props: {
             />
             <div
               data-slot="session-side-panel-actions"
-              class="session-review-v2-open-in-app-slot h-[var(--tabs-bar-height)] shrink-0 flex items-center gap-1 pe-2"
+              class="session-review-v2-open-in-app-slot ms-auto h-[var(--tabs-bar-height)] shrink-0 flex items-center gap-1 pe-2"
               onPointerDown={(event) => event.stopPropagation()}
               onClick={(event) => event.stopPropagation()}
             >

@@ -5,6 +5,30 @@ import { fileNode } from "../utils/workspace"
 
 test.use({ viewport: { width: 390, height: 844 } })
 
+test.describe("touch navigation", () => {
+  test.use({ hasTouch: true })
+
+  test("session tabs meet the touch target and support keyboard activation", async ({ page }) => {
+    await mockStressTimeline(page)
+    await page.goto(sessionHref(fixture.targetID))
+    const navigation = page.getByRole("tablist", { name: "Session view", exact: true })
+    const session = navigation.getByRole("tab", { name: "Session", exact: true })
+    await expect(session).toHaveAttribute("aria-selected", "true")
+    const sizes = await navigation.getByRole("tab").evaluateAll((tabs) =>
+      tabs.map((tab) => Math.min(tab.getBoundingClientRect().width, tab.getBoundingClientRect().height)),
+    )
+    expect(Math.min(...sizes)).toBeGreaterThanOrEqual(44)
+    await session.focus()
+    await page.keyboard.press("ArrowRight")
+    const changes = navigation.getByRole("tab", { name: "Changes", exact: true })
+    await expect(changes).toBeFocused()
+    await page.keyboard.press("Enter")
+    await expect(changes).toHaveAttribute("aria-selected", "true")
+    await expect(changes).toHaveAttribute("data-state", "active")
+    await expect(session).toHaveAttribute("data-state", "inactive")
+  })
+})
+
 async function openFiles(page: Page) {
   await page
     .getByRole("tablist", { name: "Session view", exact: true })

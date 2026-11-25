@@ -25,6 +25,7 @@
 .settings-screen .settings {
   display: flex;
   width: min(100%, 1048px);
+  overflow: clip;
   min-width: 0;
 }
 

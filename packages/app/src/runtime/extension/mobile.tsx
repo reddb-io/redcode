@@ -94,11 +94,11 @@ export function MobileViewTabs(props: {
       data-slot="session-mobile-view-navigation"
     >
       <Tabs value={tab()} variant="line" class="!h-auto min-w-0 flex-1" data-slot="session-mobile-view-tabs">
-        <Tabs.List aria-label={language.t("session.view.select")} class="!h-9 !gap-0 !px-0 before:!hidden">
+        <Tabs.List aria-label={language.t("session.view.select")} class="min-h-9 items-stretch gap-0 border-0">
           <Tabs.Trigger
             value="session"
             class="min-w-0 flex-1"
-            classes={{ button: "w-full justify-center" }}
+            classes={{ button: "h-full min-h-[var(--reddb-spatial-target-min)] w-full justify-center" }}
             onClick={() => props.onSelect("session")}
           >
             {language.t("session.tab.session")}
@@ -108,7 +108,7 @@ export function MobileViewTabs(props: {
               <Tabs.Trigger
                 value={entry.key}
                 class="min-w-0 flex-1"
-                classes={{ button: "w-full justify-center" }}
+                classes={{ button: "h-full min-h-[var(--reddb-spatial-target-min)] w-full justify-center" }}
                 onClick={() => props.onSelect(entry.key)}
               >
                 {entry.mobile.title}
@@ -122,7 +122,7 @@ export function MobileViewTabs(props: {
                 trigger = element
               }}
               class="min-w-0 flex-1"
-              classes={{ button: "w-full justify-center" }}
+              classes={{ button: "h-full min-h-[var(--reddb-spatial-target-min)] w-full justify-center" }}
               aria-haspopup="dialog"
               aria-expanded={store.open}
               onClick={() => setStore({ open: true, loaded: true, drawer: undefined })}
