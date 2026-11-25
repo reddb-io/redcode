@@ -72,6 +72,10 @@ test("creates a session in a new project and selects its model", async ({ page }
   })
 
   await page.goto("/")
+  await page
+    .getByRole("main")
+    .getByRole("button", { name: /^Projects:/ })
+    .click()
   const addProject = page.locator('[data-action="home-add-project-row"]')
   await expectAppVisible(addProject)
   await addProject.click()
@@ -110,7 +114,8 @@ test("creates a session in a new project and selects its model", async ({ page }
 
   await modelControl.click()
   await expect(modelSearch).toBeFocused()
-  await modelSearch.press("ArrowUp")
+  await modelSearch.fill("Go Model 1")
+  await expect(page.getByRole("menuitemradio", { name: /Go Model 1/ })).toBeVisible()
   await modelSearch.press("Enter")
 
   await expect(modelControl).toContainText("Go Model 1")
@@ -126,6 +131,17 @@ test("restores each existing session's model and variant when switching tabs", a
   await openSession(page, {
     name: "ModelSelection",
     sessions,
+    intelligence: {
+      settings: {
+        enabled: true,
+        onboarding: "completed",
+        reasoning: "single",
+        principal: { providerID: "opencode", id: "model-A", variant: "balanced" },
+      },
+      environment: "",
+      evaluators: [],
+      effective: { reasoning: "single", source: "default" },
+    },
     provider: provider(
       ...sessions.map((session) => ({
         id: session.model.id,
@@ -151,13 +167,16 @@ test("restores each existing session's model and variant when switching tabs", a
   await expect(modelControl).toHaveText("Model B")
   await expect(variant).toHaveText("balanced")
   await variant.click()
-  await page.getByRole("menuitemradio", { name: "high", exact: true }).click()
-  await expect(variant).toHaveText("high")
+  await page.getByRole("menuitemradio", { name: "default", exact: true }).click()
+  await expect(variant).toHaveText("default")
 
-  // A new draft starts from the current session's non-default model and chosen variant.
-  await page.getByRole("button", { name: "New session", exact: true }).click()
+  // A fresh draft uses the host principal and the user’s saved variant for that model.
+  await page
+    .getByRole("navigation", { name: "Navigation", exact: true })
+    .getByRole("button", { name: "New session", exact: true })
+    .click()
   await expect(page).toHaveURL(/\/new-session\?draftId=/)
-  await expect(modelControl).toHaveText("Model B")
+  await expect(modelControl).toHaveText("Model A")
   await expect(variant).toHaveText("high")
 
   await page.locator(`[data-titlebar-tab-link][href="${hrefA}"]`).click()

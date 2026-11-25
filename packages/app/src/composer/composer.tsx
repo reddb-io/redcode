@@ -1,6 +1,5 @@
 import { Show, createMemo } from "solid-js"
 import { createMediaQuery } from "@solid-primitives/media"
-import { Icon } from "@opencode/ui/icon"
 import { Keybind } from "@opencode/ui/keybind"
 import { Tooltip } from "@opencode/ui/tooltip"
 import { useI18n } from "@opencode/ui/context/i18n"
@@ -122,7 +121,6 @@ function ComposerPermissionControl() {
 
   return (
     <ComposerEditorSelect
-      mobileDrawer
       capitalize={false}
       title={i18n.t("ui.promptInput.permission.title")}
       keybind={command.keybindParts("permissions.autoaccept")}
@@ -131,7 +129,7 @@ function ComposerPermissionControl() {
         { id: "auto", label: i18n.t("ui.promptInput.permission.auto") },
       ]}
       current={current()}
-      currentIcon={<Icon name="shield" size="small" class="shrink-0 text-ink-muted" />}
+      icon="shield"
       // The session's toggle command also confirms the change in a toast; other screens set it directly.
       onSelect={(id) => {
         if (id === current()) return

@@ -284,7 +284,7 @@ their presence alone does not justify replacing them.
 | `file-icon` | [components/file-icon.tsx](../packages/ui/src/components/file-icon.tsx) | 13 |
 | `font` | [components/font.tsx](../packages/ui/src/components/font.tsx) | 1 |
 | `hover-card` | [components/hover-card.tsx](../packages/ui/src/components/hover-card.tsx) | 0 |
-| `icon` | [icons/icon/icon.tsx](../packages/ui/src/icons/icon/icon.tsx) | 82 |
+| `icon` | [icons/icon/icon.tsx](../packages/ui/src/icons/icon/icon.tsx) | 81 |
 | `icon-button` | [actions/icon-button/icon-button.tsx](../packages/ui/src/actions/icon-button/icon-button.tsx) | 32 |
 | `image-preview` | [components/image-preview.tsx](../packages/ui/src/components/image-preview.tsx) | 3 |
 | `inline-input` | [forms/inline-input/inline-input.tsx](../packages/ui/src/forms/inline-input/inline-input.tsx) | 1 |
@@ -301,7 +301,7 @@ their presence alone does not justify replacing them.
 | `project-avatar` | [data-display/project-avatar/project-avatar.tsx](../packages/ui/src/data-display/project-avatar/project-avatar.tsx) | 6 |
 | `provider-icon` | [components/provider-icon.tsx](../packages/ui/src/components/provider-icon.tsx) | 2 |
 | `radio` | [forms/radio/radio.tsx](../packages/ui/src/forms/radio/radio.tsx) | 2 |
-| `react-view` | [components/react-view.tsx](../packages/ui/src/components/react-view.tsx) | 20 |
+| `react-view` | [components/react-view.tsx](../packages/ui/src/components/react-view.tsx) | 21 |
 | `resize-handle` | [components/resize-handle.tsx](../packages/ui/src/components/resize-handle.tsx) | 4 |
 | `scroll-view` | [components/scroll-view.tsx](../packages/ui/src/components/scroll-view.tsx) | 10 |
 | `search-select` | [forms/search-select/search-select.tsx](../packages/ui/src/forms/search-select/search-select.tsx) | 0 |
@@ -342,6 +342,14 @@ shows a separate remove action for each file, image and comment. Upload
 notifications use native Base Progress and Button, and the image preview uses
 Base Dialog with keyboard activation and focus restoration to the opener.
 
+The composer’s agent, model variant and permission controls share a searchable
+list built with Base Input, App ListRow and Base Pagination. Desktop opens it in
+a Base Popover. The narrow layout opens the same list in the mobile drawer.
+Opening shows up to 20 saved choices per page. Search covers every page and
+arrow keys, Home and End traverse the entire result set.
+
+![Before and after the composer variant picker migration in the production web client at desktop and mobile widths](screenshots/composer-choices.webp)
+
 The review, updater and pairing extensions use the App SettingsRow for diff
 wrapping, release notes, update checks, screen activity and custom addresses.
 The switch rows use native checkboxes with the Base switch recipe and the row’s
@@ -374,6 +382,8 @@ the desktop rail and mobile tabs drawer. The composer, transcript and extension
 panels share the responsive app renderer. Electron also owns its native menus and
 window controls. Product icons and editor, terminal and diff renderers have their
 own interaction contracts.
+
+![Desktop permission choices in Electron and keyboard focus in the 40-column terminal export dialog, before and after migration](screenshots/desktop-terminal-controls.webp)
 
 Terminal components live separately in `packages/tui/src/ui`, `component`,
 `routes` and `feature-plugins`. Alerts, confirmations, help and export results use the common

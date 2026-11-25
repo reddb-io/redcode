@@ -22,7 +22,8 @@ import { Icon } from "@opencode/ui/icon"
 import { IconButton } from "@opencode/ui/icon-button"
 import { createAnimatedPresence } from "@/runtime/animated-presence"
 import { resolveBlobUrl } from "@/runtime/persistence/drafts"
-import { ProviderModelIcon } from "@/providers/models/provider-group"
+import { ReactView } from "@opencode/ui/react-view"
+import { ComposerChoiceList, ComposerChoicePopover } from "./choices.react"
 import { useI18n } from "@opencode/ui/context/i18n"
 import { Button } from "@opencode/ui/button"
 import { Keybind } from "@opencode/ui/keybind"
@@ -401,7 +402,6 @@ export function ComposerEditor(props: ComposerEditorProps) {
                   {(control) => (
                     <Show when={control.options().length > 1}>
                       <ComposerEditorConfiguredSelect
-                        mobileDrawer
                         title={i18n.t("ui.promptInput.chooseVariant")}
                         keybind={["Shift", "Mod", "D"]}
                         control={control}
@@ -916,53 +916,32 @@ export function ComposerEditorAddMenu(props: {
   )
 }
 
-/** An option's identity colour as a dot, a non-text mark; nothing for options without one. */
-function ComposerOptionMark(props: { color?: string }) {
-  return (
-    <Show when={props.color}>
-      {(color) => <span aria-hidden="true" class="size-2 shrink-0 rounded-full" style={{ background: color() }} />}
-    </Show>
-  )
-}
-
 function ComposerEditorConfiguredSelect(props: {
-  mobileDrawer?: boolean
   title: string
   keybind?: string[]
   control: ComposerSelectControl
-  model?: boolean
   class?: string
 }) {
-  const current = () => props.control.current()
-  const providerID = () => props.control.options().find((option) => option.id === current())?.providerID
-
   return (
     <ComposerEditorSelect
-      mobileDrawer={props.mobileDrawer}
       title={props.title}
       class={props.class}
       keybind={props.control.keybind?.() ?? props.keybind}
       options={props.control.options()}
-      current={current()}
-      currentIcon={
-        <Show when={props.model && providerID()}>
-          {(id) => <ProviderModelIcon provider={{ id: id(), name: id() }} class="shrink-0 opacity-60" />}
-        </Show>
-      }
+      current={props.control.current()}
       onSelect={props.control.onSelect}
     />
   )
 }
 
 export function ComposerEditorSelect(props: {
-  mobileDrawer?: boolean
   /** Labels are lowercase ids, such as agent names, shown capitalized; false keeps written labels as they are. */
   capitalize?: boolean
   title: string
   keybind?: string[]
   options: ComposerOption[]
   current: string
-  currentIcon?: JSX.Element
+  icon?: "shield"
   class?: string
   onOpenChange?: (open: boolean) => void
   onSelect: (id: string) => void
@@ -970,6 +949,7 @@ export function ComposerEditorSelect(props: {
   const mobile = createMediaQuery("(max-width: 767px)")
   const [store, setStore] = createStore({ open: false, loaded: false })
   let trigger: HTMLButtonElement | undefined
+  let drawer: HTMLDivElement | undefined
 
   const setOpen = (open: boolean) => {
     setStore("open", open)
@@ -982,25 +962,23 @@ export function ComposerEditorSelect(props: {
     if (!mobile() && store.open) setOpen(false)
   })
 
-  let selectedItem: HTMLDivElement | undefined
+  const i18n = useI18n()
   const selected = () => props.options.find((option) => option.id === props.current)
-
-  const content = () => (
-    <>
-      {props.currentIcon}
-      <ComposerOptionMark color={selected()?.color} />
-      <span class="truncate leading-5" classList={{ capitalize: props.capitalize !== false }}>
-        {selected()?.label ?? props.current}
-      </span>
-      <span class="-ms-0.5 -me-1 flex shrink-0">
-        <Icon name="chevron-down" />
-      </span>
-    </>
-  )
+  const choices = () => ({
+    title: props.title,
+    options: props.options,
+    current: props.current,
+    capitalize: props.capitalize,
+    searchLabel: i18n.t("ui.searchSelect.search"),
+    emptyLabel: i18n.t("ui.searchSelect.empty"),
+    previousLabel: i18n.t("ui.common.back"),
+    nextLabel: i18n.t("ui.common.next"),
+    onSelect: props.onSelect,
+  })
 
   return (
     <Tooltip
-      inactive={props.mobileDrawer && mobile()}
+      inactive={mobile()}
       placement="top"
       value={
         <>
@@ -1010,52 +988,17 @@ export function ComposerEditorSelect(props: {
       }
     >
       <Show
-        when={props.mobileDrawer && mobile()}
+        when={mobile()}
         fallback={
-          <Menu gutter={6} modal={false} placement="top-start" onOpenChange={props.onOpenChange}>
-            <Menu.Trigger
-              as={Button}
-              variant="ghost-muted"
-              size="normal"
-              class={`max-w-[220px] justify-start ![font-weight:440] ${props.class ?? ""}`}
-              aria-label={props.title}
-              ref={(element: HTMLButtonElement) => {
-                trigger = element
-              }}
-              onKeyDown={(event: KeyboardEvent) => {
-                if (event.key !== "Enter" && event.key !== " ") return
-                // The portaled radio items mount after the trigger handles the key.
-                requestAnimationFrame(() => selectedItem?.focus({ preventScroll: true }))
-              }}
-            >
-              {content()}
-            </Menu.Trigger>
-            <Menu.Portal>
-              <Menu.Content
-                onEscapeKeyDown={() => requestAnimationFrame(() => trigger?.focus({ preventScroll: true }))}
-              >
-                <Menu.RadioGroup value={props.current} onChange={props.onSelect}>
-                  <For each={props.options}>
-                    {(option) => (
-                      <Menu.RadioItem
-                        ref={(element: HTMLDivElement) => {
-                          if (option.id === props.current) selectedItem = element
-                        }}
-                        value={option.id}
-                        class={props.capitalize === false ? undefined : "capitalize"}
-                        closeOnSelect
-                      >
-                        <span class="flex min-w-0 items-center gap-2">
-                          <ComposerOptionMark color={option.color} />
-                          {option.label}
-                        </span>
-                      </Menu.RadioItem>
-                    )}
-                  </For>
-                </Menu.RadioGroup>
-              </Menu.Content>
-            </Menu.Portal>
-          </Menu>
+          <ReactView
+            component={ComposerChoicePopover}
+            props={{
+              ...choices(),
+              icon: props.icon,
+              triggerClass: props.class,
+              onOpenChange: props.onOpenChange,
+            }}
+          />
         }
       >
         <Button
@@ -1070,7 +1013,16 @@ export function ComposerEditorSelect(props: {
           aria-expanded={store.open}
           onClick={() => setOpen(true)}
         >
-          {content()}
+          <Show when={props.icon}>{(name) => <Icon name={name()} size="small" />}</Show>
+          <Show when={selected()?.color}>
+            {(color) => (
+              <span aria-hidden="true" class="size-2 shrink-0 rounded-full" style={{ background: color() }} />
+            )}
+          </Show>
+          <span class="truncate leading-5" classList={{ capitalize: props.capitalize !== false }}>
+            {selected()?.label ?? props.current}
+          </span>
+          <Icon name="chevron-down" size="small" />
         </Button>
         <Show when={store.loaded}>
           <Suspense>
@@ -1079,30 +1031,20 @@ export function ComposerEditorSelect(props: {
               title={props.title}
               open={store.open}
               onOpenChange={setOpen}
+              initialFocus={() => drawer}
               returnFocus={() => trigger}
             >
-              <div class="flex flex-col overflow-hidden rounded-lg border border-v2-border-border-base bg-v2-background-bg-layer-02 divide-y divide-v2-border-border-base">
-                <For each={props.options}>
-                  {(option) => (
-                    <Button
-                      variant="ghost"
-                      class="w-full !h-10 !justify-start !rounded-none !px-3 !font-[440] focus-visible:!outline-offset-[-2px]"
-                      classList={{ capitalize: props.capitalize !== false }}
-                      aria-pressed={props.current === option.id}
-                      data-state={props.current === option.id ? "pressed" : undefined}
-                      onClick={() => {
-                        props.onSelect(option.id)
-                        setOpen(false)
-                      }}
-                    >
-                      <ComposerOptionMark color={option.color} />
-                      {option.label}
-                      <Show when={props.current === option.id}>
-                        <Icon name="check" class="ms-auto" />
-                      </Show>
-                    </Button>
-                  )}
-                </For>
+              <div ref={drawer} tabIndex={-1} class="min-w-0 outline-none">
+                <ReactView
+                  component={ComposerChoiceList}
+                  props={{
+                    ...choices(),
+                    onSelect: (value) => {
+                      setOpen(false)
+                      props.onSelect(value)
+                    },
+                  }}
+                />
               </div>
             </MobilePanelDrawer>
           </Suspense>

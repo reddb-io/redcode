@@ -666,10 +666,43 @@ test("shows thinking on hover or a non-default selection while preserving keyboa
   await expect(control).toBeFocused()
   await expect(control).toHaveCSS("opacity", "1")
   await page.keyboard.press("Enter")
+  const search = page.getByRole("searchbox", { name: "Search options" })
+  await expect(search).toBeFocused()
+  await search.press("ArrowDown")
   await expect(option("default")).toBeFocused()
   await expect(control).toHaveCSS("opacity", "1")
   await page.keyboard.press("Escape")
   await expect(control).toBeFocused()
   await page.keyboard.press("Tab")
   await expect(control).toHaveCSS("opacity", "0")
+})
+
+test("searches and navigates all pages of configured composer variants", async ({ page }) => {
+  const variants = Object.fromEntries(
+    Array.from({ length: 25 }, (_, i) => [`profile-${String(i + 1).padStart(2, "0")}`, {}]),
+  )
+  await openSession(page, {
+    name: "VariantPages",
+    provider: provider({ id: "profiles", name: "Profiles", variants }),
+    sessions: [{ id: "ses_variantpages", model: { providerID: "opencode", id: "profiles", variant: "profile-01" } }],
+  })
+  const trigger = page.getByRole("button", { name: "Choose model variant" })
+  await trigger.click()
+  const picker = page.getByRole("dialog", { name: "Choose model variant" })
+  const search = picker.getByRole("searchbox", { name: "Search options" })
+  await expect(picker.getByRole("menuitemradio")).toHaveCount(20)
+  await search.press("ArrowDown")
+  await picker.getByRole("menuitemradio", { name: "default" }).press("End")
+  await expect(picker.getByRole("menuitemradio", { name: "profile-25" })).toBeFocused()
+  await picker.getByRole("menuitemradio", { name: "profile-25" }).press("Home")
+  await expect(picker.getByRole("menuitemradio", { name: "default" })).toBeFocused()
+  await search.fill("missing")
+  await expect(picker.getByRole("status")).toHaveText("No matching options")
+  await search.fill("profile-24")
+  await expect(picker.getByRole("menuitemradio")).toHaveCount(1)
+  await search.press("Enter")
+  await expect(trigger).toHaveText("profile-24")
+  await trigger.click()
+  await expect(search).toHaveValue("")
+  await expect(picker.getByRole("menuitemradio")).toHaveCount(20)
 })
