@@ -1,7 +1,7 @@
 import { Popover } from "@kobalte/core/popover"
 import type { PluginInfo } from "@opencode/client"
 import { Icon } from "@opencode/ui/icon"
-import { Switch } from "@opencode/ui/switch"
+import { switchControl } from "@reddb-io/design-system/base/recipes"
 import { showToast } from "@opencode/ui/toast"
 import { Tooltip } from "@opencode/ui/tooltip"
 import { getDirectory } from "@opencode/util/path"
@@ -286,45 +286,46 @@ function McpMenu(props: ServiceMenuProps) {
               toggle.mutate({ name: server().name, enabled: value })
             }
 
+            const id = createUniqueId()
             return (
-              <Switch
-                class="session-mcp-row [&_[data-slot=switch-description]]:sr-only"
-                description={label()}
-                checked={enabled()}
-                readOnly={pending()}
-                aria-disabled={pending()}
-                aria-busy={toggle.isPending}
-                onChange={change}
-                onClick={(event: MouseEvent) => {
-                  if (
-                    !(event.target instanceof Element) ||
-                    event.target.closest('[data-slot="switch-control"], [data-slot="switch-input"]')
-                  )
-                    return
-
-                  // Outside the switch itself, a row that requires sign-in starts sign-in instead of toggling.
-                  if (server().status.status === "needs_auth") {
-                    event.preventDefault()
-
-                    return change(true)
-                  }
-
-                  if (event.target === event.currentTarget) change(!enabled())
-                }}
+              <label
+                class="session-mcp-row"
                 title={error() ?? server().name}
+                onClick={(event) => {
+                  if (event.target instanceof HTMLInputElement) return
+                  if (server().status.status !== "needs_auth") return
+                  // The row starts sign-in. The switch itself can still disconnect this server.
+                  event.preventDefault()
+                  change(true)
+                }}
               >
                 <span class="session-service-dot" data-status={server().status.status} aria-hidden="true" />
-                <span dir="auto" class="session-summary-label">
+                <span id={id} dir="auto" class="session-summary-label">
                   {server().name}
                 </span>
                 <Show when={label()}>
                   {(status) => (
-                    <span class="session-service-status" aria-hidden="true">
+                    <span id={id + "-status"} class="session-service-status">
                       {status()}
                     </span>
                   )}
                 </Show>
-              </Switch>
+                <input
+                  type="checkbox"
+                  role="switch"
+                  class={switchControl()}
+                  aria-labelledby={id}
+                  aria-describedby={label() ? id + "-status" : undefined}
+                  aria-disabled={pending()}
+                  aria-busy={toggle.isPending}
+                  checked={enabled()}
+                  onClick={(event) => {
+                    // Keep focus while pending. The server status owns the displayed value.
+                    event.preventDefault()
+                    change(!enabled())
+                  }}
+                />
+              </label>
             )
           }}
         </Index>

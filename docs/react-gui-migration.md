@@ -275,7 +275,7 @@ their presence alone does not justify replacing them.
 | `checkbox` | [forms/checkbox/checkbox.tsx](../packages/ui/src/forms/checkbox/checkbox.tsx) | 0 |
 | `collapsible` | [components/collapsible.tsx](../packages/ui/src/components/collapsible.tsx) | 3 |
 | `context-menu` | [components/context-menu.tsx](../packages/ui/src/components/context-menu.tsx) | 0 |
-| `dialog` | [overlays/dialog/dialog.tsx](../packages/ui/src/overlays/dialog/dialog.tsx) | 14 |
+| `dialog` | [overlays/dialog/dialog.tsx](../packages/ui/src/overlays/dialog/dialog.tsx) | 13 |
 | `diff-changes` | [data-display/diff-changes/diff-changes.tsx](../packages/ui/src/data-display/diff-changes/diff-changes.tsx) | 7 |
 | `divider` | [layout/divider/divider.tsx](../packages/ui/src/layout/divider/divider.tsx) | 2 |
 | `dock-surface` | [components/dock-surface.tsx](../packages/ui/src/components/dock-surface.tsx) | 2 |
@@ -300,7 +300,7 @@ their presence alone does not justify replacing them.
 | `project-avatar` | [data-display/project-avatar/project-avatar.tsx](../packages/ui/src/data-display/project-avatar/project-avatar.tsx) | 6 |
 | `provider-icon` | [components/provider-icon.tsx](../packages/ui/src/components/provider-icon.tsx) | 2 |
 | `radio` | [forms/radio/radio.tsx](../packages/ui/src/forms/radio/radio.tsx) | 2 |
-| `react-view` | [components/react-view.tsx](../packages/ui/src/components/react-view.tsx) | 10 |
+| `react-view` | [components/react-view.tsx](../packages/ui/src/components/react-view.tsx) | 13 |
 | `resize-handle` | [components/resize-handle.tsx](../packages/ui/src/components/resize-handle.tsx) | 4 |
 | `scroll-view` | [components/scroll-view.tsx](../packages/ui/src/components/scroll-view.tsx) | 10 |
 | `search-select` | [forms/search-select/search-select.tsx](../packages/ui/src/forms/search-select/search-select.tsx) | 0 |
@@ -310,7 +310,7 @@ their presence alone does not justify replacing them.
 | `split-button` | [actions/split-button/split-button.tsx](../packages/ui/src/actions/split-button/split-button.tsx) | 1 |
 | `steps` | [navigation/steps/steps.tsx](../packages/ui/src/navigation/steps/steps.tsx) | 1 |
 | `sticky-accordion-header` | [components/sticky-accordion-header.tsx](../packages/ui/src/components/sticky-accordion-header.tsx) | 2 |
-| `switch` | [forms/switch/switch.tsx](../packages/ui/src/forms/switch/switch.tsx) | 4 |
+| `switch` | [forms/switch/switch.tsx](../packages/ui/src/forms/switch/switch.tsx) | 0 |
 | `tab-state-indicator` | [navigation/tab-state-indicator.tsx](../packages/ui/src/navigation/tab-state-indicator.tsx) | 0 |
 | `tabs` | [navigation/tabs/tabs.tsx](../packages/ui/src/navigation/tabs/tabs.tsx) | 10 |
 | `text-field` | [components/text-field.tsx](../packages/ui/src/components/text-field.tsx) | 0 |
@@ -341,6 +341,12 @@ artifact and plugin installers share a searchable Base RadioGroup with Input
 and Pagination. Both filter the entire published inventory by name or revision
 and show up to 20 real choices per page as the selected server returns them.
 The two library filters and the editable component name use Base Field and Input.
+
+Creator removals use Base AlertDialog. The component library, session import
+scope and development extension settings use Base Switch. Session details
+renders its MCP control with the same switch recipe inside a native label.
+Clicking the name of a server that requires sign-in starts authentication.
+Its switch controls the connection.
 
 For the remaining migration, review controls together with the surface that owns
 their focus, overlays and scrolling. The titlebar tab strip and recent menu share

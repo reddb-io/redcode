@@ -203,6 +203,15 @@ test("imports a session from another coding agent and opens the one imported ear
         model: "anthropic/claude-test",
         time: { created: Date.now() - 7_200_000, updated: Date.now() - 3_600_000 },
       },
+      {
+        source: "claude-code",
+        ref: "claude-2",
+        title: "Project planning",
+        directory: paletteSession.directory,
+        messages: 8,
+        subagents: 0,
+        time: { created: 1700000000000, updated: 1700000000000 },
+      },
     ],
     imported: {
       status: 409,
@@ -232,4 +241,21 @@ test("imports a session from another coding agent and opens the one imported ear
   await row.click()
   await expect(page.getByText("Already imported", { exact: true })).toBeVisible()
   await expect(page.getByRole("heading", { name: paletteSession.title, exact: true })).toBeVisible()
+
+  // Opening the importer from that session scopes the same source to the current project.
+  await page.keyboard.press("ControlOrMeta+Shift+P")
+  await input.fill("import session from another agent")
+  await dialog.getByRole("option", { name: /^Import session from another agent/ }).click()
+  await importer.getByRole("button", { name: /Claude Code/ }).click()
+  const all = importer.getByRole("switch", { name: "All folders", exact: true })
+  await expect(all).not.toBeChecked()
+  await expect.poll(() => listed.at(-1)?.searchParams.get("directory")).toBe(paletteSession.directory)
+  await all.press("Space")
+  await expect(all).toBeChecked()
+  await expect(row).toBeVisible()
+  expect(listed.at(-1)?.searchParams.has("directory")).toBe(false)
+  await importer.getByText("All folders", { exact: true }).click()
+  await expect(all).not.toBeChecked()
+  await expect.poll(() => listed.at(-1)?.searchParams.get("directory")).toBe(paletteSession.directory)
+  await expect(row).toHaveCount(0)
 })

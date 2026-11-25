@@ -6,10 +6,10 @@ import type {
 } from "@opencode/client/promise"
 import type { LocationRef } from "@opencode/client/promise"
 import { Button } from "@opencode/ui/button"
+import { RemoveDialog } from "./remove-dialog"
 import { PublishedSource } from "./source-picker"
 import { ReactView } from "@opencode/ui/react-view"
 import { CreatorInput } from "./input.react"
-import { Dialog, DialogFooter, DialogHeader, DialogTitleGroup } from "@opencode/ui/dialog"
 import { createKeyed, createLatest, useExtension, type ServerRef, type SessionRef } from "../sdk"
 import type definition from "./index"
 import TryPlugin from "./try-plugin"
@@ -103,33 +103,17 @@ function Library(props: { server: ServerRef; location: LocationRef; session?: Se
   }
   const remove = (item: PluginInfo) =>
     ctx.dialogs.open((dialog) => (
-      <Dialog fit>
-        <DialogHeader hideClose>
-          <DialogTitleGroup
-            title={ctx.t("plugins.remove.title", { name: item.name })}
-            description={ctx.t("plugins.remove.description")}
-          />
-        </DialogHeader>
-        <DialogFooter>
-          <Button variant="ghost" onClick={() => dialog.close()}>
-            {ctx.t("common.cancel")}
-          </Button>
-          <Button
-            variant="danger"
-            onClick={() => {
-              dialog.close()
-              perform(item.id, (signal) =>
-                api().remove(
-                  { pluginID: item.id, expectedVersion: item.version, location: props.location },
-                  { signal },
-                ),
-              )
-            }}
-          >
-            {ctx.t("plugins.remove")}
-          </Button>
-        </DialogFooter>
-      </Dialog>
+      <RemoveDialog
+        title={ctx.t("plugins.remove.title", { name: item.name })}
+        description={ctx.t("plugins.remove.description")}
+        confirmLabel={ctx.t("plugins.remove")}
+        close={dialog.close}
+        confirm={() =>
+          perform(item.id, (signal) =>
+            api().remove({ pluginID: item.id, expectedVersion: item.version, location: props.location }, { signal }),
+          )
+        }
+      />
     ))
   return (
     <div class="space-y-3 p-3">

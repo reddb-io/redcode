@@ -5,7 +5,8 @@ import { Icon } from "@opencode/ui/icon"
 import { IconButton } from "@opencode/ui/icon-button"
 import { List } from "@opencode/ui/list"
 import { Spinner } from "@opencode/ui/spinner"
-import { Switch } from "@opencode/ui/switch"
+import { ReactView } from "@opencode/ui/react-view"
+import { Switch } from "@reddb-io/design-system/base/Switch"
 import { showToast } from "@opencode/ui/toast"
 import { createMemo, createSignal, onCleanup, Show } from "solid-js"
 import { createLatest, type SetupContext } from "../sdk"
@@ -255,9 +256,10 @@ function Sessions(props: {
               autofocus: true,
               action: (
                 <Show when={props.directory}>
-                  <Switch checked={all()} onChange={scope}>
-                    {ctx.t("sessions.all")}
-                  </Switch>
+                  <ReactView
+                    component={Switch}
+                    props={{ label: ctx.t("sessions.all"), checked: all(), onCheckedChange: scope }}
+                  />
                 </Show>
               ),
             }}

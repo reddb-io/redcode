@@ -36,7 +36,7 @@
 .session-summary-row,
 .session-service-row,
 .session-service-config,
-[data-component="switch"].session-mcp-row {
+.session-mcp-row {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -76,7 +76,7 @@
   button.session-summary-row:hover,
   .session-service-config:not(:disabled):hover,
   .session-summary-move:has(> .session-summary-dismiss:hover) > .session-summary-row,
-  .session-mcp-row:not([data-disabled]):hover {
+  .session-mcp-row:not(:has([aria-disabled="true"])):hover {
     background: color-mix(in oklab, var(--reddb-color-foreground) 8%, transparent);
   }
 }
@@ -143,7 +143,7 @@
 :is(.session-service-menu, .session-service-drawer) .session-summary-row,
 :is(.session-service-menu, .session-service-drawer) .session-service-row,
 :is(.session-service-menu, .session-service-drawer) .session-service-config,
-:is(.session-service-menu, .session-service-drawer) [data-component="switch"].session-mcp-row {
+:is(.session-service-menu, .session-service-drawer) .session-mcp-row {
   font-size: inherit;
   line-height: inherit;
 }
@@ -255,25 +255,14 @@
   color: var(--reddb-color-feedback-warning-foreground);
 }
 
-[data-component="switch"].session-mcp-row [data-slot="switch-label"] {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex: 1;
-  min-width: 0;
-  height: auto;
-  align-self: stretch;
-  color: inherit;
-  font: inherit;
-  letter-spacing: inherit;
-}
 .session-service-status {
   flex-shrink: 0;
   font-size: inherit;
   line-height: var(--line-height-compact);
   color: var(--reddb-color-ink-muted);
 }
-.session-mcp-row[aria-disabled="true"] [data-slot="switch-control"] {
+.session-mcp-row input[aria-disabled="true"] {
+  cursor: default;
   opacity: 0.5;
 }
 .session-summary-move {

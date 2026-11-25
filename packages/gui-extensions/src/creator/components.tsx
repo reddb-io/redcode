@@ -7,8 +7,9 @@ import { Button } from "@opencode/ui/button"
 import { Dialog, DialogFooter, DialogHeader, DialogTitleGroup } from "@opencode/ui/dialog"
 import { Icon } from "@opencode/ui/icon"
 import { IconButton } from "@opencode/ui/icon-button"
+import { RemoveDialog } from "./remove-dialog"
 import { PublishedSource } from "./source-picker"
-import { Switch } from "@opencode/ui/switch"
+import { Switch } from "@reddb-io/design-system/base/Switch"
 import { ReactView } from "@opencode/ui/react-view"
 import { CreatorInput } from "./input.react"
 import { Tooltip } from "@opencode/ui/tooltip"
@@ -160,34 +161,21 @@ function Library(props: { server: ServerRef; location: LocationRef; sessionID?: 
     })
   const remove = (item: CreatorComponentInfo) => {
     ctx.dialogs.open((dialog) => (
-      <Dialog fit>
-        <DialogHeader hideClose>
-          <DialogTitleGroup
-            title={ctx.t("remove.title", { name: item.name })}
-            description={ctx.t("remove.description")}
-          />
-        </DialogHeader>
-        <DialogFooter>
-          <Button variant="ghost" onClick={() => dialog.close()}>
-            {ctx.t("common.cancel")}
-          </Button>
-          <Button
-            variant="danger"
-            onClick={() => {
-              dialog.close()
-              perform(item.id, async (signal) => {
-                await props.server.client["server.creatorComponent"].creator.component.remove(
-                  { componentID: item.id, expectedVersion: item.version, location: props.location },
-                  { signal },
-                )
-                if (!signal.aborted && state.selected === item.id) setState("selected", "")
-              })
-            }}
-          >
-            {ctx.t("remove")}
-          </Button>
-        </DialogFooter>
-      </Dialog>
+      <RemoveDialog
+        title={ctx.t("remove.title", { name: item.name })}
+        description={ctx.t("remove.description")}
+        confirmLabel={ctx.t("remove")}
+        close={dialog.close}
+        confirm={() =>
+          perform(item.id, async (signal) => {
+            await props.server.client["server.creatorComponent"].creator.component.remove(
+              { componentID: item.id, expectedVersion: item.version, location: props.location },
+              { signal },
+            )
+            if (!signal.aborted && state.selected === item.id) setState("selected", "")
+          })
+        }
+      />
     ))
   }
   const install = () => {
@@ -293,9 +281,16 @@ function Library(props: { server: ServerRef; location: LocationRef; sessionID?: 
                       <span class="block truncate text-12-regular text-ink-muted">{item.description}</span>
                     </Show>
                   </button>
-                  <Switch checked={item.enabled} onChange={() => toggle(item)} disabled={!!state.pending} hideLabel>
-                    {ctx.t("toggle.label", { name: item.name })}
-                  </Switch>
+                  <ReactView
+                    component={Switch}
+                    props={{
+                      checked: item.enabled,
+                      onCheckedChange: () => toggle(item),
+                      disabled: !!state.pending,
+                      label: ctx.t("toggle.label", { name: item.name }),
+                      fieldClass: "shrink-0 gap-0 [&>label]:sr-only",
+                    }}
+                  />
                   <Tooltip value={ctx.t("update")}>
                     <IconButton
                       icon={<Icon name="refresh" size="small" />}
@@ -332,9 +327,16 @@ function Library(props: { server: ServerRef; location: LocationRef; sessionID?: 
                   {ctx.t("version", { version: item().version })}
                 </span>
               </Tooltip>
-              <Switch checked={item().enabled} onChange={() => toggle(item())} disabled={!!state.pending} hideLabel>
-                {ctx.t("toggle.label", { name: item().name })}
-              </Switch>
+              <ReactView
+                component={Switch}
+                props={{
+                  checked: item().enabled,
+                  onCheckedChange: () => toggle(item()),
+                  disabled: !!state.pending,
+                  label: ctx.t("toggle.label", { name: item().name }),
+                  fieldClass: "shrink-0 gap-0 [&>label]:sr-only",
+                }}
+              />
               <Tooltip value={ctx.t("update")}>
                 <IconButton
                   icon={<Icon name="refresh" size="small" />}

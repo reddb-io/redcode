@@ -1,7 +1,8 @@
 import { For, onCleanup, Show } from "solid-js"
 import { createStore, reconcile } from "solid-js/store"
 import { Button } from "@opencode/ui/button"
-import { Switch } from "@opencode/ui/switch"
+import { ReactView } from "@opencode/ui/react-view"
+import { Switch } from "@reddb-io/design-system/base/Switch"
 import type { Installed } from "@opencode/gui-extensions/sdk/bridge"
 import { useLanguage } from "@/runtime/i18n/language"
 import { usePlatform } from "@/runtime/platform/platform"
@@ -81,9 +82,15 @@ export function GuiExtensionsSettings() {
                     <Button size="small" variant="ghost" onClick={() => reload(definition.id)}>
                       {language.t("settings.guiExtensions.reload")}
                     </Button>
-                    <Switch hideLabel checked={enabled(definition.id)} onChange={(next) => toggle(definition.id, next)}>
-                      {definition.id}
-                    </Switch>
+                    <ReactView
+                      component={Switch}
+                      props={{
+                        label: definition.id,
+                        fieldClass: "gap-0 [&>label]:sr-only",
+                        checked: enabled(definition.id),
+                        onCheckedChange: (next) => toggle(definition.id, next),
+                      }}
+                    />
                   </div>
                 </SettingsRow>
               )}

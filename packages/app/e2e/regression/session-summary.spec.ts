@@ -470,7 +470,7 @@ test("every MCP row hit area toggles exactly once and keeps the submenu open", a
   const toggle = submenu.getByRole("switch", { name: "figma", exact: true })
 
   const row = submenu
-    .locator('[data-component="switch"]')
+    .locator(".session-mcp-row")
     .filter({ has: page.getByRole("switch", { name: "figma", exact: true }) })
 
   await expect(toggle).toBeChecked()
@@ -492,7 +492,7 @@ test("every MCP row hit area toggles exactly once and keeps the submenu open", a
 
     if (target === "padding") await row.click({ position: { x: 3, y: 3 } })
 
-    if (target === "control") await row.locator('[data-slot="switch-control"]').click()
+    if (target === "control") await toggle.click()
 
     if (target === "keyboard") await toggle.press("Space")
     await expect(toggle).toBeChecked({ checked: enabled })
