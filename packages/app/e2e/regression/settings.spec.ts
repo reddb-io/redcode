@@ -512,6 +512,11 @@ test("React settings keep preferences, fonts, color scheme, notifications and so
   const { settings } = await open(page)
   const detail = settings.getByRole("slider", { name: "Timeline detail", exact: true })
   await detail.focus()
+  // Start from Compact regardless of the application's default preset.
+  await detail.press("Home")
+  await detail.press("ArrowRight")
+  await detail.press("ArrowRight")
+  await expect(detail).toHaveValue("2")
   await detail.press("ArrowRight")
   await expect(detail).toHaveValue("3")
   await settings.getByRole("button", { name: "Advanced", exact: true }).click()
