@@ -1,5 +1,11 @@
 # @reddb-io/redcode
 
+## 0.90.15
+
+### Patch Changes
+
+- Refine the desktop navigation rail while keeping item labels and configurable spacing, and show a compact themed brand mark in the titlebar.
+
 ## 0.90.14
 
 ### Patch Changes
