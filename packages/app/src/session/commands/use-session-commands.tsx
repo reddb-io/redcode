@@ -11,6 +11,7 @@ import { formatServerError } from "@/runtime/server/errors"
 import { useSettings } from "@/settings/model"
 import { showToast } from "@/shell/notifications/toast"
 import { fetchSessionExport, saveSessionExport, sessionExportFilename } from "@/session/commands/export"
+import { useForkFromMessage } from "@/session/commands/fork"
 import { usePlatform } from "@/runtime/platform/platform"
 import type { SessionModel } from "@/session/model"
 import type { SessionRevert } from "@/session/revert"
@@ -59,6 +60,7 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
   const platform = usePlatform()
   const layout = useLayout()
   const host = useExtensionHost()
+  const forkFromMessage = useForkFromMessage()
 
   const openDialog = async <T,>(load: () => Promise<T>, show: (value: T) => void) => {
     const owner = actions.session.ownership.capture()
@@ -260,7 +262,9 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
     if (!sessionID) return
     void openDialog(
       () => import("@/session/commands/fork-dialog"),
-      (x) => dialog.show(() => <x.DialogFork />),
+      (x) => {
+        dialog.show(() => <x.DialogFork fork={forkFromMessage} />)
+      },
     )
   }
 

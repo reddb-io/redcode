@@ -26,7 +26,7 @@ import {
 } from "@opencode/session-ui/timeline/turn-parts"
 import { agentWaits } from "@opencode/util/agent-waits"
 import { monitorLabel } from "@opencode/util/monitor-label"
-import { useForkFromMessage } from "../commands/fork-dialog"
+import { useForkFromMessage } from "../commands/fork"
 import { getReadyMarkdown, preloadMarkdown } from "@opencode/session-ui/markdown-cache"
 import { createTimelineController, type TimelineController, type TimelineSessionSource } from "./controller"
 import { createTimelineVirtualizer } from "./virtualizer"

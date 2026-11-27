@@ -6,6 +6,46 @@ import { expectSessionTitle } from "../utils/waits"
 import { mockWorkspace, openSession } from "../utils/workspace"
 import { contextMessages } from "../utils/context-usage"
 
+test("session toolbar copies the ID and forks the full conversation", async ({ page, context }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"])
+  const workspace = await openSession(page, { name: "Fork toolbar", pageMessages: () => ({ items: contextMessages }) })
+  await page.getByRole("button", { name: "Copy Session ID", exact: true }).click()
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(workspace.session.id)
+  const requests: unknown[] = []
+  await page.route(`**/api/session/${workspace.session.id}/fork`, async (route) => {
+    requests.push(route.request().postDataJSON())
+    await route.fulfill({ json: { data: { ...workspace.session, location: { directory: workspace.directory }, id: "ses_forked", title: "Forked conversation" } } })
+  })
+  await page.getByRole("button", { name: "Fork conversation", exact: true }).click()
+  const dialog = page.getByRole("dialog", { name: "Fork conversation" })
+  await expect(dialog.getByText("Full conversation", { exact: true })).toBeVisible()
+  await dialog.getByText("Full conversation", { exact: true }).click()
+  await expect.poll(() => requests.length).toBe(1)
+  expect(requests[0]).toEqual({})
+  await expect(page).toHaveURL(/\/session\/ses_forked/)
+  await expectSessionTitle(page, "Forked conversation")
+})
+
+test("session toolbar can fork before a selected message and restore it as a draft", async ({ page }) => {
+  const workspace = await openSession(page, {
+    name: "Fork from message",
+    sessions: [{ id: "ses_original", title: "Fork from message" }, { id: "ses_forked_before", title: "Forked before message" }],
+    sessionID: "ses_original",
+    pageMessages: (sessionID) => ({ items: sessionID === "ses_original" ? contextMessages : [] }),
+  })
+  const requests: unknown[] = []
+  await page.route(`**/api/session/${workspace.session.id}/fork`, async (route) => {
+    requests.push(route.request().postDataJSON())
+    await route.fulfill({ json: { data: { ...workspace.sessions[1], location: { directory: workspace.directory } } } })
+  })
+  await page.getByRole("button", { name: "Fork conversation", exact: true }).click()
+  await page.getByRole("dialog", { name: "Fork conversation" }).getByText("Measure context", { exact: true }).click()
+  await expect.poll(() => requests.length).toBe(1)
+  expect(requests[0]).toEqual({ before: "msg_context_prompt" })
+  await expect(page).toHaveURL(/\/session\/ses_forked_before/)
+  await expect(page.locator('[data-component="composer-editor"]')).toContainText("Measure context")
+})
+
 test("context usage includes reasoning and cache tokens in the model's window", async ({ page }) => {
   await openSession(page, { name: "ContextReading", pageMessages: () => ({ items: contextMessages }) })
   const context = page.getByRole("button", { name: "View context usage", exact: true })

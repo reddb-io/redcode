@@ -13,6 +13,25 @@ export function SessionPanelTogglesView(props: { services: Services }) {
   const view = useSyncExternalStore(props.services.snapshot.subscribe, props.services.snapshot.getSnapshot)
   return (
     <div role="toolbar" aria-label={view.label} className="flex items-center gap-0.5">
+      {view.actions.map((action) => (
+        <Tooltip
+          key={action.id}
+          content={action.label}
+          child={({ props: trigger }) => (
+            <Button
+              {...trigger}
+              variant="ghost"
+              size="sm"
+              className="size-7 shrink-0 p-0"
+              aria-label={action.label}
+              data-action={`session-${action.id}`}
+              onClick={action.run}
+            >
+              <Icon name={action.icon} />
+            </Button>
+          )}
+        />
+      ))}
       {view.toggles.map((toggle) => (
         <PanelToggleButton key={toggle.id} toggle={toggle} />
       ))}

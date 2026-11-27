@@ -1,18 +1,11 @@
 import { Component, createMemo } from "solid-js"
-import { useNavigate, useParams } from "@solidjs/router"
+import { useParams } from "@solidjs/router"
 import { useData } from "@/runtime/server/current"
-import { useComposerState } from "@/composer/persistence"
 import { useDialog } from "@opencode/ui/context/dialog"
 import { Dialog, DialogBody, DialogHeader, DialogTitle } from "@opencode/ui/dialog"
 import { List } from "@opencode/ui/list"
-import { showToast } from "@/shell/notifications/toast"
 import { useLanguage } from "@/runtime/i18n/language"
-import { useServerSDK } from "@/runtime/server/client"
-import { base64Encode } from "@opencode/util/encode"
-import { extractPromptContext, extractPromptFromMessage } from "@/composer/prompt"
-import { useWorkspaceLocation } from "@/workspaces/location"
-import { useServer } from "@/runtime/server/current"
-import { sessionHref } from "@/shell/routes/session"
+import type { useForkFromMessage } from "./fork"
 
 interface ForkableMessage {
   id: string
@@ -24,47 +17,7 @@ function formatTime(date: Date): string {
   return date.toLocaleTimeString(undefined, { timeStyle: "short" })
 }
 
-/**
- * Forks a session before one of its prompts and opens the fork with that prompt restored in
- * its composer. `onForked` runs once the fork exists, before navigating to it.
- */
-export function useForkFromMessage() {
-  const navigate = useNavigate()
-  const data = useData()
-  const serverSDK = useServerSDK()
-  const location = useWorkspaceLocation()
-  const prompt = useComposerState()
-  const language = useLanguage()
-  const server = useServer()
-
-  return async (sessionID: string, messageID: string, onForked?: () => void) => {
-    const message = data.session.message.get(sessionID, messageID)
-    if (message?.type !== "user") return
-    const restored = extractPromptFromMessage(message, {
-      directory: location().directory,
-      attachmentName: language.t("common.attachment"),
-    })
-    const context = extractPromptContext(message, { directory: location().directory })
-    const dir = base64Encode(location().directory)
-
-    await serverSDK.api.session
-      .fork({ sessionID, before: messageID })
-      .then((forked) => {
-        data.session.remember(forked)
-        onForked?.()
-        const target = prompt.capture({ dir, id: forked.id })
-        target.set(restored)
-        target.context.replace([...context.comments, ...context.files])
-        navigate(sessionHref(server.key, forked.id))
-      })
-      .catch((cause: unknown) => {
-        const message = cause instanceof Error ? cause.message : String(cause)
-        showToast({ title: language.t("common.requestFailed"), description: message })
-      })
-  }
-}
-
-export const DialogFork: Component = () => {
+export const DialogFork: Component<{ fork: ReturnType<typeof useForkFromMessage> }> = (props) => {
   const params = useParams()
   const data = useData()
   const dialog = useDialog()
@@ -90,18 +43,17 @@ export const DialogFork: Component = () => {
     return result.reverse()
   })
 
-  const fork = useForkFromMessage()
   const handleSelect = (item: ForkableMessage | undefined) => {
     if (!item) return
     const sessionID = params.id
     if (!sessionID) return
-    void fork(sessionID, item.id, () => dialog.close())
+    void props.fork(sessionID, item.id || undefined, () => dialog.close())
   }
 
   return (
     <Dialog>
       <DialogHeader>
-        <DialogTitle>{language.t("command.session.fork")}</DialogTitle>
+        <DialogTitle>{language.t("session.fork.conversation")}</DialogTitle>
       </DialogHeader>
       <DialogBody>
         <List
@@ -109,7 +61,7 @@ export const DialogFork: Component = () => {
           search={{ placeholder: language.t("common.search.placeholder"), autofocus: true }}
           emptyMessage={language.t("dialog.fork.empty")}
           key={(x) => x.id}
-          items={messages}
+          items={() => [{ id: "", text: language.t("dialog.fork.full"), time: "" }, ...messages()]}
           filterKeys={["text"]}
           onSelect={handleSelect}
         >

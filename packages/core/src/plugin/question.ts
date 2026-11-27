@@ -38,6 +38,7 @@ export const Plugin = define({
             effect: "allow" as const,
           })),
           { action: "browser", resource: "*", effect: "ask" },
+          { action: "session_reference", resource: "*", effect: "ask" },
           { action: "browser.network.private", resource: "*", effect: "ask" },
         )
       })

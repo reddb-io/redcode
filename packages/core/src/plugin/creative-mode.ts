@@ -79,6 +79,7 @@ export const apply = Effect.fn("CreativeMode.apply")(function* (
               ]),
         ].map((action) => ({ action, resource: "*", effect: "allow" as const })),
         ...mcpPermissions,
+        { action: "session_reference", resource: "*", effect: "ask" },
         { action: "design_handoff", resource: "*", effect: "ask" },
         // A design's microphone, camera or network access is the user's call each time it grows.
         { action: "design_live", resource: "*", effect: "ask" },

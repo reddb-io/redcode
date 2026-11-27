@@ -99,6 +99,12 @@ export function createSessionPanelServices(props: { region: Region; dock?: strin
   return {
     snapshot: sharedSource(() => ({
       label: language.t("workbench.toggle.label"),
+      actions: [
+        { id: "fork", command: "session.fork", label: language.t("session.fork.conversation"), icon: "branch-out" as const },
+        { id: "copy-id", command: "session.copyID", label: language.t("command.session.copyID"), icon: "outline-copy" as const },
+      ]
+        .filter((action) => available(action.command))
+        .map((action) => ({ ...action, run: () => void command.trigger(action.command, "palette") })),
       toggles: toggles().map((toggle) => ({
         ...toggle,
         keys: toggle.keybind ? command.keybindParts(toggle.keybind) : [],
