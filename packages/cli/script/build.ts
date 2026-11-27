@@ -113,14 +113,26 @@ const appAssetsPlugin: BunPlugin = {
     }))
   },
 }
+// Stage the large text assets before Bun starts resolving imports. Writing them from
+// concurrent onLoad callbacks lets the resolver see the directory before all files exist.
+const largeTextFiles = new Map<string, string>()
+for (const directory of ["../core/src/models-dev", "../core/src/design/vendor/legacy"]) {
+  const cwd = path.resolve(dir, directory)
+  for (const name of new Bun.Glob("*.txt").scanSync({ cwd, absolute: true })) {
+    const sourcePath = path.normalize(name)
+    const source = Bun.file(sourcePath)
+    if (source.size < 256 * 1024) continue
+    const file = path.join(embeddedDir, "text", `${largeTextFiles.size}.bin`)
+    await Bun.write(file, source)
+    largeTextFiles.set(sourcePath, file)
+  }
+}
 const largeTextPlugin: BunPlugin = {
   name: "opencode-large-text",
   setup(build) {
     build.onLoad({ filter: /\.txt$/ }, async (args) => {
-      const source = Bun.file(args.path)
-      if (source.size < 256 * 1024) return { loader: "text", contents: await source.text() }
-      const file = path.join(embeddedDir, "text", `${path.relative(dir, args.path).replace(/[\\/:.]+/g, "-")}.bin`)
-      await Bun.write(file, source)
+      const file = largeTextFiles.get(path.normalize(args.path))
+      if (!file) return { loader: "text", contents: await Bun.file(args.path).text() }
       return {
         loader: "js",
         contents: `import { readFileSync } from "node:fs"
