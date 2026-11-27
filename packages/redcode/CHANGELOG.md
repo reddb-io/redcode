@@ -1,5 +1,25 @@
 # @reddb-io/redcode
 
+## 0.90.13
+
+### Patch Changes
+
+- Update file and comment attachment cards, image previews and upload progress to use RedDB design system components. Attachments have separate remove controls for touch and keyboard use, and image previews open from the keyboard in drafts and sent messages. Opening a composer option menu from the keyboard focuses the selected option.
+- Update the embedded Console to use the current RedDB design system styles and components.
+- Use RedDB dialogs and fields for creating extensions and trying installed plugins in Creator. The extension type picker shows both choices on opening and supports search and keyboard selection. Creator keeps its selected tab when switching between the mobile drawer and the desktop panel.
+- Search published artifacts and plugin packages by name or revision in Creator. Both installers show available choices immediately and paginate longer lists, including on narrow screens.
+- Update the RedDB design system to v2026.11.28. Shared action buttons now wrap longer labels and follow the design system's touch target sizes. Use RedDB controls for error recovery, badges and keyboard shortcuts across web and desktop, and wrap terminal dialog actions on narrow screens. The Agents session filters and Settings back navigation now use the shared design system controls.
+- Use RedDB settings rows for mobile diff wrapping, desktop release notes, update checks and device pairing. Switches can be toggled from their labels, and pairing address errors are associated with the address field. Terminal help and export results now share the responsive dialog layout.
+- Use RedDB switches for Creator components, session import scope, development extension settings, and MCP connections. Creator removal confirmations focus Cancel first and support keyboard cancellation.
+- Search available panels in the desktop and web workbench launcher and the mobile session menu. Both show the available destinations when opened and support navigating through search results with the keyboard.
+- Use the RedDB loading indicator across GUI extensions and the radial progress styling for uploads and session context. The compact context gauge now shows a warning above the model window. The Usage panel displays session statistics and budgets as a responsive description list.
+- Use Design System controls for file preview, diff layout, and line visibility in the review panel. Search available change sources and switch review modes with the keyboard on desktop and web.
+- Search agent, model variant and permission choices directly in the composer. The web and desktop picker and the mobile drawer show the available choices on opening, support keyboard selection, and paginate long lists.
+- Migrate the SSH connection form, file search, and WSL distribution catalog to the Design System. Clearing file search returns focus to the input. The WSL catalog supports keyboard selection and pages through 20 results at a time.
+- Show keyboard focus on Copy in the terminal export dialog. Use Tab and Shift+Tab to move between the options for each format. Selector rows use the theme’s form-field focus colors. Prompt, selector and export headers keep the dismiss action visible in narrow terminals.
+- Use shared terminal buttons for pasting and submitting text, generating worktree names, and storing or declining masked input. The controls follow the active terminal theme and wrap together with their shortcut labels in narrow terminals.
+- Use the Red Design System tab and button styles in the web and desktop workbench, terminal, and file navigation. Session navigation on touch screens now has a larger tap target.
+
 ## 0.90.12
 
 ### Patch Changes
