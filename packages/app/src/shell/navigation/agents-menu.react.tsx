@@ -27,7 +27,7 @@ export function AgentsMenuView(props: {
       data-component="agents-sidemenu"
       className={nav.root({ class: "h-full min-h-0 border-0 bg-transparent shadow-none p-2" })}
     >
-      <h2 className="px-2 py-3 text-13-medium leading-[var(--line-height-base)]">{language.t("agents.title")}</h2>
+      <h2 className="px-2 py-3 text-caption font-medium leading-text-compact">{language.t("agents.title")}</h2>
       <SearchSelect
         label={language.t("infrastructure.serverFilter")}
         value={view.host}
@@ -53,6 +53,7 @@ export function AgentsMenuView(props: {
                 <NavItem
                   label={language.t(AGENT_LABELS[item])}
                   current={view.view === item}
+                  className="text-caption leading-text-compact"
                   onClick={() => props.select(item)}
                 />
               </li>

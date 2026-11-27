@@ -291,7 +291,7 @@ function RailItem(props: {
             >
               {props.children}
             </span>
-            <span className={rail.label({ class: "text-[10.5px] leading-[var(--line-height-compact)]" })}>
+            <span className={rail.label({ class: "leading-text-compact" })}>
               {props.label}
             </span>
           </button>

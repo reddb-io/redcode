@@ -27,7 +27,7 @@ import {
 
 const nav = sidebarNavigation()
 const section = disclosure()
-const EYEBROW = "text-eyebrow uppercase text-ink-muted"
+const ROW_TYPE = "text-caption leading-text-compact"
 const ROW_ACTION =
   "hover-reveal flex shrink-0 items-center gap-0.5 group-hover/row:opacity-100 focus-within:opacity-100"
 
@@ -77,7 +77,7 @@ export function NavigationSidemenu(props: NavigationProps) {
             size="sm"
             value={view.query}
             placeholder={language.t("navigation.filter.placeholder")}
-            className="ps-7 pe-7 bg-transparent [&::-webkit-search-cancel-button]:hidden"
+            className="ps-7 pe-7 bg-transparent md:text-caption [&::-webkit-search-cancel-button]:hidden"
             onValueChange={props.navigation.filter.set}
             onKeyDown={(event) => {
               if (event.key !== "Escape" || !view.query) return
@@ -107,19 +107,22 @@ export function NavigationSidemenu(props: NavigationProps) {
       <div
         role="group"
         aria-label={language.t("navigation.grouping")}
-        className="mx-2 mb-2 flex rounded-md bg-muted p-0.5"
+        className="mx-2 mb-2 flex flex-wrap items-center gap-1"
       >
         {(["attention", "projects"] as const).map((mode) => (
-          <Button
+          <button
             key={mode}
-            size="sm"
-            variant="ghost"
+            type="button"
             aria-pressed={tree.grouping === mode}
             onClick={() => props.navigation.grouping.set(mode)}
-            className={`min-w-0 flex-1 ${tree.grouping === mode ? "bg-elevation-raised-surface font-medium" : "text-ink-muted"}`}
+            className={quietControl({
+              focus: "inset",
+              selected: tree.grouping === mode,
+              class: "min-h-11 rounded-sm px-2 text-caption leading-text-compact md:min-h-6",
+            })}
           >
             {language.t(mode === "attention" ? "navigation.byAttention" : "navigation.byProject")}
-          </Button>
+          </button>
         ))}
       </div>
       <ScrollArea
@@ -187,7 +190,7 @@ export function NavigationSidemenu(props: NavigationProps) {
                 <button
                   type="button"
                   data-action="navigation-add-project-row"
-                  className={quietControl({ focus: "inset", class: navItem().root({ class: "text-start text-body" }) })}
+                  className={quietControl({ focus: "inset", class: navItem().root({ class: `text-start ${ROW_TYPE}` }) })}
                   onClick={props.navigation.project.add}
                 >
                   <span className="flex size-4 items-center justify-center rounded-sm border border-dashed border-control-edge">
@@ -245,7 +248,7 @@ function NavigationSection(
             aria-controls={contentID}
             onClick={() => props.navigation.section.toggle(props.id)}
           >
-            <span className={`truncate ${EYEBROW}`}>{props.title}</span>
+            <span className="truncate text-caption font-medium text-ink-muted">{props.title}</span>
             <Icon
               name="chevron-down"
               size="small"
@@ -288,7 +291,7 @@ function ProjectNode(props: RowProps & { project: NavigationView["tree"]["projec
           className={quietControl({
             ink: "foreground",
             focus: "inset",
-            class: navItem().root({ class: "min-w-0 flex-1 gap-2 pe-16 text-start text-body" }),
+            class: navItem().root({ class: `min-w-0 flex-1 gap-2 pe-16 text-start text-foreground ${ROW_TYPE}` }),
           })}
           aria-expanded={props.project.expanded}
           aria-controls={listID}
@@ -501,7 +504,7 @@ function SessionRow(
           selected: current,
           focus: "inset",
           class: navItem({ current }).root({
-            class: `h-auto min-h-10 min-w-0 flex-1 items-start gap-2 py-[var(--reddb-spatial-gap-md)] pe-2 text-start text-body ${props.nested ? "ps-[calc(var(--reddb-spatial-inset-sm)+1.25rem)]" : ""} ${sessionAwaitsUser(state.status) ? "text-foreground" : ""}`,
+            class: `h-auto min-h-10 min-w-0 flex-1 items-start gap-2 py-1 pe-2 text-start text-foreground ${ROW_TYPE} ${props.nested ? "ps-[calc(var(--reddb-spatial-inset-sm)+1.25rem)]" : ""}`,
           }),
         })}
         onClick={open}
@@ -511,7 +514,7 @@ function SessionRow(
           open(event)
         }}
       >
-        <span className="mt-0.5 flex size-4 shrink-0 items-center justify-center">
+        <span className="flex size-4 shrink-0 items-center justify-center">
           {state.status ? (
             <StatusMark status={state.status} language={language} />
           ) : (
@@ -525,11 +528,15 @@ function SessionRow(
         </span>
         <span dir="auto" className="flex min-w-0 flex-1 flex-col gap-0.5">
           <span className="flex min-w-0 items-center gap-2">
-            <span className={navItem().label({ class: "min-w-0 flex-1 font-medium" })}>
+            <span
+              className={navItem().label({
+                class: `min-w-0 flex-1 ${current || sessionAwaitsUser(state.status) ? "font-medium" : ""}`,
+              })}
+            >
               {sessionLabel(props.item.session)}
             </span>
             <span
-              className={`shrink-0 text-caption tabular-nums text-ink-muted group-hover/row:invisible group-focus-within/row:invisible ${props.menu === menuID ? "invisible" : ""}`}
+              className={`shrink-0 font-regular tabular-nums text-ink-muted group-hover/row:invisible group-focus-within/row:invisible ${props.menu === menuID ? "invisible" : ""}`}
             >
               {since ? (
                 <Elapsed since={since} language={language} />
@@ -539,7 +546,7 @@ function SessionRow(
             </span>
           </span>
           {(vcs?.repository || branch) && (
-            <span className="flex min-w-0 items-center gap-1.5 text-caption text-ink-muted">
+            <span className="flex min-w-0 items-center gap-1.5 font-regular text-ink-muted">
               {vcs?.repository && <span className="min-w-0 flex-1 truncate">{vcs.repository.name}</span>}
               {branch && (
                 <span className="flex min-w-0 max-w-[55%] items-center gap-1">
@@ -549,7 +556,7 @@ function SessionRow(
               )}
             </span>
           )}
-          <span className="flex min-w-0 items-center gap-1 text-caption text-ink-muted">
+          <span className="flex min-w-0 items-center gap-1 font-regular text-ink-muted">
             {worktree && (
               <>
                 <Icon name="outline-worktree" size="small" className="size-3 shrink-0" />
