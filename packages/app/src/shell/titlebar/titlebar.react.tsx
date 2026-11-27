@@ -1,7 +1,6 @@
 /** @jsxImportSource react */
 import { useSyncExternalStore } from "react"
 import { Button } from "@reddb-io/design-system/base/Button"
-import { Logo } from "@reddb-io/design-system/base/Logo"
 import { Tooltip } from "@reddb-io/design-system/base/Tooltip"
 import type { TitlebarItem } from "@opencode/gui-extensions/sdk"
 import type { SharedLanguage } from "@/runtime/react/language"
@@ -149,26 +148,32 @@ function HistoryButton(props: {
 
 function ChannelIndicator(props: { view: TitlebarSnapshot }) {
   const view = props.view
-  if (!view.channel) return <Logo layout="symbol" size={16} className="me-1.5 select-none" />
-  const Trigger = view.debug ? "button" : "div"
+  const mark = (
+    <svg data-titlebar-brand aria-hidden="true" viewBox="0 0 100 100" className="size-4 shrink-0">
+      <path d="M0 0 H58 L100 38 V100 H0 Z" fill="#ff2056" />
+      <g transform="translate(11.284 86.095) scale(0.0817 -0.0817)" className="titlebar-brand-letter">
+        <path d="M66 0 L66 700 L370 700 Q436 700 485 677 Q534 654 561 612 Q588 570 588 513 L588 501 Q588 438 558 399 Q528 360 484 342 L484 324 Q524 322 546 296.5 Q568 271 568 229 L568 0 L436 0 L436 210 Q436 234 423.5 249 Q411 264 382 264 L198 264 L198 0 Z M198 370.28 L368.64 370.28 Q419.4 370.28 448.02 399.35 Q476.64 428.42 476.64 476.3 L476.64 487.7 Q476.64 535.58 448.56 564.65 Q420.48 593.72 368.64 593.72 L198 593.72 Z" />
+      </g>
+    </svg>
+  )
+  if (!view.debug) return <span className={`shrink-0 ${view.web ? "ps-2.5" : ""}`} aria-label="Redcode">{mark}</span>
   return (
     <div className={`me-1.5 shrink-0 [app-region:no-drag] ${view.web ? "ps-2.5" : ""}`}>
       <Tooltip
-        label={view.channel}
-        content={view.channel}
+        label={view.debug.label}
+        content={view.debug.label}
         child={({ props: trigger }) => (
-          <Trigger
+          <button
             {...trigger}
-            type={view.debug ? "button" : undefined}
+            type="button"
             data-slot="channel-indicator"
-            className={`flex h-7 shrink-0 items-center gap-0.5 rounded-md pe-1.5 [app-region:no-drag] ${view.debug ? "cursor-pointer hover:bg-foreground/8 active:bg-foreground/12 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus" : ""}`}
+            className="flex h-7 shrink-0 cursor-pointer items-center rounded-md px-1.5 [app-region:no-drag] hover:bg-foreground/8 active:bg-foreground/12 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus"
             onClick={() => view.debug?.run?.()}
-            aria-label={view.debug?.label ?? view.channel}
+            aria-label={view.debug?.label}
             aria-pressed={view.debug?.pressed}
           >
-            <Logo layout="symbol" size={16} className="m-0" />
-            <span className="select-none text-caption font-medium text-ink-muted">{view.channel}</span>
-          </Trigger>
+            {mark}
+          </button>
         )}
       />
     </div>

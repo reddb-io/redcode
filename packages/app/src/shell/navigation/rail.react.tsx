@@ -164,7 +164,7 @@ export function NavigationRail(props: NavigationProps) {
       aria-label={language.t("navigation.label")}
       className={rail.root({
         class:
-          "w-[calc(max(5.75em,var(--reddb-spatial-control-height-md)*1.5)+var(--reddb-spatial-inset-sm))] min-w-[calc(var(--reddb-spatial-control-height-md)+var(--reddb-spatial-inset-sm)/2+1px)] p-[calc(var(--reddb-spatial-inset-sm)/4)]",
+          "w-[calc(max(5.1em,var(--reddb-spatial-control-height-md)*1.4)+var(--reddb-spatial-inset-sm))] min-w-[calc(var(--reddb-spatial-control-height-md)+var(--reddb-spatial-inset-sm)/2+1px)] p-[calc(var(--reddb-spatial-inset-sm)/4)]",
       })}
       onKeyDown={onKeyDown}
     >
@@ -275,7 +275,7 @@ function RailItem(props: {
             tabIndex={props.first ? 0 : -1}
             className={rail.item({
               class:
-                "flex items-center justify-center gap-[calc(var(--reddb-spatial-gap-sm)/2)] py-[calc(var(--reddb-spatial-gap-sm)/2)]",
+                "flex min-h-10 items-center justify-center gap-[2px] py-[2px]",
             })}
             aria-label={props.label}
             aria-description={props.description}
@@ -286,12 +286,12 @@ function RailItem(props: {
           >
             <span
               className={rail.face({
-                class: "size-[18px] [&_svg]:size-[18px]",
+                class: "size-4 [&_svg]:size-4",
               })}
             >
               {props.children}
             </span>
-            <span className={rail.label({ class: "text-[11px] leading-[var(--line-height-compact)]" })}>
+            <span className={rail.label({ class: "text-[10.5px] leading-[var(--line-height-compact)]" })}>
               {props.label}
             </span>
           </button>

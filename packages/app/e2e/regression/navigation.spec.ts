@@ -3,6 +3,25 @@ import { seed, sessionHref } from "../utils/app"
 import { fixture, mockStressTimeline } from "../utils/session-fixture"
 import { mockWorkspace } from "../utils/workspace"
 
+test("titlebar shows the themed brand mark and keeps the development controls", async ({ page }) => {
+  await mockWorkspace(page, { name: "Titlebar" })
+  await page.goto("/")
+  const header = page.locator('[data-slot="titlebar-v2"]')
+  const debug = header.getByRole("button", { name: "Toggle debug tools" })
+  await expect(debug).toBeVisible()
+  await expect(debug.locator("[data-titlebar-brand]")).toBeVisible()
+  await expect(debug).not.toContainText("Dev")
+  const letter = debug.locator(".titlebar-brand-letter")
+  await page.evaluate(() => document.documentElement.setAttribute("data-color-scheme", "light"))
+  await expect(letter).toHaveCSS("fill", "rgb(255, 255, 255)")
+  await page.evaluate(() => document.documentElement.setAttribute("data-color-scheme", "dark"))
+  await expect(letter).toHaveCSS("fill", "rgb(7, 8, 10)")
+  await debug.click()
+  await expect(debug).toHaveAttribute("aria-pressed", "true")
+  await debug.click()
+  await expect(debug).toHaveAttribute("aria-pressed", "false")
+})
+
 // Owns the desktop navigation's rendered state and actions; the model suite owns tree ordering.
 test("navigation shares location reads and keeps repository, branch and worktree per session", async ({ page }) => {
   const main = "C:/Work/redcode"
@@ -81,7 +100,7 @@ test("navigation shares location reads and keeps repository, branch and worktree
   await sidebar.screenshot({ path: "../../tmp/navigation-git-context.png" })
 })
 
-test("navigation shares pins, filtering, keyboard focus and persisted panel width", async ({ page }) => {
+test("navigation shares pins, filtering, keyboard focus and persisted panel width", async ({ page }, testInfo) => {
   await mockStressTimeline(page)
   await seed(page, {
     projects: { local: [{ worktree: fixture.directory, expanded: true }] },
@@ -93,6 +112,8 @@ test("navigation shares pins, filtering, keyboard focus and persisted panel widt
   const rail = page.getByRole("navigation", { name: "Navigation", exact: true })
   const home = rail.getByRole("button", { name: "Home", exact: true })
   await expect(home).toBeVisible()
+  await expect(home).toContainText("Home")
+  await page.screenshot({ path: testInfo.outputPath("navigation.png") })
   await expect(rail.locator('[data-rail-item][tabindex="0"]')).toHaveCount(1)
   await home.focus()
   await home.press("ArrowDown")

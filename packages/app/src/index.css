@@ -3,6 +3,9 @@
 @import "@opencode/ui/styles/tokens";
 @import "tw-animate-css";
 
+[data-titlebar-brand] .titlebar-brand-letter { fill: #fff; }
+[data-color-scheme="dark"] [data-titlebar-brand] .titlebar-brand-letter { fill: #07080a; }
+
 /* The recording state uses the stop glyph while retaining the DS live meter. */
 [data-voice-input][aria-pressed="true"] > svg[data-icon] { display: none; }
 [data-voice-input][aria-pressed="true"]::before {
