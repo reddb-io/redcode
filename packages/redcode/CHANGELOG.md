@@ -1,5 +1,11 @@
 # @reddb-io/redcode
 
+## 0.90.16
+
+### Patch Changes
+
+- Make the session grouping selector more compact and use the same design-system typography for session titles, navigation labels, and sidebar controls.
+
 ## 0.90.15
 
 ### Patch Changes
