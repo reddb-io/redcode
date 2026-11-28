@@ -1100,7 +1100,7 @@ function structuralTypes(schemas: ReadonlyArray<Schema.Top>, mutable: boolean, r
     }
     const output = type
       .replaceAll(/ & Brand\.Brand<"[^"]+">/g, "")
-      .replaceAll("Schema.Json", "JsonValue")
+      .replaceAll(/Schema\.(?:Mutable)?Json\b/g, "JsonValue")
       .replaceAll(/(?<!["'])\bunknown\b(?!["'])/g, "any")
     return mutable ? mutableType(preserveStringSuggestions(output)) : preserveStringSuggestions(output)
   }
@@ -1164,7 +1164,7 @@ function structuralType(schema: Schema.Top) {
   return preserveStringSuggestions(
     expand(document.codes[0].Type)
       .replaceAll(/ & Brand\.Brand<"[^"]+">/g, "")
-      .replaceAll("Schema.Json", "JsonValue"),
+      .replaceAll(/Schema\.(?:Mutable)?Json\b/g, "JsonValue"),
   )
 }
 

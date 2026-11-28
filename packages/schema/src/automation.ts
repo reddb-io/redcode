@@ -34,6 +34,12 @@ export const Schedule = Schema.Union([
       Schema.isMaxLength(7),
     ),
   }),
+  Schema.Struct({
+    type: Schema.Literal("mcp_event"),
+    server: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(160)),
+    event: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
+    arguments: Schema.optionalKey(Schema.Record(Schema.String, Schema.MutableJson)),
+  }),
 ]).annotate({ identifier: "Automation.Schedule" })
 export type Schedule = typeof Schedule.Type
 /** A bounded, read-only observation made before a scheduled prompt is admitted. */
@@ -75,7 +81,7 @@ export const Run = Schema.Struct({
   id: RunID,
   automationID: ID,
   inboxID: SessionMessage.ID,
-  trigger: Schema.Literals(["scheduled", "manual"]),
+  trigger: Schema.Literals(["scheduled", "manual", "mcp_event"]),
   scheduledAt: Timestamp,
   created: Timestamp,
   updated: Timestamp,

@@ -36,6 +36,9 @@ it.live("automation API preserves authentication, session ownership and explicit
     expect((yield* request(prefix)).status).toBe(404)
     for (const id of ["ses_automation", "ses_other"])
       expect((yield* request("/session", "POST", { id, location: { directory: tmp.path } })).status).toBe(200)
+    const catalog = yield* request(`${prefix}/mcp-events`)
+    expect(catalog.status).toBe(200)
+    expect(yield* Effect.promise(() => catalog.json())).toMatchObject({ data: { servers: [], events: [] } })
     const input = {
       id: Automation.ID.create(),
       title: "Inspect build",

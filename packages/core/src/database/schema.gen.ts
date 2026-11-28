@@ -289,6 +289,8 @@ const schema: Omit<DatabaseMigration.Migration, "id"> = {
           \`schedule\` text NOT NULL,
           \`condition\` text,
           \`condition_last\` integer,
+          \`event_source\` text,
+          \`event_cursor\` text,
           \`enabled\` integer NOT NULL,
           \`next_at\` integer,
           \`created_at\` integer NOT NULL,

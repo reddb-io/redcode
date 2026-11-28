@@ -4,17 +4,21 @@ import { Automation } from "@opencode/schema/automation"
 import { SessionID } from "@opencode/schema/session-id"
 import { SessionMessage } from "@opencode/schema/session-message"
 import { makeGlobalNode } from "@opencode/util/effect/app-node"
-import { and, desc, eq, lte, notExists } from "drizzle-orm"
-import { Cause, Context, DateTime, Effect, Layer, Option, Schema, Scope } from "effect"
+import { and, desc, eq, isNull, lte, notExists, sql } from "drizzle-orm"
+import { Cause, Context, DateTime, Effect, Exit, Layer, Option, Schema, Scope, Stream } from "effect"
 import { Database } from "./database/database.js"
 import { ExecutionOwner } from "./execution-owner.js"
 import { Session } from "./session.js"
 import { SessionGoal } from "./session/goal.js"
 import { SessionInbox } from "./session/inbox.js"
 import { SessionExecution } from "./session/execution.js"
+import { SessionTable } from "./session/sql.js"
 import { AutomationRunTable, AutomationTable } from "./automation/sql.js"
 import { AutomationSchedule } from "./automation/schedule.js"
 import { AutomationCondition } from "./automation/condition.js"
+import { Instance } from "./instance/service.js"
+import { Mcp } from "./mcp/index.js"
+import { McpEvents } from "./mcp/events.js"
 
 export class NotFound extends Schema.TaggedError<NotFound>()("Automation.NotFound", { message: Schema.String }) {}
 export class Invalid extends Schema.TaggedError<Invalid>()("Automation.Invalid", { message: Schema.String }) {}
@@ -54,9 +58,11 @@ export const make = Effect.gen(function* () {
   const goals = yield* SessionGoal.Service
   const inbox = yield* SessionInbox.Service
   const execution = yield* SessionExecution.Service
+  const instances = yield* Instance.Service
   const scope = yield* Scope.Scope
   const owner = yield* ExecutionOwner.make
   const active = new Set<Automation.RunID>()
+  const subscriptions = new Map<Automation.ID, Scope.Closeable>()
   const find = (sessionID: SessionID, id: Automation.ID) =>
     database.db
       .select()
@@ -73,6 +79,17 @@ export const make = Effect.gen(function* () {
       )
   const findRun = (id: Automation.RunID) =>
     database.db.select().from(AutomationRunTable).where(eq(AutomationRunTable.id, id)).get().pipe(Effect.orDie)
+
+  const withEventSource = <A, E, R>(
+    session: Session.Info,
+    server: string,
+    use: (source: Effect.Success<ReturnType<Mcp.Interface["eventServer"]>>) => Effect.Effect<A, E, R>,
+  ) =>
+    Effect.gen(function* () {
+      const mcp = yield* Mcp.Service
+      const source = yield* mcp.eventServer(server)
+      return yield* use(source)
+    }).pipe(instances.provide(session))
 
   const deliver = Effect.fn("Automation.deliver")(function* (run: typeof AutomationRunTable.$inferSelect) {
     if (active.has(run.id)) return
@@ -294,7 +311,152 @@ export const make = Effect.gen(function* () {
       .pipe(Effect.orDie)
   })
 
+  const admitEvent = Effect.fn("Automation.admitEvent")(function* (
+    automationID: Automation.ID,
+    source: string,
+    event: McpEvents.Position,
+  ) {
+    return yield* database.db
+      .transaction((tx) =>
+        Effect.gen(function* () {
+          const row = yield* tx.select().from(AutomationTable).where(eq(AutomationTable.id, automationID)).get()
+          if (!row?.enabled || row.event_source !== source) return { type: "stopped" as const }
+          const now = Date.now()
+          if (event.eventID) {
+            const id = Automation.RunID.make(`arun_mcp_${McpEvents.identity([automationID, source, event.eventID])}`)
+            const existing = yield* tx.select().from(AutomationRunTable).where(eq(AutomationRunTable.id, id)).get()
+            if (!existing) {
+              const pending = yield* tx
+                .select()
+                .from(AutomationRunTable)
+                .where(
+                  and(eq(AutomationRunTable.automation_id, automationID), eq(AutomationRunTable.status, "pending")),
+                )
+                .get()
+              if (pending) return { type: "busy" as const }
+              const run = {
+                id,
+                automation_id: automationID,
+                trigger: "mcp_event" as const,
+                scheduled_at: now,
+                status: "pending" as const,
+                delivery_result: null,
+                condition_result: null,
+                owner,
+                error: null,
+                created_at: now,
+                updated_at: now,
+              }
+              yield* tx.insert(AutomationRunTable).values(run).run()
+              yield* tx
+                .update(AutomationTable)
+                .set({ event_cursor: event.cursor })
+                .where(eq(AutomationTable.id, automationID))
+                .run()
+              return { type: "claimed" as const, run }
+            }
+          }
+          if (event.cursor !== row.event_cursor)
+            yield* tx
+              .update(AutomationTable)
+              .set({ event_cursor: event.cursor })
+              .where(eq(AutomationTable.id, automationID))
+              .run()
+          return { type: "checkpoint" as const }
+        }),
+      )
+      .pipe(Effect.orDie)
+  })
+
+  const watch = Effect.fn("Automation.watchMcpEvents")(function* (id: Automation.ID, sessionID: SessionID) {
+    let backoff = 1000
+    const attempt = Effect.gen(function* () {
+      const current = yield* find(sessionID, id)
+      const schedule = current.schedule
+      if (!current.enabled || schedule.type !== "mcp_event") return
+      const session = yield* sessions.get(sessionID)
+      if (session.time.archived) return
+      yield* withEventSource(session, schedule.server, (source) =>
+        Effect.gen(function* () {
+          if (current.event_source !== source.identity) {
+            yield* database.db
+              .update(AutomationTable)
+              .set({ event_source: source.identity, event_cursor: null })
+              .where(and(eq(AutomationTable.id, id), eq(AutomationTable.enabled, true)))
+              .run()
+              .pipe(Effect.orDie)
+          }
+          const cursor = current.event_source === source.identity ? current.event_cursor : null
+          yield* source.events.stream({ name: schedule.event, arguments: schedule.arguments, cursor }).pipe(
+            Stream.runForEach(
+              Effect.fnUntraced(function* (event) {
+                backoff = 1000
+                if (event.truncated) yield* Effect.logWarning("MCP automation replay gap", { automationID: id })
+                for (;;) {
+                  const result = yield* admitEvent(id, source.identity, event)
+                  if (result.type === "stopped") return yield* Effect.interrupt
+                  if (result.type === "busy") {
+                    yield* Effect.sleep("1 second")
+                    continue
+                  }
+                  if (result.type === "claimed" && active.size < 4) yield* deliver(result.run)
+                  return
+                }
+              }),
+            ),
+          )
+        }),
+      )
+    })
+    yield* attempt.pipe(
+      Effect.tapError(() => Effect.logDebug("MCP automation subscription unavailable", { automationID: id })),
+      Effect.ignore,
+      Effect.andThen(
+        Effect.suspend(() => {
+          const delay = backoff + Math.floor((Math.random() * backoff) / 4)
+          backoff = Math.min(30_000, backoff * 2)
+          return Effect.sleep(delay)
+        }),
+      ),
+      Effect.forever,
+    )
+  })
+
+  const stopWatch = Effect.fnUntraced(function* (id: Automation.ID) {
+    const subscription = subscriptions.get(id)
+    if (!subscription) return
+    subscriptions.delete(id)
+    yield* Scope.close(subscription, Exit.void)
+  })
+
+  const startWatch = Effect.fnUntraced(function* (id: Automation.ID, sessionID: SessionID) {
+    if (subscriptions.has(id)) return
+    const subscription = Scope.forkUnsafe(scope)
+    subscriptions.set(id, subscription)
+    yield* watch(id, sessionID).pipe(Effect.forkIn(subscription))
+  })
+
+  const syncWatches = Effect.fnUntraced(function* () {
+    const rows = yield* database.db
+      .select({ id: AutomationTable.id, sessionID: AutomationTable.session_id })
+      .from(AutomationTable)
+      .innerJoin(SessionTable, eq(SessionTable.id, AutomationTable.session_id))
+      .where(
+        and(
+          eq(AutomationTable.enabled, true),
+          isNull(SessionTable.time_archived),
+          sql`json_extract(${AutomationTable.schedule}, '$.type') = 'mcp_event'`,
+        ),
+      )
+      .all()
+      .pipe(Effect.orDie)
+    const enabled = new Set(rows.map((row) => row.id))
+    for (const id of subscriptions.keys()) if (!enabled.has(id)) yield* stopWatch(id)
+    for (const row of rows) yield* startWatch(row.id, row.sessionID)
+  })
+
   const tick = Effect.fn("Automation.tick")(function* () {
+    yield* syncWatches()
     const pending = yield* database.db
       .select()
       .from(AutomationRunTable)
@@ -355,11 +517,36 @@ export const make = Effect.gen(function* () {
   )
   return {
     tick,
-    list: (sessionID: SessionID) =>
+    mcpEvents: Effect.fn("Automation.mcpEvents")(function* (sessionID: SessionID, server?: string) {
+      const session = yield* sessions.get(sessionID)
+      if (server !== undefined)
+        return {
+          servers: [],
+          events: yield* withEventSource(session, server, ({ events }) => events.list()).pipe(
+            Effect.mapError((error) => new Invalid({ message: error.message })),
+          ),
+        }
+      return yield* Effect.gen(function* () {
+        const mcp = yield* Mcp.Service
+        return {
+          servers: (yield* mcp.servers()).filter((item) => item.status.status !== "disabled").map((item) => item.name),
+          events: [],
+        }
+      }).pipe(
+        instances.provide(session),
+        Effect.mapError((error) => new Invalid({ message: error.message })),
+      )
+    }),
+    list: (sessionID: SessionID, includeEvents = true) =>
       database.db
         .select()
         .from(AutomationTable)
-        .where(eq(AutomationTable.session_id, sessionID))
+        .where(
+          and(
+            eq(AutomationTable.session_id, sessionID),
+            includeEvents ? undefined : sql`json_extract(${AutomationTable.schedule}, '$.type') <> 'mcp_event'`,
+          ),
+        )
         .orderBy(desc(AutomationTable.created_at))
         .all()
         .pipe(
@@ -394,8 +581,20 @@ export const make = Effect.gen(function* () {
         return yield* new Invalid({ message: "Choose a future execution time" })
       if (input.schedule.type === "fixed_time" && Option.isNone(DateTime.zoneMakeNamed(input.schedule.timeZone)))
         return yield* new Invalid({ message: "Choose a named time zone supported by this execution host" })
+      if (input.schedule.type === "mcp_event") {
+        const schedule = input.schedule
+        if (JSON.stringify(schedule.arguments ?? {}).length > 16_384)
+          return yield* new Invalid({ message: "MCP subscription arguments are too large" })
+        yield* withEventSource(session, schedule.server, ({ events }) =>
+          events.check({
+            name: schedule.event,
+            arguments: schedule.arguments,
+          }),
+        ).pipe(Effect.mapError((error) => new Invalid({ message: error.message })))
+      }
       const nextAt = AutomationSchedule.next(input.schedule, now)
-      if (nextAt === null) return yield* new Invalid({ message: "This schedule has no future occurrence" })
+      if (nextAt === null && input.schedule.type !== "mcp_event")
+        return yield* new Invalid({ message: "This schedule has no future occurrence" })
       yield* database.db
         .insert(AutomationTable)
         .values({
@@ -413,7 +612,9 @@ export const make = Effect.gen(function* () {
         .onConflictDoNothing()
         .run()
         .pipe(Effect.orDie)
-      return info(yield* find(sessionID, input.id))
+      const created = yield* find(sessionID, input.id)
+      if (created.enabled && created.schedule.type === "mcp_event") yield* startWatch(created.id, sessionID)
+      return info(created)
     }),
     control: Effect.fn("Automation.control")(function* (sessionID: SessionID, id: Automation.ID, enabled: boolean) {
       const row = yield* find(sessionID, id)
@@ -426,6 +627,7 @@ export const make = Effect.gen(function* () {
         .update(AutomationTable)
         .set({
           enabled,
+          ...(row.schedule.type === "mcp_event" && row.enabled !== enabled ? { event_cursor: null } : {}),
           next_at: !enabled
             ? row.next_at
             : row.schedule.type === "once"
@@ -436,6 +638,8 @@ export const make = Effect.gen(function* () {
         .where(and(eq(AutomationTable.id, id), eq(AutomationTable.session_id, sessionID)))
         .run()
         .pipe(Effect.orDie)
+      if (!enabled) yield* stopWatch(id)
+      if (enabled && row.schedule.type === "mcp_event") yield* startWatch(id, sessionID)
       return info(yield* find(sessionID, id))
     }),
     remove: Effect.fn("Automation.remove")(function* (sessionID: SessionID, id: Automation.ID) {
@@ -445,6 +649,7 @@ export const make = Effect.gen(function* () {
         .where(and(eq(AutomationTable.id, id), eq(AutomationTable.session_id, sessionID)))
         .run()
         .pipe(Effect.orDie)
+      yield* stopWatch(id)
     }),
     history: Effect.fn("Automation.history")(function* (sessionID: SessionID, id: Automation.ID) {
       yield* find(sessionID, id)
@@ -498,5 +703,5 @@ export class Service extends Context.Service<Service, Effect.Success<typeof make
 export const node = makeGlobalNode({
   service: Service,
   layer: Layer.effect(Service, make),
-  deps: [Database.node, Session.node, SessionGoal.node, SessionInbox.node, SessionExecution.node],
+  deps: [Database.node, Session.node, SessionGoal.node, SessionInbox.node, SessionExecution.node, Instance.node],
 })

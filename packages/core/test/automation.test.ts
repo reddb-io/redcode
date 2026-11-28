@@ -3,6 +3,8 @@ import { Automation } from "@opencode/schema/automation"
 import { SessionMessage } from "@opencode/schema/session-message"
 import { AppNodeBuilder } from "@opencode/core/effect/app-node-builder"
 import { LayerNode } from "@opencode/util/effect/layer-node"
+import { Mcp } from "@opencode/core/mcp/index"
+import type { McpEvents } from "@opencode/core/mcp/events"
 import { AutomationRuntime } from "@opencode/core/automation"
 import { AutomationRunTable, AutomationTable } from "@opencode/core/automation/sql"
 import { AutomationSchedule } from "@opencode/core/automation/schedule"
@@ -16,14 +18,15 @@ import { AbsolutePath } from "@opencode/core/schema"
 import { Session } from "@opencode/core/session"
 import { SessionExecution } from "@opencode/core/session/execution"
 import { SessionGoal } from "@opencode/core/session/goal"
-import { Effect, Schema } from "effect"
+import { Effect, Layer, Schedule, Schema, Stream } from "effect"
 import { eq } from "drizzle-orm"
 import { tmpdir } from "./fixture/tmpdir"
 import { hookCommand } from "./fixture/hook-command"
+import { emptyMcp } from "./fixture/mcp"
 
 afterEach(() => setSystemTime())
 
-function services(path = ":memory:", content?: string) {
+function services(path = ":memory:", content?: string, replacements: LayerNode.Replacements = []) {
   return AppNodeBuilder.build(
     LayerNode.group([AutomationRuntime.node, Session.node, Database.node, SessionGoal.node, Instance.node]),
     [
@@ -31,9 +34,70 @@ function services(path = ":memory:", content?: string) {
       Config.node.replace(Config.configured({ global: false, project: false, ...(content ? { content } : {}) })),
       ModelsDev.node.replace(ModelsDev.configured({ fetch: false })),
       SessionExecution.node.replace(SessionExecution.noopLayer),
+      ...replacements,
     ],
   )
 }
+
+test("MCP event automations replay safely after a disconnect and restart", async () => {
+  await using tmp = await tmpdir()
+  const opened: (string | null)[] = []
+  const layer = () => services(`${tmp.path}/events.sqlite`, undefined, [
+    Mcp.node.replace(Layer.succeed(Mcp.Service, Mcp.Service.of({
+      ...emptyMcp,
+      eventServer: () => Effect.succeed({ identity: "project-mcp-fixture", events: {
+        list: () => Effect.succeed([{ name: "build.finished" }]),
+        check: () => Effect.void,
+        stream: ({ cursor }) => Stream.suspend((): Stream.Stream<McpEvents.Position, Error> => {
+          opened.push(cursor)
+          if (opened.length === 1) return Stream.concat(
+            Stream.make({ eventID: "build-1", cursor: "one" }), Stream.fail(new Error("fixture disconnect")),
+          )
+          if (opened.length === 2) return Stream.concat(Stream.make(
+            { eventID: "build-1", cursor: "one" }, { eventID: "build-2", cursor: "two" },
+          ), Stream.never)
+          return Stream.concat(Stream.make(
+            { eventID: "build-2", cursor: "two" }, { eventID: "build-3", cursor: "three" },
+          ), Stream.never)
+        }),
+      } }),
+    }))),
+  ])
+  const waitCount = (check: Effect.Effect<number, unknown>, expected: number) => check.pipe(
+    Effect.flatMap((count) => count === expected ? Effect.void : Effect.fail(new Error(`Expected ${expected} MCP runs, observed ${count}`))),
+    Effect.retry({ times: 160, schedule: Schedule.spaced("25 millis") }),
+  )
+  const task = await Effect.runPromise(Effect.gen(function* () {
+    const sessions = yield* Session.Service
+    const scheduler = yield* AutomationRuntime.Service
+    const session = yield* sessions.create({ location: { directory: AbsolutePath.make(tmp.path) } })
+    const task = yield* scheduler.create(session.id, {
+      id: Automation.ID.create(), title: "Build completion", prompt: "Review the completed build",
+      schedule: { type: "mcp_event", server: "ci", event: "build.finished" },
+    })
+    expect(task.nextAt).toBeNull()
+    expect(yield* scheduler.list(session.id, false)).toEqual([])
+    expect((yield* scheduler.list(session.id)).map((item) => item.id)).toEqual([task.id])
+    yield* scheduler.tick()
+    yield* waitCount(scheduler.history(session.id, task.id).pipe(Effect.map((runs) => runs.filter((run) => run.status === "admitted").length)), 2)
+    expect(yield* sessions.inbox(session.id)).toHaveLength(2)
+    return task
+  }).pipe(Effect.provide(layer()), Effect.scoped))
+  expect(opened).toEqual([null, "one"])
+
+  await Effect.runPromise(Effect.gen(function* () {
+    const scheduler = yield* AutomationRuntime.Service
+    const sessions = yield* Session.Service
+    const runs = scheduler.history(task.sessionID, task.id)
+    yield* waitCount(runs.pipe(Effect.map((items) => items.filter((run) => run.status === "admitted").length)), 3)
+    expect(yield* runs).toHaveLength(3)
+    expect((yield* runs).map((run) => run.trigger)).toEqual(["mcp_event", "mcp_event", "mcp_event"])
+    expect(yield* sessions.inbox(task.sessionID)).toHaveLength(3)
+    yield* scheduler.control(task.sessionID, task.id, false)
+    yield* scheduler.tick()
+  }).pipe(Effect.provide(layer()), Effect.scoped))
+  expect(opened).toEqual([null, "one", "two"])
+}, 15_000)
 
 test("automation contracts reject invalid identifiers and sub-minute intervals", () => {
   expect(Schema.decodeUnknownOption(Automation.ID)("auto")._tag).toBe("None")

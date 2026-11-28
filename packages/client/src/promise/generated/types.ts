@@ -108,6 +108,7 @@ export type AutomationSchedule =
   | { type: "once"; at: number }
   | { type: "interval"; everyMs: number }
   | { type: "fixed_time"; timeOfDay: string; timeZone: string; weekdays: Array<number> }
+  | { type: "mcp_event"; server: string; event: string; arguments?: { [x: string]: JsonValue } }
 
 export type MonitorProcessProbe = {
   type: "process"
@@ -121,7 +122,7 @@ export type AutomationRun = {
   id: string
   automationID: string
   inboxID: string
-  trigger: "scheduled" | "manual"
+  trigger: "scheduled" | "manual" | "mcp_event"
   scheduledAt: number
   created: number
   updated: number
@@ -5340,7 +5341,19 @@ export type ServerConnectInput = { readonly code: { readonly code: string }["cod
 
 export type ServerConnectOutput = PairingSession
 
-export type AutomationListInput = { readonly sessionID: { readonly sessionID: string }["sessionID"] }
+export type AutomationMcpEventsInput = {
+  readonly sessionID: { readonly sessionID: string }["sessionID"]
+  readonly server?: { readonly server?: string }["server"]
+}
+
+export type AutomationMcpEventsOutput = {
+  data: { servers: Array<string>; events: Array<{ name: string; description?: string | undefined }> }
+}["data"]
+
+export type AutomationListInput = {
+  readonly sessionID: { readonly sessionID: string }["sessionID"]
+  readonly includeEvents?: { readonly includeEvents?: "true" | "false" }["includeEvents"]
+}
 
 export type AutomationListOutput = { data: Array<AutomationInfo> }["data"]
 
@@ -5358,6 +5371,12 @@ export type AutomationCreateInput = {
           readonly timeOfDay: string
           readonly timeZone: string
           readonly weekdays: ReadonlyArray<number>
+        }
+      | {
+          readonly type: "mcp_event"
+          readonly server: string
+          readonly event: string
+          readonly arguments?: { readonly [x: string]: JsonValue }
         }
     readonly condition?:
       | {
@@ -5396,6 +5415,12 @@ export type AutomationCreateInput = {
           readonly timeZone: string
           readonly weekdays: ReadonlyArray<number>
         }
+      | {
+          readonly type: "mcp_event"
+          readonly server: string
+          readonly event: string
+          readonly arguments?: { readonly [x: string]: JsonValue }
+        }
     readonly condition?:
       | {
           readonly probe:
@@ -5432,6 +5457,12 @@ export type AutomationCreateInput = {
           readonly timeOfDay: string
           readonly timeZone: string
           readonly weekdays: ReadonlyArray<number>
+        }
+      | {
+          readonly type: "mcp_event"
+          readonly server: string
+          readonly event: string
+          readonly arguments?: { readonly [x: string]: JsonValue }
         }
     readonly condition?:
       | {
@@ -5470,6 +5501,12 @@ export type AutomationCreateInput = {
           readonly timeZone: string
           readonly weekdays: ReadonlyArray<number>
         }
+      | {
+          readonly type: "mcp_event"
+          readonly server: string
+          readonly event: string
+          readonly arguments?: { readonly [x: string]: JsonValue }
+        }
     readonly condition?:
       | {
           readonly probe:
@@ -5506,6 +5543,12 @@ export type AutomationCreateInput = {
           readonly timeOfDay: string
           readonly timeZone: string
           readonly weekdays: ReadonlyArray<number>
+        }
+      | {
+          readonly type: "mcp_event"
+          readonly server: string
+          readonly event: string
+          readonly arguments?: { readonly [x: string]: JsonValue }
         }
     readonly condition?:
       | {
@@ -5550,6 +5593,12 @@ export type AutomationCreateConditionalInput = {
           readonly timeZone: string
           readonly weekdays: ReadonlyArray<number>
         }
+      | {
+          readonly type: "mcp_event"
+          readonly server: string
+          readonly event: string
+          readonly arguments?: { readonly [x: string]: JsonValue }
+        }
     readonly condition: {
       readonly probe:
         | {
@@ -5584,6 +5633,12 @@ export type AutomationCreateConditionalInput = {
           readonly timeOfDay: string
           readonly timeZone: string
           readonly weekdays: ReadonlyArray<number>
+        }
+      | {
+          readonly type: "mcp_event"
+          readonly server: string
+          readonly event: string
+          readonly arguments?: { readonly [x: string]: JsonValue }
         }
     readonly condition: {
       readonly probe:
@@ -5620,6 +5675,12 @@ export type AutomationCreateConditionalInput = {
           readonly timeZone: string
           readonly weekdays: ReadonlyArray<number>
         }
+      | {
+          readonly type: "mcp_event"
+          readonly server: string
+          readonly event: string
+          readonly arguments?: { readonly [x: string]: JsonValue }
+        }
     readonly condition: {
       readonly probe:
         | {
@@ -5655,6 +5716,12 @@ export type AutomationCreateConditionalInput = {
           readonly timeZone: string
           readonly weekdays: ReadonlyArray<number>
         }
+      | {
+          readonly type: "mcp_event"
+          readonly server: string
+          readonly event: string
+          readonly arguments?: { readonly [x: string]: JsonValue }
+        }
     readonly condition: {
       readonly probe:
         | {
@@ -5689,6 +5756,12 @@ export type AutomationCreateConditionalInput = {
           readonly timeOfDay: string
           readonly timeZone: string
           readonly weekdays: ReadonlyArray<number>
+        }
+      | {
+          readonly type: "mcp_event"
+          readonly server: string
+          readonly event: string
+          readonly arguments?: { readonly [x: string]: JsonValue }
         }
     readonly condition: {
       readonly probe:

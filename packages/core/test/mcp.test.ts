@@ -105,6 +105,7 @@ function resourceServer(
   input: {
     /** Serve 2026-07-28 only through createMcpHandler; the default is a sessionful legacy transport. */
     modern?: boolean
+    events?: boolean
     resources?: boolean
     listChanged?: boolean
     emptyElicitation?: boolean
@@ -152,6 +153,7 @@ function resourceServer(
             capabilities: {
               tools: {},
               prompts: {},
+              ...(input.events ? { extensions: { "io.modelcontextprotocol/events": {} } } : {}),
               ...(input.resources === false ? {} : { resources: { listChanged: input.listChanged } }),
             },
             instructions: "Use the resources tools.",
@@ -422,6 +424,46 @@ function resourceMcpLayer(
 
 const connect = (server: string, config: typeof ConfigMCP.Server.Type, directory: string) =>
   McpClient.connect(server, config, directory).pipe(Effect.provide(hostEnvironmentLayer))
+
+testEffect(Layer.empty).live("routes modern MCP push notifications and validates event data", () =>
+  Effect.gen(function* () {
+    const server = yield* resourceServer({ modern: true, events: true, respond: async (request) => {
+      if (request.method !== "POST") return
+      const input = await request.clone().json() as { id: number; method: string; params: Record<string, unknown> }
+      if (input.method === "events/list") return Response.json({ jsonrpc: "2.0", id: input.id, result: {
+        resultType: "complete",
+        events: [{ name: "build.finished", delivery: ["push"], inputSchema: {
+          type: "object", required: ["branch"], properties: { branch: { type: "string", "x-mcp-header": "Branch" } },
+        }, payloadSchema: { type: "object", required: ["success"], properties: { success: { type: "boolean" } } } }],
+      } })
+      if (input.method !== "events/stream") return
+      expect(input.params.cursor).toBe("saved")
+      expect(request.headers.get("mcp-param-branch")).toBe("main")
+      const frame = (method: string, params: Record<string, unknown>) => ({
+        jsonrpc: "2.0", method: `notifications/events/${method}`, params: {
+          ...params, _meta: { "io.modelcontextprotocol/subscriptionId": input.id },
+        },
+      })
+      const event = { name: "build.finished", timestamp: "2026-11-28T16:00:00Z" }
+      const messages = [
+        frame("active", { cursor: "saved", heartbeatMs: 15000 }),
+        frame("event", { ...event, eventId: "invalid", cursor: "invalid", data: { success: "yes" } }),
+        frame("event", { ...event, eventId: "build-42", cursor: "next", data: { success: true } }),
+        { jsonrpc: "2.0", id: input.id, result: { resultType: "complete" } },
+      ]
+      return new Response(messages.map((message) => `data: ${JSON.stringify(message)}\n\n`).join(""), {
+        headers: { "content-type": "text/event-stream" },
+      })
+    } })
+    const connection = yield* connect("events", new ConfigMCP.Remote({ type: "remote", url: server.url, protocol: "2026-07-28", oauth: false }), import.meta.dir)
+    const events = connection.events!
+    expect(yield* events.list()).toMatchObject([{ name: "build.finished" }])
+    expect(Exit.isFailure(yield* Effect.exit(events.check({ name: "build.finished" })))).toBe(true)
+    const received = yield* events.stream({ name: "build.finished", arguments: { branch: "main" }, cursor: "saved" })
+      .pipe(Stream.runCollect, Effect.timeout("5 seconds"))
+    expect(Array.from(received)).toMatchObject([{ cursor: "saved" }, { eventID: "build-42", cursor: "next" }])
+  }),
+)
 
 // Reads no longer wait for startup, so tests that assert on a connected server settle it first.
 const settled = (service: Mcp.Interface, name = "resources") =>

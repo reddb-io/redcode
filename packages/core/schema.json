@@ -1,8 +1,8 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "ea59a8de-6d06-49b5-a10e-46fa006ed0ea",
-  "prevIds": ["d4f82461-bbed-402f-8b48-4b4553f1c455"],
+  "id": "0b79e0b4-9fe1-49ab-9d50-c8717491f03e",
+  "prevIds": ["ea59a8de-6d06-49b5-a10e-46fa006ed0ea"],
   "ddl": [
     {
       "name": "console_auth_provider",
@@ -1869,6 +1869,26 @@
       "default": null,
       "generated": null,
       "name": "condition_last",
+      "entityType": "columns",
+      "table": "session_automation"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "event_source",
+      "entityType": "columns",
+      "table": "session_automation"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "event_cursor",
       "entityType": "columns",
       "table": "session_automation"
     },

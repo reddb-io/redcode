@@ -66,6 +66,8 @@ const send: FetchLike = (url, init) => {
 }
 
 const refreshScopes = new WeakMap<OAuthClientProvider, { scope?: string }>()
+const providerCredentials = new WeakMap<OAuthClientProvider, Credential.ID>()
+export const boundCredential = (provider: OAuthClientProvider) => providerCredentials.get(provider)
 
 export const loggedFetch = (
   fields: { readonly server: string; readonly directory?: string },
@@ -358,7 +360,7 @@ export const connectProvider = Effect.fnUntraced(function* (input: {
   const expiring = (value: Credential.OAuth) => value.expires !== 0 && value.expires <= Date.now() + 5 * 60_000
   // Only drop or replace the row while it still holds the token this provider presented.
   let presented = found.value.refresh
-  return provider({
+  const bound = provider({
     config: input.config,
     invalidate: async (scope) => {
       if (scope === "verifier" || scope === "discovery") return
@@ -423,6 +425,8 @@ export const connectProvider = Effect.fnUntraced(function* (input: {
       saveCodeVerifier: async () => {},
     },
   })
+  providerCredentials.set(bound, id)
+  return bound
 })
 
 export const authorize = (input: {

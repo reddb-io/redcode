@@ -67,6 +67,32 @@ test("navigates a virtualized large model list with keyboard and search", async 
   await expect(trigger).toHaveText("Model 0599")
 })
 
+test("full model dialog searches and navigates a virtualized catalog", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await openDraft(page, {
+    name: "FullModelCatalog",
+    provider: provider(...Array.from({ length: 600 }, (_, index) => ({
+      id: `model-${index}`,
+      name: `Model ${String(index).padStart(4, "0")}`,
+      cost: { input: 1, output: 1 },
+    }))),
+  })
+  await page.keyboard.press("ControlOrMeta+'")
+  const dialog = page.getByRole("dialog", { name: "Select model", exact: true })
+  const search = dialog.getByRole("searchbox", { name: "Search models" })
+  const rows = dialog.locator('[data-slot="model-row"]')
+  await expect(search).toBeFocused()
+  await expect(dialog.getByRole("button", { name: /Model 0000/ })).toBeVisible()
+  await expect.poll(() => rows.count()).toBeLessThan(40)
+  for (let index = 0; index < 30; index++) await search.press("ArrowDown")
+  await expect(dialog.getByRole("button", { name: /Model 0029/ })).toBeInViewport()
+  await search.fill("Model 0599")
+  await expect(dialog.getByRole("button", { name: /Model 0599/ })).toBeInViewport()
+  await search.press("Enter")
+  await expect(dialog).toBeHidden()
+  await expect(page.locator('[data-action="composer-model"]')).toHaveText("Model 0599")
+})
+
 test("desktop models retain favorites, find fuzzy matches and refresh the catalog", async ({ page }) => {
   const catalog = {
     current: provider(

@@ -18,12 +18,22 @@ export function createDeliveryAutomations(props: {
   const cache = useQueryClient()
   const [selected, setSelected] = createVisitState("")
   const enabled = () => props.visible && props.section === "automations" && props.session.server.connected
+  const mcpCatalog = useQuery(() => {
+    const server = props.session.server
+    const sessionID = props.session.id
+    return {
+      queryKey: ["delivery-automation-mcp-events", server.id, sessionID],
+      queryFn: ({ signal }) => server.client.automation.mcpEvents({ sessionID }, { signal }),
+      enabled: enabled(),
+      retry: false,
+    }
+  })
   const query = useQuery(() => {
     const server = props.session.server
     const sessionID = props.session.id
     return {
       queryKey: ["delivery-automations", server.id, sessionID],
-      queryFn: ({ signal }) => server.client.automation.list({ sessionID }, { signal }),
+      queryFn: ({ signal }) => server.client.automation.list({ sessionID, includeEvents: "true" }, { signal }),
       enabled: enabled(),
       retry: false,
       refetchInterval: enabled() ? 5000 : false,
@@ -82,14 +92,16 @@ export function createDeliveryAutomations(props: {
             ? ctx.t("autoOnce")
             : item.schedule.type === "interval"
               ? ctx.plural("autoEvery", item.schedule.everyMs / 60000)
-              : ctx.t("autoCalendarLabel", {
-                  time: item.schedule.timeOfDay,
-                  zone: item.schedule.timeZone,
-                  days: [...new Set(item.schedule.weekdays)]
-                    .toSorted((a, b) => a - b)
-                    .map((day) => ctx.t(`autoDay.${day}`))
-                    .join(", "),
-                }),
+              : item.schedule.type === "mcp_event"
+                ? ctx.t("autoMcpEventLabel", { server: item.schedule.server, event: item.schedule.event })
+                : ctx.t("autoCalendarLabel", {
+                    time: item.schedule.timeOfDay,
+                    zone: item.schedule.timeZone,
+                    days: [...new Set(item.schedule.weekdays)]
+                      .toSorted((a, b) => a - b)
+                      .map((day) => ctx.t(`autoDay.${day}`))
+                      .join(", "),
+                  }),
       })),
       selected: selected(),
       history: history.data ?? [],
@@ -101,16 +113,21 @@ export function createDeliveryAutomations(props: {
       refreshing: query.isFetching,
       pending: current() && change.isPending,
       failed: current() && change.isError,
+      eventServers: mcpCatalog.data?.servers ?? [],
+      supportsEventTriggers: mcpCatalog.isSuccess,
     }),
     actions: {
       select: setSelected,
       clear: () => change.reset(),
       refresh: () => {
         void query.refetch()
+        void mcpCatalog.refetch()
         if (selected()) void history.refetch()
       },
       change: (action: AutomationChange) =>
         change.mutateAsync({ server: props.session.server, sessionID: props.session.id, change: action }),
+      eventCatalog: (server: string, signal: AbortSignal) =>
+        props.session.server.client.automation.mcpEvents({ sessionID: props.session.id, server }, { signal }),
     },
   }
 }

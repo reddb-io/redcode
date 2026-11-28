@@ -108,6 +108,7 @@ type ServerEntry = {
   readonly startup: Latch.Latch
   scope?: Scope.Closeable
   client?: McpClient.Connection
+  credentialID?: Credential.ID
   tools?: ReadonlyArray<Tool>
   prompts?: ReadonlyArray<Prompt>
   // Set when a remote server is registered as an OAuth integration; the credential lives in the global store.
@@ -172,6 +173,10 @@ export interface Interface extends State.Transformable<Editor> {
     readonly uri: string
   }) => Effect.Effect<ResourceContent | undefined, Error>
   readonly skillServer: (name: string) => Effect.Effect<{ skills: McpClient.Skills; identity: string }, Error>
+  readonly eventServer: (name: string) => Effect.Effect<{
+    events: NonNullable<McpClient.Connection["events"]>
+    identity: string
+  }, Error>
 }
 
 export class Service extends Context.Service<Service, Interface>()("@opencode/MCP") {}
@@ -263,9 +268,10 @@ export const layer = (options?: Options) =>
       const connectProvider = Effect.fnUntraced(function* (entry: ServerEntry) {
         if (entry.config.type !== "remote" || !entry.integrationID) return undefined
         const { McpOAuth } = yield* Effect.promise(() => import("./oauth.js"))
-        return yield* McpOAuth.connectProvider({ config: entry.config, integrationID: entry.integrationID }).pipe(
+        const auth = yield* McpOAuth.connectProvider({ config: entry.config, integrationID: entry.integrationID }).pipe(
           Effect.provideService(Credential.Service, credentials),
         )
+        return { auth, id: McpOAuth.boundCredential(auth) }
       })
 
       const elicitation = {
@@ -499,7 +505,7 @@ export const layer = (options?: Options) =>
           yield* bus.publish(McpEvent.StatusChanged, { server: name })
           const scope = yield* Scope.fork(servers)
           entry.scope = scope
-          const authProvider = yield* connectProvider(entry)
+          const binding = yield* connectProvider(entry)
           const { McpClient } = yield* Effect.promise(() => import("./client.js"))
           if (entry.config.type === "remote" && entry.config.pool && !McpPool.eligible(entry.config))
             yield* Effect.logWarning(
@@ -522,7 +528,7 @@ export const layer = (options?: Options) =>
                   name,
                   entry.config,
                   location.directory,
-                  authProvider,
+                  binding?.auth,
                   elicitation,
                   options?.clientInfo,
                 )
@@ -538,6 +544,7 @@ export const layer = (options?: Options) =>
           ).pipe(Effect.exit)
           if (Exit.isSuccess(result)) {
             entry.client = result.value.connection
+            entry.credentialID = binding?.id
             entry.tools = result.value.tools.map((tool) => toTool(name, entry, tool))
             entry.prompts = []
             entry.status = { status: "connected" }
@@ -731,6 +738,27 @@ export const layer = (options?: Options) =>
           return Array.from(entries)
             .toSorted(([a], [b]) => a.localeCompare(b))
             .map(([name, entry]): ServerInfo => ({ name, status: entry.status, integrationID: entry.integrationID }))
+        }),
+        eventServer: Effect.fn("MCP.eventServer")(function* (name) {
+          const target = yield* requireServer(name)
+          yield* target.entry.startup.await
+          const client = target.entry.client
+          const events = client?.events
+          if (!events) return yield* Effect.fail(new Error(`MCP server "${name}" does not offer Events push delivery`))
+          const identity = createHash("sha256")
+            .update(JSON.stringify([location.directory, location.workspaceID, name, target.entry.config, target.entry.credentialID]))
+            .digest("hex")
+          return {
+            identity,
+            events: {
+              ...events,
+              stream: (input: Parameters<typeof events.stream>[0]) => events.stream(input).pipe(
+                Stream.mapEffect((event) => entries.get(target.name)?.client === client
+                  ? Effect.succeed(event)
+                  : Effect.fail(new Error("The subscribed MCP connection was replaced"))),
+              ),
+            },
+          }
         }),
         skillServer: Effect.fn("MCP.skillServer")(function* (name) {
           const target = yield* requireServer(name)

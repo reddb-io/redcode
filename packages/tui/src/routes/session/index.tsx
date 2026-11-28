@@ -1127,8 +1127,8 @@ export function Session(props: {
       },
     },
     {
-      title: "Create conditional automation",
-      description: "Schedule a prompt when an HTTP or process condition is met",
+      title: "Create automation",
+      description: "Queue a prompt on a schedule, a condition, or an MCP event",
       id: "session.automation.create",
       group: "Session",
       slash: { name: "automation" },

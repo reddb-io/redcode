@@ -308,7 +308,16 @@ export interface ServerApi<E = never> {
   readonly connect: ServerConnectOperation<E>
 }
 
-export type AutomationListInput = { readonly sessionID: Session.ID }
+export type AutomationMcpEventsInput = { readonly sessionID: Session.ID; readonly server?: string }
+export type AutomationMcpEventsOutput = {
+  readonly servers: ReadonlyArray<string>
+  readonly events: ReadonlyArray<{ readonly name: string; readonly description?: string | undefined }>
+}
+export type AutomationMcpEventsOperation<E = never> = (
+  input: AutomationMcpEventsInput,
+) => Effect.Effect<AutomationMcpEventsOutput, E>
+
+export type AutomationListInput = { readonly sessionID: Session.ID; readonly includeEvents?: "true" | "false" }
 export type AutomationListOutput = ReadonlyArray<Automation.Info>
 export type AutomationListOperation<E = never> = (input: AutomationListInput) => Effect.Effect<AutomationListOutput, E>
 
@@ -369,6 +378,7 @@ export type AutomationRemoveOperation<E = never> = (
 ) => Effect.Effect<AutomationRemoveOutput, E>
 
 export interface AutomationApi<E = never> {
+  readonly mcpEvents: AutomationMcpEventsOperation<E>
   readonly list: AutomationListOperation<E>
   readonly create: AutomationCreateOperation<E>
   readonly createConditional: AutomationCreateConditionalOperation<E>

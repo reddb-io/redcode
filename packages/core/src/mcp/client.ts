@@ -34,6 +34,7 @@ import { Cause, Clock, Duration, Effect, Exit, Schedule, Schema } from "effect"
 import { ConfigMCP } from "@opencode/schema/config/mcp"
 import type { Session } from "@opencode/schema/session"
 import { McpStdio } from "./stdio.js"
+import { McpEvents } from "./events.js"
 
 const DEFAULT_STARTUP_TIMEOUT = 30_000
 const DEFAULT_CATALOG_TIMEOUT = 30_000
@@ -151,6 +152,7 @@ export interface Connection {
   /** The name the server gave itself in `initialize`, which tells a server apart however it was registered. */
   readonly identity?: string
   readonly skills?: Skills
+  readonly events?: ReturnType<typeof McpEvents.make>
   readonly tools: () => Effect.Effect<Tool[], Error>
   readonly prompts: () => Effect.Effect<Prompt[], Error>
   readonly resources: () => Effect.Effect<Resource[], Error>
@@ -189,10 +191,12 @@ export const connect = Effect.fnUntraced(function* (
   pooled = false,
 ) {
   const skillExtension = config.skills ? yield* Effect.promise(() => import("@modelcontextprotocol/client/ext/skills")) : undefined
+  const eventTracking = McpEvents.tracker()
   type ToolCall = { readonly sessionID?: Session.ID; readonly signal: AbortSignal }
   const current = new AsyncLocalStorage<ToolCall>()
   const calls = new Set<ToolCall>()
   yield* Effect.addFinalizer(() => Effect.sync(() => current.disable()))
+  yield* Effect.addFinalizer(() => Effect.sync(eventTracking.close))
   // The SDK takes list-changed handlers at construction, but consumers register after connect. On a
   // modern connection the SDK opens the subscriptions/listen stream behind these itself.
   const changed = { tools: () => {}, prompts: () => {}, resources: () => {} }
@@ -237,6 +241,7 @@ export const connect = Effect.fnUntraced(function* (
     protocol = config.protocol,
     timeout = config.timeout?.startup ?? DEFAULT_STARTUP_TIMEOUT,
   ) {
+    eventTracking.observe(transport)
     lastError = undefined
     needsAuth = false
     const runFork = Effect.runForkWith(yield* Effect.context())
@@ -246,7 +251,7 @@ export const connect = Effect.fnUntraced(function* (
         // Legacy era only: roots are deprecated as of 2026-07-28 and modern servers cannot request them.
         // Some legacy servers refuse to run without one (https://github.com/anomalyco/opencode/issues/2308).
         ...(pooled ? {} : { roots: {} }),
-        ...(skillExtension ? { extensions: { [skillExtension.SKILLS_EXTENSION_ID]: {} } } : {}),
+        extensions: { [McpEvents.extension]: {}, ...(skillExtension ? { [skillExtension.SKILLS_EXTENSION_ID]: {} } : {}) },
       },
       versionNegotiation: negotiation(protocol),
       listChanged: {
@@ -448,6 +453,7 @@ export const connect = Effect.fnUntraced(function* (
       modern: client.getProtocolEra() === "modern",
       instructions: client.getInstructions()?.trim() || undefined,
       identity: client.getServerVersion()?.name,
+      events: McpEvents.make(client, catalog.timeout, eventTracking),
       skills: skills?.supported
         ? {
             list: () => list("list MCP skills", (signal) => skills.list({}, { ...catalog, signal })).pipe(
