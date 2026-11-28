@@ -2196,6 +2196,8 @@ export const dict = {
   "settings.general.row.navigationLabels.title": "Navigation labels",
   "settings.general.row.navigationLabels.description": "Show names below the desktop navigation icons.",
   "navigation.search": "Search",
+  "titlebar.taskbar.attention.one": "{{count}} session needs your attention",
+  "titlebar.taskbar.attention.other": "{{count}} sessions need your attention",
   "navigation.close": "Close sidebar",
   "navigation.help": "Help",
   "navigation.background": "Background work",

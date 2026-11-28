@@ -65,7 +65,14 @@ const send: FetchLike = (url, init) => {
   return share(pending)
 }
 
-export const loggedFetch = (fields: { readonly server: string; readonly directory?: string }) =>
+const refreshScopes = new WeakMap<OAuthClientProvider, { scope?: string }>()
+const providerCredentials = new WeakMap<OAuthClientProvider, Credential.ID>()
+export const boundCredential = (provider: OAuthClientProvider) => providerCredentials.get(provider)
+
+export const loggedFetch = (
+  fields: { readonly server: string; readonly directory?: string },
+  provider?: OAuthClientProvider,
+) =>
   Effect.gen(function* () {
     const run = Effect.runPromiseWith(yield* Effect.context())
     const request: FetchLike = (url, init) => {
@@ -75,7 +82,18 @@ export const loggedFetch = (fields: { readonly server: string; readonly director
       return run(
         Effect.gen(function* () {
           if (operation) yield* Effect.logInfo("mcp oauth request started")
-          const response = yield* Effect.tryPromise({ try: () => send(url, init), catch: (error) => error })
+          const response = yield* Effect.tryPromise({
+            try: () => {
+              if (operation !== "refresh" || !(init?.body instanceof URLSearchParams) || init.body.has("scope"))
+                return send(url, init)
+              const scope = provider && refreshScopes.get(provider)?.scope
+              if (!scope) return send(url, init)
+              const body = new URLSearchParams(init.body)
+              body.set("scope", scope)
+              return send(url, { ...init, body })
+            },
+            catch: (error) => error,
+          })
           const result = { status: response.status, durationMs: Date.now() - started }
           if (operation && !response.ok) {
             const error = yield* Effect.tryPromise(async () => parseErrorResponse(await response.clone().text())).pipe(
@@ -170,7 +188,8 @@ export const provider = (options: Options): OAuthClientProvider => {
   const refuse = (what: string) => new UnauthorizedError(`MCP server "${options.config.url}" requires ${what}`)
   const identity = networkURL(options.config.url, "MCP server URL")
   let discovery: OAuthDiscoveryState | undefined = options.discovery
-  return {
+  const grant = { scope: oauth?.scope }
+  const result: OAuthClientProvider = {
     redirectUrl,
     discoveryState: async () => {
       discovery ??= await configuredDiscovery({ config: options.config, fetchFn: send })
@@ -210,7 +229,11 @@ export const provider = (options: Options): OAuthClientProvider => {
       return stored
     },
     saveClientInformation: (info) => options.store.saveClientInformation(info),
-    tokens: () => options.store.tokens(),
+    tokens: async () => {
+      const tokens = await options.store.tokens()
+      grant.scope = tokens?.scope ?? oauth?.scope
+      return tokens
+    },
     saveTokens: (tokens) => options.store.saveTokens(tokens),
     redirectToAuthorization: (url) => {
       if (!redirect) throw refuse("user authorization")
@@ -230,6 +253,8 @@ export const provider = (options: Options): OAuthClientProvider => {
       return verifier
     },
   }
+  refreshScopes.set(result, grant)
+  return result
 }
 
 export const memoryStore = (): Store => {
@@ -259,6 +284,7 @@ export const toCredential = (input: {
   readonly methodID: Integration.MethodID
   readonly serverUrl: string
   readonly tokens: StoredOAuthTokens
+  readonly scope?: string
   readonly client: StoredOAuthClientInformation | undefined
 }) =>
   Credential.OAuth.make({
@@ -271,7 +297,7 @@ export const toCredential = (input: {
     metadata: {
       serverUrl: input.serverUrl,
       tokenType: input.tokens.token_type,
-      ...(input.tokens.scope ? { scope: input.tokens.scope } : {}),
+      ...(input.tokens.scope || input.scope ? { scope: input.tokens.scope ?? input.scope } : {}),
       ...(input.tokens.issuer ? { issuer: input.tokens.issuer } : {}),
       ...(input.client ? { client: input.client } : {}),
     },
@@ -334,7 +360,7 @@ export const connectProvider = Effect.fnUntraced(function* (input: {
   const expiring = (value: Credential.OAuth) => value.expires !== 0 && value.expires <= Date.now() + 5 * 60_000
   // Only drop or replace the row while it still holds the token this provider presented.
   let presented = found.value.refresh
-  return provider({
+  const bound = provider({
     config: input.config,
     invalidate: async (scope) => {
       if (scope === "verifier" || scope === "discovery") return
@@ -372,6 +398,7 @@ export const connectProvider = Effect.fnUntraced(function* (input: {
             methodID,
             serverUrl: networkURL(input.config.url).toString(),
             tokens: tokens.refresh_token || !previous.refresh ? tokens : { ...tokens, refresh_token: previous.refresh },
+            scope: typeof previous.metadata?.scope === "string" ? previous.metadata.scope : undefined,
             client: clientFromCredential(previous),
           })
           presented = value.refresh
@@ -398,6 +425,8 @@ export const connectProvider = Effect.fnUntraced(function* (input: {
       saveCodeVerifier: async () => {},
     },
   })
+  providerCredentials.set(bound, id)
+  return bound
 })
 
 export const authorize = (input: {

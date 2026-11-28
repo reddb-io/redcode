@@ -7,6 +7,7 @@ import { Effect } from "effect"
 import { SessionSystemPrompt } from "../session/system-prompt.js"
 
 import PROMPT_GPT from "./system-prompt/gpt.txt"
+import PROMPT_GPT_6_2 from "./system-prompt/gpt-6.2.txt"
 import PROMPT_ASTRA from "./system-prompt/gpt-astra.txt"
 import PROMPT_KIMI from "./system-prompt/kimi.txt"
 import PROMPT_META from "./system-prompt/meta.txt"
@@ -15,6 +16,8 @@ import PROMPT_ANTHROPIC from "./system-prompt/anthropic.txt"
 
 export const OpenAIPlugin = make("opencode.prompt.openai", (model) => {
   const id = model.id.toLowerCase()
+  const family = (model.modelID ?? model.id).toLowerCase().split("/").at(-1) ?? ""
+  if (/^(?:gpt-6[.-]?2(?:-|$)|gpt-(?:(?:sol|astra|terra)-)?latest$)/.test(family)) return PROMPT_GPT_6_2
   if (!id.includes("gpt")) return undefined
   return id.includes("astra") ? PROMPT_ASTRA : PROMPT_GPT
 })

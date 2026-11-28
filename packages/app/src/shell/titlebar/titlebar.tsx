@@ -34,6 +34,7 @@ import { sharedMount } from "@/runtime/react/mount"
 import { sharedLanguage } from "@/runtime/react/language"
 import { ReactView } from "@/runtime/react/view"
 import { TitlebarView } from "./titlebar.react"
+import { isSessionForm } from "@/session/requests/session-request-tree"
 
 const titlebarHeight = 36
 
@@ -135,6 +136,43 @@ export function Titlebar() {
   const tabs = useTabs()
   const tabsStore = tabs.store
   const tabsStoreActions = tabs
+
+  if (platform.setTaskbarState) {
+    let previous = new Set<string>()
+    let last = ""
+    createEffect(() => {
+      const requests = new Set<string>()
+      const needingAttention = new Set<string>()
+      let busy = false
+      const servers = new Map(global.servers.list().map((server) => [ServerConnection.key(server), server]))
+      for (const tab of tabsStore) {
+        if (tab.type !== "session") continue
+        const server = servers.get(tab.server)
+        if (!server) continue
+        const { data } = global.ensureServerCtx(server)
+        const root = data.session.root(tab.sessionId) ?? tab.sessionId
+        for (const id of new Set([root, tab.sessionId, ...data.session.family(root)])) {
+          busy ||= data.session.status(id) === "running"
+          const permissions = (data.session.permission.list(id) ?? []).filter(
+            (request) => !settings.permissions.autoApprove() || request.metadata?.protected !== undefined,
+          )
+          const forms = (data.session.form.list(id) ?? []).filter(isSessionForm)
+          for (const request of [...permissions, ...forms]) {
+            requests.add(`${tab.server}\0${request.id}`)
+            needingAttention.add(`${tab.server}\0${root}`)
+          }
+        }
+      }
+      const attention = needingAttention.size
+      const flash = [...requests].some((request) => !previous.has(request))
+      previous = requests
+      const description = attention ? language.plural("titlebar.taskbar.attention", attention, { count: attention }) : ""
+      const next = JSON.stringify([busy, attention, description])
+      if (last === next && !flash) return
+      last = next
+      platform.setTaskbarState?.({ busy, attention, flash, description })
+    })
+  }
 
   const preparing = createMemo(() => {
     const route = layout.route()

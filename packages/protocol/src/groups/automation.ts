@@ -9,8 +9,27 @@ export const makeAutomationGroup = <I extends HttpApiMiddleware.AnyId, S>(middle
   const error = [AutomationNotFoundError, InvalidRequestError, SessionNotFoundError]
   return HttpApiGroup.make("server.automation")
     .add(
+      HttpApiEndpoint.get("session.automation.mcpEvents", "/api/session/:sessionID/automation/mcp-events", {
+        params: { sessionID: Session.ID },
+        query: Schema.Struct({ server: Schema.optionalKey(Schema.String) }),
+        success: Schema.Struct({
+          data: Schema.Struct({
+            servers: Schema.Array(Schema.String),
+            events: Schema.Array(Schema.Struct({ name: Schema.String, description: Schema.optional(Schema.String) })),
+          }),
+        }),
+        error,
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "session.automation.mcpEvents",
+          summary: "Discover MCP event triggers for the conversation",
+        }),
+      ),
+    )
+    .add(
       HttpApiEndpoint.get("session.automation.list", "/api/session/:sessionID/automation", {
         params: { sessionID: Session.ID },
+        query: Schema.Struct({ includeEvents: Schema.optionalKey(Schema.Literals(["true", "false"])) }),
         success: Schema.Struct({ data: Schema.Array(Automation.Info) }),
         error,
       }).annotateMerge(

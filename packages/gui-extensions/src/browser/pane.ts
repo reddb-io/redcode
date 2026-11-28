@@ -186,7 +186,7 @@ export function createBrowserPane(input: {
               attachment,
               location: options.location,
               partition: entry.partition,
-              server: server.url,
+              server,
             })
             const connected = yield* Deferred.make<void>()
             const outbound = yield* Queue.unbounded<Effect.Effect<void>>()
@@ -247,6 +247,7 @@ export function createBrowserPane(input: {
                   )
 
                   if (message.type === "attached") {
+                    entry.network?.negotiate(message.capabilities)
                     attached = true
 
                     return entry.registered.resolve()

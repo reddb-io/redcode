@@ -131,6 +131,8 @@ function createServerSdkContextBase(server: ServerConnection.Any, scope: ServerS
       },
     },
   })
+  const stopResume = platform.onSystemResume?.(() => connection.internal.resync("System resumed from sleep"))
+  if (stopResume) onCleanup(stopResume)
 
   if (server.type === "extension" || server.type === "sidecar") {
     createEffect(

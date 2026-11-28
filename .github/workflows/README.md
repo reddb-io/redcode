@@ -9,6 +9,7 @@ three-minute limit. It does not compile products or run full test suites.
 Integration/browser tests, coverage, benchmarks, cross-platform matrices and
 operational deployments are available through `workflow_dispatch`. They are
 not required PR statuses. Recurring validation and watcher schedules are off.
+The models catalog mirror is a scheduled publication covered by its own workflow.
 Existing issue/comment routing remains available; releases only react to
 intentional version tags, release events or an explicit manual action.
 Artifact source/version/checksum and publication checks stay with publication.

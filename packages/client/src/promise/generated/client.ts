@@ -25,6 +25,8 @@ import type {
   ServerCancelPairOutput,
   ServerConnectInput,
   ServerConnectOutput,
+  AutomationMcpEventsInput,
+  AutomationMcpEventsOutput,
   AutomationListInput,
   AutomationListOutput,
   AutomationCreateInput,
@@ -1042,11 +1044,24 @@ export function make(options: ClientOptions) {
         ),
     },
     automation: {
+      mcpEvents: (input: AutomationMcpEventsInput, requestOptions?: RequestOptions) =>
+        request<{ readonly data: AutomationMcpEventsOutput }>(
+          {
+            method: "GET",
+            path: `/api/session/${encodeURIComponent(input.sessionID)}/automation/mcp-events`,
+            query: { server: input["server"] },
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403, 404, 409],
+            empty: false,
+          },
+          requestOptions,
+        ).then((value) => value.data),
       list: (input: AutomationListInput, requestOptions?: RequestOptions) =>
         request<{ readonly data: AutomationListOutput }>(
           {
             method: "GET",
             path: `/api/session/${encodeURIComponent(input.sessionID)}/automation`,
+            query: { includeEvents: input["includeEvents"] },
             successStatus: 200,
             declaredStatuses: [400, 401, 403, 404, 409],
             empty: false,

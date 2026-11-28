@@ -1,6 +1,7 @@
 import fs from "fs/promises"
 import path from "path"
-import { describe, expect } from "bun:test"
+import { describe, expect, test } from "bun:test"
+import { createTwoFilesPatch, diffLines } from "diff"
 import { Effect, Layer } from "effect"
 import { AppNodeBuilder } from "@opencode/core/effect/app-node-builder"
 import { Bus } from "@opencode/core/bus"
@@ -16,6 +17,7 @@ import { AbsolutePath } from "@opencode/core/schema"
 import { Session } from "@opencode/core/session"
 import { Tool } from "@opencode/core/tool"
 import { EditTool } from "@opencode/core/tool/plugin/edit"
+import { fileDiff } from "@opencode/core/tool/plugin/file-diff"
 import { Vault } from "@opencode/core/vault/vault"
 import { Project } from "@opencode/schema/project"
 import { transformEnvironmentFiles } from "./fixture/environment"
@@ -25,6 +27,21 @@ import { makeLocationNode } from "@opencode/util/effect/app-node"
 import { testEffect } from "./lib/effect"
 import { permissionLayer } from "./lib/permission"
 import { toolIdentity, executeTool, registerToolPlugin, toolDefinitions } from "./lib/tool"
+
+test("whole-file additions and removals keep the standard patch format", () => {
+  for (const text of ["", "\n", "\n\n", "first", "first\nsecond\n", "first\r\nsecond\r\n", "first\r\nsecond", "-first\r+second"]) {
+    for (const [before, after] of [["", text], [text, ""]]) {
+      const changes = diffLines(before, after)
+      expect(fileDiff("folder/example.txt", before, after)).toEqual({
+        file: "folder/example.txt",
+        status: "modified",
+        patch: createTwoFilesPatch("folder/example.txt", "folder/example.txt", before, after),
+        additions: changes.find((change) => change.added)?.count ?? 0,
+        deletions: changes.find((change) => change.removed)?.count ?? 0,
+      })
+    }
+  }
+})
 
 const editToolNode = makeLocationNode({
   name: "test/edit-tool-plugin",

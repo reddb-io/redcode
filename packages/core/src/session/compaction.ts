@@ -773,6 +773,9 @@ export const layer = Layer.effect(
         deadline === undefined
           ? (effect) => effect
           : Effect.timeoutOrElse({ duration: Duration.millis(deadline), orElse: () => Effect.succeed(undefined) }),
+        Effect.withSpan("SessionCompaction.prepareBackground", {
+          attributes: { sessionID: context.session.id, messages: split.older.length },
+        }),
         Effect.forkIn(scope),
       )
       drafts.set(context.session.id, {
@@ -806,7 +809,12 @@ export const layer = Layer.effect(
       drafts.delete(context.session.id)
       if (draft.key !== fingerprint(context, draft.count))
         return yield* Fiber.interrupt(draft.fiber).pipe(Effect.forkIn(scope), Effect.as(undefined))
-      const exit = yield* Fiber.await(draft.fiber).pipe(Effect.onInterrupt(() => Fiber.interrupt(draft.fiber)))
+      const exit = yield* Fiber.await(draft.fiber).pipe(
+        Effect.onInterrupt(() => Fiber.interrupt(draft.fiber)),
+        Effect.withSpan("SessionCompaction.awaitBackground", {
+          attributes: { sessionID: context.session.id, messages: draft.count },
+        }),
+      )
       if (Exit.isFailure(exit) || exit.value === undefined) return undefined
       const recent = recentOf(messages.slice(draft.count), preserve)
       if (Token.estimate(recent) > 2 * keep) return undefined
@@ -1586,21 +1594,19 @@ const redactMessages = (messages: ReadonlyArray<Message>) =>
 const fingerprint = (context: SessionContext.Loaded, count: number) =>
   JSON.stringify([context.initial, context.messages.slice(0, count), VaultRestricted.read(context.session.metadata)])
 
-/** Where the verbatim part starts, and where it would start on the token allowance alone. */
+/** Where the verbatim text starts within the token allowance. */
 const recentStart = (
   entries: ReadonlyArray<{ readonly message: SessionMessage.Info; readonly text: string }>,
   keep: number,
   previous: SessionMessage.CompactionCompleted | undefined,
 ) => {
-  // Drop the oldest entries until the rest fit the allowance, but always keep the newest one.
-  const allowance = Math.min(
-    oldestToDrop(entries, (entry) => Token.estimate(entry.text), keep),
-    entries.length - 1,
-  )
-
-  // Start at a user message so an assistant's tool calls and results stay together.
+  // The retained tail is text, so a tool-heavy turn can be split at a message boundary.
+  const withinBudget = oldestToDrop(entries, (entry) => Token.estimate(entry.text) + 1, keep)
+  if (withinBudget > 0 && withinBudget < entries.length) return { start: withinBudget, allowance: withinBudget }
+  // Preserve the newest step when it alone exceeds the soft tail target. The caller still checks the context window.
+  const allowance = Math.min(withinBudget, entries.length - 1)
   const userBoundary = entries.findLastIndex((entry, index) => index <= allowance && entry.message.type === "user")
-  if (userBoundary > 0) return { start: userBoundary, allowance }
+  if (userBoundary > 0 && withinBudget > 0) return { start: userBoundary, allowance }
 
   // Everything fits. Keep only the latest exchange so there is an older part left to summarize.
   const latestUser = entries.findLastIndex((entry) => entry.message.type === "user")

@@ -1,7 +1,7 @@
 export * as BrowserTunnel from "./tunnel.js"
 
 import { lookup } from "node:dns/promises"
-import { isIP, type Socket } from "node:net"
+import { createConnection, isIP, type Socket } from "node:net"
 import { Effect, Exit } from "effect"
 import { Browser } from "./rpc.js"
 import { BrowserTunnelMachine } from "./tunnel-machine.js"
@@ -30,52 +30,14 @@ export function make(policy: Policy = {}) {
       const id = crypto.randomUUID()
       dispatch({ type: "open.started", id })
       return yield* Effect.gen(function* () {
-        const resolved = yield* resolveTarget(target, policy)
-        const { createConnection } = yield* Effect.promise(() => import("node:net"))
-        const socket = yield* Effect.try({
-          try: () =>
-            createConnection({
-              host: resolved.address,
-              port: target.port,
-              family: resolved.family,
-              allowHalfOpen: true,
-            }),
-          catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause))),
-        })
-        sockets.set(id, socket)
+        const socket = yield* connect(target, policy, (socket) => sockets.set(id, socket))
+        dispatch({ type: "open.connected", id })
+        if (!BrowserTunnelMachine.isOpen(state, id)) {
+          socket.destroy()
+          return yield* Effect.fail(new Error("Browser attachment is closed."))
+        }
         socket.on("error", (error) => dispatch({ type: "socket.errored", id, error }))
         socket.once("close", () => dispatch({ type: "socket.closed", id }))
-        yield* Effect.callback<void, Error>((resume) => {
-          const connected = () => {
-            cleanup()
-            socket.setNoDelay(true)
-            resume(Effect.void)
-          }
-          const failed = (error: Error) => {
-            cleanup()
-            resume(Effect.fail(error))
-          }
-          const closed = () => failed(new Error("Browser tunnel closed while connecting."))
-          const cleanup = () => {
-            socket.off("connect", connected)
-            socket.off("error", failed)
-            socket.off("close", closed)
-          }
-          socket.once("connect", connected)
-          socket.once("error", failed)
-          socket.once("close", closed)
-          if (socket.destroyed) closed()
-          if (!socket.destroyed && !socket.connecting) connected()
-          return Effect.sync(cleanup)
-        }).pipe(
-          Effect.timeoutOrElse({
-            duration: "10 seconds",
-            orElse: () => Effect.fail(new Error("Browser tunnel target connection timed out.")),
-          }),
-        )
-        dispatch({ type: "open.connected", id })
-        if (!BrowserTunnelMachine.isOpen(state, id))
-          return yield* Effect.fail(new Error("Browser attachment is closed."))
         return id
       }).pipe(Effect.onError(() => Effect.sync(() => dispatch({ type: "open.failed", id }))))
     }),
@@ -222,6 +184,52 @@ export function publicAddress(address: string) {
   )
 }
 
+export class PolicyDenied extends Error {}
+
+export const connect = Effect.fn("BrowserTunnel.connect")(function* (
+  target: Browser.TunnelTarget,
+  policy: Policy,
+  connecting?: (socket: Socket) => void,
+) {
+  const resolved = yield* resolveTarget(target, policy)
+  const socket = yield* Effect.try({
+    try: () =>
+      createConnection({ host: resolved.address, port: target.port, family: resolved.family, allowHalfOpen: true }),
+    catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause))),
+  })
+  // The socket can fail between the connection callback and the consumer installing its own listeners.
+  socket.on("error", () => {})
+  connecting?.(socket)
+  return yield* Effect.callback<Socket, Error>((resume) => {
+    const connected = () => {
+      cleanup()
+      socket.setNoDelay(true)
+      resume(Effect.succeed(socket))
+    }
+    const failed = (error: Error) => {
+      cleanup()
+      resume(Effect.fail(error))
+    }
+    const onClose = () => failed(new Error("Browser tunnel closed while connecting."))
+    function cleanup() {
+      socket.off("connect", connected)
+      socket.off("error", failed)
+      socket.off("close", onClose)
+    }
+    socket.once("connect", connected)
+    socket.once("error", failed)
+    socket.once("close", onClose)
+    if (socket.destroyed) onClose()
+    else if (!socket.connecting) connected()
+    return Effect.sync(cleanup)
+  }).pipe(
+    Effect.timeoutOrElse({
+      duration: "10 seconds",
+      orElse: () => Effect.fail(new Error("Browser tunnel target connection timed out.")),
+    }),
+    Effect.onError(() => Effect.sync(() => socket.destroy())),
+  )
+})
 const resolveTarget = Effect.fn("BrowserTunnel.resolveTarget")(function* (
   target: Browser.TunnelTarget,
   policy: Policy,
@@ -235,7 +243,7 @@ const resolveTarget = Effect.fn("BrowserTunnel.resolveTarget")(function* (
   const containsPrivate = addresses.some((entry) => !publicAddress(entry.address))
   if (containsPrivate && !policy.allowPrivateTarget?.(host, target.port))
     return yield* Effect.fail(
-      new Error(
+      new PolicyDenied(
         `[browser.network.private] ${host}:${target.port} resolves to a private, loopback, link-local, metadata, or reserved address. Approve private-network access for this exact browser target before retrying.`,
       ),
     )

@@ -1,5 +1,5 @@
 /** @jsxImportSource react */
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Automation } from "@opencode/schema/automation"
 import { TaskList } from "@reddb-io/design-system/app/TaskList"
 import { Button } from "@reddb-io/design-system/base/Button"
@@ -15,6 +15,8 @@ import { ActivityTimeline } from "@reddb-io/design-system/data/ActivityTimeline"
 import { DateTime, Option, Schema } from "effect"
 import type { DeliveryAutomations } from "./automations"
 
+const decodeArguments = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Record(Schema.String, Schema.MutableJson)))
+
 export function DeliveryAutomationsView(props: {
   view: ReturnType<DeliveryAutomations["snapshot"]>
   actions: DeliveryAutomations["actions"]
@@ -26,7 +28,7 @@ export function DeliveryAutomationsView(props: {
     id: Automation.ID
     title: string
     prompt: string
-    type: "interval" | "once" | "fixed_time"
+    type: Automation.Schedule["type"]
     minutes: number
     at: string
     timeOfDay: string
@@ -36,6 +38,9 @@ export function DeliveryAutomationsView(props: {
     target: string
     when: "matches" | "not_matches"
     mode: "on_match" | "on_change"
+    mcpServer: string
+    mcpEvent: string
+    mcpArguments: string
   } | null>(null)
   const [confirmation, setConfirmation] = useState<{
     type: "run" | "remove"
@@ -43,6 +48,31 @@ export function DeliveryAutomationsView(props: {
     runID: Automation.RunID
   } | null>(null)
   const [invalid, setInvalid] = useState(false)
+  const [catalog, setCatalog] = useState<{
+    server: string
+    events?: readonly { name: string; description?: string }[]
+    failed?: boolean
+  }>()
+  const source = draft?.type === "mcp_event" ? draft.mcpServer : undefined
+  const eventCatalog = props.actions.eventCatalog
+  useEffect(() => {
+    if (!source) {
+      setCatalog(undefined)
+      return
+    }
+    const controller = new AbortController()
+    setCatalog({ server: source })
+    void eventCatalog(source, controller.signal).then(
+      (result) => {
+        if (!controller.signal.aborted) setCatalog({ server: source, events: result.events })
+      },
+      () => {
+        if (!controller.signal.aborted) setCatalog({ server: source, failed: true })
+      },
+    )
+    return () => controller.abort()
+  }, [source, eventCatalog])
+  const events = catalog?.server === source ? catalog?.events : undefined
   const task = view.items.find((item) => item.id === view.selected)
   const target = view.items.find((item) => item.id === confirmation?.id)
   const disabled = !view.connected || view.unavailable || view.loading || view.pending
@@ -83,6 +113,9 @@ export function DeliveryAutomationsView(props: {
             target: "",
             when: "matches",
             mode: "on_match",
+            mcpServer: "",
+            mcpEvent: "",
+            mcpArguments: "",
           })
         }}
       >
@@ -135,7 +168,12 @@ export function DeliveryAutomationsView(props: {
                 : []),
               {
                 term: copy.autoNext,
-                detail: task.enabled && task.nextAt !== null ? date(task.nextAt, timeZone) : copy.autoNoNext,
+                detail:
+                  task.enabled && task.schedule.type === "mcp_event"
+                    ? copy.autoMcpWaiting
+                    : task.enabled && task.nextAt !== null
+                      ? date(task.nextAt, timeZone)
+                      : copy.autoNoNext,
               },
               ...(timeZone ? [{ term: copy.autoZone, detail: timeZone }] : []),
               { term: copy.autoCreated, detail: date(task.created) },
@@ -280,7 +318,13 @@ export function DeliveryAutomationsView(props: {
         actions={() => (
           <div className="flex flex-col gap-2">
             {invalid && (
-              <p role="alert">{draft?.type === "fixed_time" ? copy.autoCalendarInvalid : copy.autoInvalid}</p>
+              <p role="alert">
+                {draft?.type === "mcp_event"
+                  ? copy.autoMcpInvalid
+                  : draft?.type === "fixed_time"
+                    ? copy.autoCalendarInvalid
+                    : copy.autoInvalid}
+              </p>
             )}
             {view.failed && <p role="alert">{copy.autoFailed}</p>}
             <div className="flex justify-end gap-2">
@@ -304,6 +348,10 @@ export function DeliveryAutomationsView(props: {
             onSubmit={(event) => {
               event.preventDefault()
               const at = new Date(draft.at).getTime()
+              const mcpArguments =
+                draft.type === "mcp_event" && draft.mcpArguments.trim()
+                  ? decodeArguments(draft.mcpArguments)
+                  : Option.some(undefined)
               const condition =
                 draft.condition === "always"
                   ? undefined
@@ -329,12 +377,19 @@ export function DeliveryAutomationsView(props: {
                   ? { type: "once", at }
                   : draft.type === "interval"
                     ? { type: "interval", everyMs: draft.minutes * 60000 }
-                    : {
-                        type: "fixed_time",
-                        timeOfDay: draft.timeOfDay,
-                        timeZone: draft.timeZone,
-                        weekdays: draft.weekdays,
-                      },
+                    : draft.type === "mcp_event"
+                      ? {
+                          type: "mcp_event",
+                          server: draft.mcpServer,
+                          event: draft.mcpEvent,
+                          arguments: Option.getOrUndefined(mcpArguments),
+                        }
+                      : {
+                          type: "fixed_time",
+                          timeOfDay: draft.timeOfDay,
+                          timeZone: draft.timeZone,
+                          weekdays: draft.weekdays,
+                        },
               )
               if (
                 disabled ||
@@ -343,6 +398,7 @@ export function DeliveryAutomationsView(props: {
                 !validTarget ||
                 (draft.condition !== "always" && !draft.target.trim()) ||
                 Option.isNone(schedule) ||
+                Option.isNone(mcpArguments) ||
                 (draft.type === "fixed_time" && Option.isNone(DateTime.zoneMakeNamed(draft.timeZone))) ||
                 (draft.type === "once" && at <= Date.now()) ||
                 (draft.type === "interval" && !Number.isInteger(draft.minutes))
@@ -403,14 +459,66 @@ export function DeliveryAutomationsView(props: {
                     { value: "interval", label: copy.autoInterval },
                     { value: "once", label: copy.autoOnce },
                     { value: "fixed_time", label: copy.autoCalendar },
+                    ...(view.supportsEventTriggers ? [{ value: "mcp_event", label: copy.autoMcpEvent }] : []),
                   ]}
                   onValueChange={(value) => {
-                    if (value === "interval" || value === "once" || value === "fixed_time")
+                    if (value === "interval" || value === "once" || value === "fixed_time" || value === "mcp_event")
                       setDraft({ ...draft, type: value })
                   }}
                 />
               )}
             </Field>
+            {draft.type === "mcp_event" && (
+              <>
+                <Field label={copy.autoMcpServer}>
+                  {(control) => (
+                    <Select
+                      {...control}
+                      disabled={view.pending}
+                      value={draft.mcpServer}
+                      options={view.eventServers.map((server) => ({ value: server, label: server }))}
+                      onValueChange={(mcpServer) => setDraft({ ...draft, mcpServer, mcpEvent: "" })}
+                    />
+                  )}
+                </Field>
+                {!view.eventServers.length && <p role="status">{copy.autoMcpServersEmpty}</p>}
+                {source &&
+                  !events &&
+                  (catalog?.failed ? (
+                    <p role="alert">{copy.autoMcpCatalogFailed}</p>
+                  ) : (
+                    <p role="status">{copy.autoMcpCatalogLoading}</p>
+                  ))}
+                {events?.length === 0 && <p role="status">{copy.autoMcpCatalogEmpty}</p>}
+                {!!events?.length && (
+                  <Field label={copy.autoMcpEventName}>
+                    {(control) => (
+                      <Select
+                        {...control}
+                        disabled={view.pending}
+                        value={draft.mcpEvent}
+                        options={events.map((event) => ({ value: event.name, label: event.name }))}
+                        onValueChange={(mcpEvent) => setDraft({ ...draft, mcpEvent })}
+                      />
+                    )}
+                  </Field>
+                )}
+                {draft.mcpEvent && (
+                  <Field label={copy.autoMcpArguments}>
+                    {(control) => (
+                      <Textarea
+                        {...control}
+                        disabled={view.pending}
+                        rows={3}
+                        maxLength={16384}
+                        value={draft.mcpArguments}
+                        onValueChange={(mcpArguments) => setDraft({ ...draft, mcpArguments })}
+                      />
+                    )}
+                  </Field>
+                )}
+              </>
+            )}
             <Field label={copy.autoCondition}>
               {(control) => (
                 <Select

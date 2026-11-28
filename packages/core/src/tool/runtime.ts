@@ -10,7 +10,7 @@ const formatEffectIssues = SchemaIssue.makeFormatterStandardSchemaV1()
 // fiber, including the caller stack and Location-scoped services captured by it, after the entry is evicted.
 const jsonSchemas = new WeakMap<object, Schema.Codec<unknown> | undefined>()
 
-const codecFor = (schema: JsonSchema.JsonSchema) => {
+export const codecFor = (schema: JsonSchema.JsonSchema) => {
   if (jsonSchemas.has(schema)) return jsonSchemas.get(schema)
   const codec = Result.try(() => jsonSchema(schema)).pipe(Result.getOrUndefined)
   jsonSchemas.set(schema, codec)

@@ -812,7 +812,7 @@ describe("HttpApiCodegen.generate", () => {
       compileContract(
         api(
           HttpApiEndpoint.get("get", "/session", {
-            success: Schema.Json,
+            success: Schema.Struct({ readonlyValue: Schema.Json, mutableValue: Schema.MutableJson }),
           }),
         ),
       ),
@@ -822,6 +822,7 @@ describe("HttpApiCodegen.generate", () => {
     expect(types).toContain("export type JsonValue =")
     expect(types).toContain("{ readonly [key: string]: JsonValue }")
     expect(types).not.toContain("Schema.Json")
+    expect(types).not.toContain("Schema.MutableJson")
   })
 
   test("emits an optional Promise input when every field is optional", () => {

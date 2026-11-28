@@ -7,8 +7,14 @@ import { Api } from "../api"
 
 export const AutomationHandler = HttpApiBuilder.group(Api, "server.automation", (handlers) =>
   handlers
+    .handle("session.automation.mcpEvents", (ctx) =>
+      errors(AutomationRuntime.Service.use((service) => service.mcpEvents(ctx.params.sessionID, ctx.query.server))).pipe(
+        Effect.map((data) => ({ data })),
+      ),
+    )
     .handle("session.automation.list", (ctx) =>
-      AutomationRuntime.Service.use((service) => service.list(ctx.params.sessionID)).pipe(
+      // Older clients assume the complete schedule union is time-based.
+      AutomationRuntime.Service.use((service) => service.list(ctx.params.sessionID, ctx.query.includeEvents === "true")).pipe(
         Effect.map((data) => ({ data })),
       ),
     )

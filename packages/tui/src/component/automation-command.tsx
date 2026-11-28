@@ -6,6 +6,8 @@ import { DialogPrompt } from "../ui/dialog-prompt"
 import { DialogSelect } from "../ui/dialog-select"
 import { useToast } from "../ui/toast"
 
+const decodeArguments = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Record(Schema.String, Schema.MutableJson)))
+
 /** A guided creation flow; cancellation at any step leaves the server unchanged. */
 export function useAutomationCommand() {
   const client = useClient()
@@ -28,13 +30,17 @@ export function useAutomationCommand() {
         () => resolve(undefined),
       )
     })
-  const choose = <T extends string>(title: string, options: { title: string; value: T; description?: string }[]) =>
+  const choose = <T extends string>(
+    title: string,
+    options: { title: string; value: T; description?: string }[],
+    filter = false,
+  ) =>
     new Promise<T | undefined>((resolve) => {
       dialog.replace(
         () => (
           <DialogSelect
             title={title}
-            renderFilter={false}
+            renderFilter={filter}
             options={options}
             onSelect={(option) => {
               resolve(option.value)
@@ -45,6 +51,24 @@ export function useAutomationCommand() {
         () => resolve(undefined),
       )
     })
+  const submit = async (sessionID: string, input: Automation.Input) => {
+    while (true) {
+      try {
+        if (input.condition)
+          await client.api.automation.createConditional({ sessionID, ...input, condition: input.condition })
+        else await client.api.automation.create({ sessionID, ...input })
+        toast.show({ variant: "success", message: "Automation created for this conversation." })
+        return
+      } catch (error) {
+        toast.error(error)
+        const retry = await choose("Creation failed. Retry or cancel.", [
+          { title: "Retry the same request", value: "retry" },
+          { title: "Cancel", value: "cancel" },
+        ] as const)
+        if (retry !== "retry") return
+      }
+    }
+  }
   const run = async (sessionID: string) => {
     const title = await ask("Automation name", "Build health")
     if (!title) return
@@ -57,12 +81,56 @@ export function useAutomationCommand() {
       })
       return
     }
-    const scheduleType = await choose("Schedule", [
+    const catalog = await client.api.automation.mcpEvents({ sessionID }).catch(() => undefined)
+    const scheduleType = await choose<Automation.Schedule["type"]>("Schedule", [
       { title: "Repeat at an interval", value: "interval" },
       { title: "Once at a specified time", value: "once" },
       { title: "Weekly calendar", value: "fixed_time" },
-    ] as const)
+      ...(catalog?.servers.length ? [{ title: "When an MCP event arrives", value: "mcp_event" as const }] : []),
+    ])
     if (!scheduleType) return
+    if (scheduleType === "mcp_event") {
+      const server = await choose(
+        "MCP server",
+        catalog!.servers.map((name) => ({ title: name, value: name })),
+        true,
+      )
+      if (!server) return
+      try {
+        const { events } = await client.api.automation.mcpEvents({ sessionID, server })
+        if (!events.length) {
+          toast.show({ variant: "warning", message: "This MCP server offers no push events." })
+          return
+        }
+        const event = await choose(
+          "MCP event type",
+          events.map((item) => ({ title: item.name, value: item.name, description: item.description })),
+          true,
+        )
+        if (!event) return
+        const value = await ask("Subscription arguments as JSON", "{}")
+        if (value === undefined) return
+        const args = decodeArguments(value || "{}")
+        if (Option.isNone(args)) {
+          toast.show({ variant: "warning", message: "Subscription arguments must be a JSON object." })
+          return
+        }
+        const review = await choose(`Create “${title}” on ${server} · ${event}?`, [
+          { title: "Create automation", description: `Prompt: ${prompt}`, value: "create" },
+          { title: "Cancel", value: "cancel" },
+        ] as const)
+        if (review === "create")
+          await submit(sessionID, {
+            id: Automation.ID.create(),
+            title,
+            prompt,
+            schedule: { type: "mcp_event", server, event, arguments: args.value },
+          })
+      } catch (error) {
+        toast.error(error)
+      }
+      return
+    }
     let candidate: unknown
     let scheduleLabel = ""
     if (scheduleType === "interval") {
@@ -152,21 +220,7 @@ export function useAutomationCommand() {
       when,
       mode,
     }
-    const input = { id: Automation.ID.create(), title, prompt, schedule: decoded.value, condition }
-    while (true) {
-      try {
-        await client.api.automation.createConditional({ sessionID, ...input })
-        toast.show({ variant: "success", message: "Conditional automation created for this conversation." })
-        return
-      } catch (error) {
-        toast.error(error)
-        const retry = await choose("Creation failed. Retry or cancel.", [
-          { title: "Retry the same request", value: "retry" },
-          { title: "Cancel", value: "cancel" },
-        ] as const)
-        if (retry !== "retry") return
-      }
-    }
+    await submit(sessionID, { id: Automation.ID.create(), title, prompt, schedule: decoded.value, condition })
   }
   return { run }
 }

@@ -16,6 +16,8 @@ export const AutomationTable = sqliteTable(
     schedule: text({ mode: "json" }).$type<Automation.Schedule>().notNull(),
     condition: text({ mode: "json" }).$type<Automation.Condition>(),
     condition_last: integer({ mode: "boolean" }),
+    event_source: text(),
+    event_cursor: text(),
     enabled: integer({ mode: "boolean" }).notNull(),
     next_at: integer(),
     created_at: integer().notNull(),

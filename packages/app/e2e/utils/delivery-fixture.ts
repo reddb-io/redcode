@@ -271,7 +271,7 @@ export async function mockDeliveryHooks(page: Page) {
 }
 
 /** Conversation-owned schedules and explicit prompt-admission receipts for the Delivery keeper. */
-export async function mockDeliveryAutomations(page: Page) {
+export async function mockDeliveryAutomations(page: Page, options: { mcpEvents?: boolean } = {}) {
   const now = Date.now()
   const state = {
     items: [
@@ -306,10 +306,25 @@ export async function mockDeliveryAutomations(page: Page) {
       const sessionID = parts[3]
       const automationID = parts[5]
       const method = route.request().method()
+      if (method === "GET" && automationID === "mcp-events" && options.mcpEvents) {
+        const server = new URL(route.request().url()).searchParams.get("server")
+        return route.fulfill({
+          json: {
+            data: server ? { servers: [], events: [{ name: "build.finished" }] } : { servers: ["ci"], events: [] },
+          },
+        })
+      }
       if (method === "GET" && !automationID) {
         state.reads.push(sessionID)
         if (state.unavailable) return route.fulfill({ status: 503, json: { message: "Schedules unavailable" } })
-        return route.fulfill({ json: { data: state.items.filter((item) => item.sessionID === sessionID) } })
+        const includeEvents = new URL(route.request().url()).searchParams.get("includeEvents") === "true"
+        return route.fulfill({
+          json: {
+            data: state.items.filter(
+              (item) => item.sessionID === sessionID && (includeEvents || item.schedule.type !== "mcp_event"),
+            ),
+          },
+        })
       }
       if (method === "POST" && automationID === "conditional") {
         state.conditionalAttempts++
@@ -332,7 +347,9 @@ export async function mockDeliveryAutomations(page: Page) {
               ? input.schedule.at
               : input.schedule.type === "interval"
                 ? Date.now() + input.schedule.everyMs
-                : Date.parse("2030-01-07T12:00:00Z"),
+                : input.schedule.type === "mcp_event"
+                  ? null
+                  : Date.parse("2030-01-07T12:00:00Z"),
           created: Date.now(),
           updated: Date.now(),
         }

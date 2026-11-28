@@ -58,6 +58,31 @@ test("opens a sent image with Space and restores focus after the preview closes"
   await expect(image).toBeFocused()
 })
 
+test("scrolling a focused tool out of the mounted rows keeps the timeline at its new position", async ({ page }) => {
+  await setupTimeline(page, {
+    messages: [
+      userMessage(),
+      assistantMessage([
+        shell("prt_scrolled_shell", "completed", lines(5)),
+        textPart("prt_scrolled_latest", "Latest response."),
+      ]),
+    ],
+    settings: { shellToolPartsExpanded: false },
+    reducedMotion: true,
+    seedHistory: true,
+  })
+  const scroller = page.locator(".scroll-view__viewport", { has: page.locator("[data-timeline-row]") })
+  const trigger = page.getByRole("button", { name: /^Worked for .*Ran 1 command$/ })
+  await expect(trigger).toBeInViewport()
+  await trigger.focus()
+  await expect(trigger).toBeFocused()
+  await scroller.hover()
+  await page.mouse.wheel(0, -100_000)
+  await expect(trigger).toHaveCount(0)
+  await expect(scroller).toBeFocused()
+  await expect.poll(() => scroller.evaluate((element) => element.scrollTop)).toBe(0)
+})
+
 function lines(count: number) {
   return Array.from({ length: count }, (_, index) => `line ${index + 1}`).join("\n")
 }

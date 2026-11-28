@@ -14,6 +14,22 @@ const title = "Request dock regression"
 
 test.use({ serviceWorkers: "block" })
 
+test("loads a child permission from the server without a live request event", async ({ page }) => {
+  const child = "ses_request_docks_child"
+  await mockServer(page, {
+    sessions: [{ id: sessionID, title }, { id: child, title: "Child session", parentID: sessionID }],
+    sessionPermissions: {
+      [child]: [
+        { id: "child-permission", sessionID: child, permission: "shell", patterns: ["git status"], metadata: {}, always: [] },
+      ],
+    },
+  })
+  await page.goto(sessionHref(sessionID))
+  await expectSessionTitle(page, title)
+  const permission = page.locator('[data-component="dock-prompt"][data-kind="permission"]')
+  await expect(permission.getByText("git status")).toBeVisible()
+})
+
 test("question drafts retain keyboard choices, custom answers and progress through minimization, navigation and retry", async ({
   page,
 }, testInfo) => {

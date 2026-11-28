@@ -1,13 +1,15 @@
 export * as Ipc from "./ipc"
 
-import { app, BrowserWindow, MessageChannelMain } from "electron"
+import { app, BrowserWindow, MessageChannelMain, powerMonitor } from "electron"
 import { Effect, Layer } from "effect"
 import { RpcServer } from "effect/unstable/rpc"
 import { DesktopRpcs } from "../shared/ipc-rpc"
+import { SystemResumed } from "../shared/ipc-rpc/events"
 import { DragCancelEvent, IpcTransportPort } from "../shared/ipc-transport"
 import { Extensions } from "./extension"
 import { DesktopFiles, openExternalURL } from "./files"
 import { appHandlers } from "./ipc-handlers/app"
+import { emitIpcEvent } from "./ipc-events"
 import { eventHandlers } from "./ipc-handlers/events"
 import { extensionHandlers } from "./ipc-handlers/extensions"
 import { fileHandlers } from "./ipc-handlers/files"
@@ -19,7 +21,7 @@ import { ApplicationLifecycle } from "./lifecycle"
 import { showCliInstaller } from "./native/install-cli"
 import { createMenu, sendMenuCommand } from "./native/menu"
 import { DesktopCli } from "./service/desktop-cli"
-import { getLastFocusedWindow } from "./windows"
+import { getLastFocusedWindow, getMainWindows } from "./windows"
 
 const services = Layer.mergeAll(DesktopFiles.layer, Extensions.layer)
 
@@ -83,6 +85,15 @@ export const registerIpcHandlers = Effect.gen(function* () {
     BrowserWindow.getAllWindows().forEach((win) => wire(win))
   })
   yield* Effect.addFinalizer(() => Effect.sync(() => app.off("browser-window-created", onWindowCreated)))
+
+  if (process.platform === "win32") {
+    const resume = () => {
+      const event = new SystemResumed()
+      for (const window of getMainWindows()) emitIpcEvent(window.webContents, event)
+    }
+    yield* Effect.sync(() => powerMonitor.on("resume", resume))
+    yield* Effect.addFinalizer(() => Effect.sync(() => powerMonitor.off("resume", resume)))
+  }
 
   return {
     installMenu: () => createMenu(menu),

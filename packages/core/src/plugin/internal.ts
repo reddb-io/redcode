@@ -64,6 +64,7 @@ import { ModelsDev } from "../models-dev.js"
 import { Mcp } from "../mcp/index.js"
 import { Npm } from "@opencode/util/npm"
 import { Permission } from "../permission.js"
+import { PermissionSaved } from "../permission/saved.js"
 import { Reference } from "../reference.js"
 import { WebSearch } from "../websearch.js"
 import { Ripgrep } from "../ripgrep.js"
@@ -120,6 +121,8 @@ import { Vault } from "../vault/vault.js"
 import { VaultPlugin } from "./vault.js"
 import { AgentPlugin } from "./agent.js"
 import BrowserPlugin from "@opencode/plugin-browser"
+import { BrowserTunnelHost } from "@opencode/plugin-browser/tunnel-host"
+import { BrowserTunnelGateway } from "../browser-tunnel.js"
 import { CommandPlugin } from "./command.js"
 import { IdentityPlugin } from "./identity.js"
 import { PlanPlugin } from "./plan.js"
@@ -162,6 +165,7 @@ import { WarmingPlugin } from "./warming.js"
 import { WellKnownPlugin } from "../wellknown/plugin.js"
 
 const services = [
+  BrowserTunnelGateway.Service,
   Agent.Service,
   AgentTools.Service,
   ExecutionCapability.Service,
@@ -203,6 +207,7 @@ const services = [
   Mcp.Service,
   Npm.Service,
   Permission.Service,
+  PermissionSaved.Service,
   Form.Service,
   ReadToolFileSystem.Service,
   Reference.Service,
@@ -240,6 +245,7 @@ const services = [
 export type Requirements = Context.Service.Identifier<(typeof services)[number]>
 
 export const requirements = LayerNode.group([
+  BrowserTunnelGateway.node,
   Agent.node,
   AgentTools.node,
   ExecutionCapability.node,
@@ -281,6 +287,7 @@ export const requirements = LayerNode.group([
   Mcp.node,
   Npm.node,
   Permission.node,
+  PermissionSaved.node,
   Form.node,
   ReadToolFileSystem.node,
   Reference.node,
@@ -413,11 +420,17 @@ export const guarded: ReadonlySet<string> = new Set([OpencodePlugin.id, ConfigPo
 export const list = Effect.fn("PluginInternal.list")(function* () {
   // Capture only services; activation supplies the child Scope and batching context.
   const context = Context.pick(...services)(yield* Effect.context<Requirements>())
+  const browserContext = Context.add(
+    context,
+    BrowserTunnelHost.Reference,
+    Context.get(context, BrowserTunnelGateway.Service).host,
+  )
   const resolve = (plugins: readonly InternalPlugin[]) =>
     plugins.map(
       (plugin): Plugin => ({
         id: plugin.id,
-        effect: (host) => plugin.effect(host).pipe(Effect.provide(context)),
+        effect: (host) =>
+          plugin.effect(host).pipe(Effect.provide(plugin.id === BrowserPlugin.id ? browserContext : context)),
       }),
     )
   return {

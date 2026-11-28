@@ -29,10 +29,12 @@ import {
   type Transport,
   type VersionNegotiationOptions,
 } from "@modelcontextprotocol/client"
+import type { Skill, SkillFile } from "@modelcontextprotocol/client/ext/skills"
 import { Cause, Clock, Duration, Effect, Exit, Schedule, Schema } from "effect"
 import { ConfigMCP } from "@opencode/schema/config/mcp"
 import type { Session } from "@opencode/schema/session"
 import { McpStdio } from "./stdio.js"
+import { McpEvents } from "./events.js"
 
 const DEFAULT_STARTUP_TIMEOUT = 30_000
 const DEFAULT_CATALOG_TIMEOUT = 30_000
@@ -75,6 +77,13 @@ export const isTransient = (error: unknown) =>
 
 export type { GetPromptResult, Prompt, ReadResourceResult, Resource, Tool }
 export type ResourceTemplate = ResourceTemplateType
+export type { Skill, SkillFile }
+
+export interface Skills {
+  list(): Effect.Effect<Skill[], Error>
+  get(uri: string): Effect.Effect<Skill, Error>
+  read(entry: Skill, file?: string): Effect.Effect<SkillFile, Error>
+}
 
 // Use the SDK's negotiated-era schema so filtering never imposes a different protocol contract.
 class ToolCheckingClient extends Client {
@@ -142,6 +151,8 @@ export interface Connection {
   readonly instructions: string | undefined
   /** The name the server gave itself in `initialize`, which tells a server apart however it was registered. */
   readonly identity?: string
+  readonly skills?: Skills
+  readonly events?: ReturnType<typeof McpEvents.make>
   readonly tools: () => Effect.Effect<Tool[], Error>
   readonly prompts: () => Effect.Effect<Prompt[], Error>
   readonly resources: () => Effect.Effect<Resource[], Error>
@@ -157,7 +168,7 @@ export interface Connection {
     readonly args?: Record<string, unknown>
     readonly sessionID?: Session.ID
   }) => Effect.Effect<CallToolResult, Error>
-  readonly onClose: (callback: (reason: string) => void) => void
+  readonly onClose: (callback: (reason: string, needsAuth?: boolean) => void) => void
   readonly onSessionExpired: (callback: () => void) => void
   readonly onToolsChanged: (callback: () => void) => void
   readonly onPromptsChanged: (callback: () => void) => void
@@ -179,10 +190,13 @@ export const connect = Effect.fnUntraced(function* (
   clientInfo: Implementation = { name: "opencode", version: "unknown" },
   pooled = false,
 ) {
+  const skillExtension = config.skills ? yield* Effect.promise(() => import("@modelcontextprotocol/client/ext/skills")) : undefined
+  const eventTracking = McpEvents.tracker()
   type ToolCall = { readonly sessionID?: Session.ID; readonly signal: AbortSignal }
   const current = new AsyncLocalStorage<ToolCall>()
   const calls = new Set<ToolCall>()
   yield* Effect.addFinalizer(() => Effect.sync(() => current.disable()))
+  yield* Effect.addFinalizer(() => Effect.sync(eventTracking.close))
   // The SDK takes list-changed handlers at construction, but consumers register after connect. On a
   // modern connection the SDK opens the subscriptions/listen stream behind these itself.
   const changed = { tools: () => {}, prompts: () => {}, resources: () => {} }
@@ -194,6 +208,7 @@ export const connect = Effect.fnUntraced(function* (
 
   // The SDK fails pending requests with a bare "Connection closed"; the transport error before it says why.
   let lastError: string | undefined
+  let needsAuth = false
   const explain = (error: unknown) =>
     error instanceof SdkError && error.code === SdkErrorCode.ConnectionClosed && lastError
       ? `${describe(error)}: ${lastError}`
@@ -221,8 +236,14 @@ export const connect = Effect.fnUntraced(function* (
       }),
     )
 
-  const initialize = Effect.fnUntraced(function* (transport: Transport) {
+  const initialize = Effect.fnUntraced(function* (
+    transport: Transport,
+    protocol = config.protocol,
+    timeout = config.timeout?.startup ?? DEFAULT_STARTUP_TIMEOUT,
+  ) {
+    eventTracking.observe(transport)
     lastError = undefined
+    needsAuth = false
     const runFork = Effect.runForkWith(yield* Effect.context())
     const client = new ToolCheckingClient(clientInfo, {
       capabilities: {
@@ -230,8 +251,9 @@ export const connect = Effect.fnUntraced(function* (
         // Legacy era only: roots are deprecated as of 2026-07-28 and modern servers cannot request them.
         // Some legacy servers refuse to run without one (https://github.com/anomalyco/opencode/issues/2308).
         ...(pooled ? {} : { roots: {} }),
+        extensions: { [McpEvents.extension]: {}, ...(skillExtension ? { [skillExtension.SKILLS_EXTENSION_ID]: {} } : {}) },
       },
-      versionNegotiation: negotiation(config.protocol),
+      versionNegotiation: negotiation(protocol),
       listChanged: {
         tools: listChanged("tools"),
         prompts: listChanged("prompts"),
@@ -242,6 +264,7 @@ export const connect = Effect.fnUntraced(function* (
     client.onerror = (error) => {
       if (error.name === "AbortError") return
       lastError = describe(error)
+      needsAuth = !!authProvider && (error instanceof UnauthorizedError || (error instanceof SdkHttpError && error.status === 401))
       runFork(Effect.logWarning("mcp transport error", { server, error: lastError }))
     }
     if (!pooled) client.setRequestHandler("roots/list", () => ({ roots: [{ uri: pathToFileURL(directory).href }] }))
@@ -292,8 +315,7 @@ export const connect = Effect.fnUntraced(function* (
     }
 
     yield* Effect.tryPromise({
-      try: (signal) =>
-        client.connect(transport, { timeout: config.timeout?.startup ?? DEFAULT_STARTUP_TIMEOUT, signal }),
+      try: (signal) => client.connect(transport, { timeout, signal }),
       catch: (error) => error,
     }).pipe(Effect.onError(() => Effect.promise(() => transport.close()).pipe(Effect.ignore)))
     return client
@@ -341,33 +363,48 @@ export const connect = Effect.fnUntraced(function* (
       try: () => McpOAuth.networkURL(config.url, `MCP server "${server}" URL`),
       catch: (error) => new ConnectError({ server, message: error instanceof Error ? error.message : String(error) }),
     })
-    const fetch = yield* McpOAuth.loggedFetch({ server, directory })
+    const fetch = yield* McpOAuth.loggedFetch({ server, directory }, authProvider)
     // Servers that bundle their own Code Mode (Cloudflare and others) expose raw tools when asked
     // with ?codemode=false, which is what our Code Mode wants. The configured URL stays the OAuth identity.
-    const url = configured
+    const url = new URL(configured)
     const rejectsCodemode = url.hostname.endsWith(".googleapis.com") || /^zohomcp\./.test(url.hostname)
     const addedCodemode = !rejectsCodemode && config.codemode !== false && !url.searchParams.has("codemode")
     if (addedCodemode) url.searchParams.set("codemode", "false")
-    const open = Effect.fnUntraced(function* (url: URL) {
+    const startupTimeout = config.timeout?.startup ?? DEFAULT_STARTUP_TIMEOUT
+    const deadline = (yield* Clock.currentTimeMillis) + startupTimeout
+    const open = Effect.fnUntraced(function* (url: URL, protocol = config.protocol, timeout = startupTimeout) {
       session.transport = new StreamableHTTPClientTransport(url, {
         requestInit: config.headers ? { headers: config.headers } : undefined,
         authProvider,
         fetch,
       })
-      return yield* initialize(session.transport)
+      return yield* initialize(session.transport, protocol, timeout)
     })
+    const negotiate = (url: URL) =>
+      open(url).pipe(
+        Effect.catchIf(
+          (error) =>
+            config.protocol === "auto" &&
+            error instanceof SdkError &&
+            (error.code === SdkErrorCode.RequestTimeout ||
+              (error instanceof SdkHttpError && error.code === SdkErrorCode.EraNegotiationFailed)),
+          (error) => Clock.currentTimeMillis.pipe(
+            Effect.flatMap((now) => now < deadline ? open(url, "legacy", deadline - now) : Effect.fail(error)),
+          ),
+        ),
+      )
 
     return yield* retrying(
       "connect MCP server",
-      open(url).pipe(
+      negotiate(url).pipe(
         Effect.catch((error) => {
           if (!addedCodemode || !(error instanceof SdkHttpError) || (error.status !== 400 && error.status !== 404))
             return Effect.fail(error)
           // Servers that reject unknown query params get one retry at the configured URL.
-          return open(configured)
+          return negotiate(configured)
         }),
       ),
-      config.timeout?.startup ?? DEFAULT_STARTUP_TIMEOUT,
+      startupTimeout,
     )
   }).pipe(Effect.exit)
   if (Exit.isSuccess(exit)) {
@@ -408,11 +445,27 @@ export const connect = Effect.fnUntraced(function* (
         Effect.tapError((error) => Effect.logWarning(`failed to ${what}`, { server, error: error.message })),
       )
     }
+    const skills = skillExtension && client.getServerCapabilities()?.resources
+      ? new skillExtension.SkillsClient(client, { skipInvalid: true })
+      : undefined
 
     return {
       modern: client.getProtocolEra() === "modern",
       instructions: client.getInstructions()?.trim() || undefined,
       identity: client.getServerVersion()?.name,
+      events: McpEvents.make(client, catalog.timeout, eventTracking),
+      skills: skills?.supported
+        ? {
+            list: () => list("list MCP skills", (signal) => skills.list({}, { ...catalog, signal })).pipe(
+              Effect.map((result) => result.skills),
+            ),
+            get: (uri) => list("get MCP skill", (signal) => skills.get(uri, { ...catalog, signal })).pipe(
+              Effect.map((result) => result.skill),
+            ),
+            read: (entry, file?: string) =>
+              request("read MCP skill", (signal) => skills.read(entry, file, { ...catalog, signal })),
+          } satisfies Skills
+        : undefined,
       tools: () =>
         !client.getServerCapabilities()?.tools
           ? Effect.succeed([])
@@ -486,7 +539,7 @@ export const connect = Effect.fnUntraced(function* (
             })
         }).pipe(Effect.map(toCallToolResult)),
       onClose: (callback) => {
-        client.onclose = () => callback(lastError ? `Connection closed: ${lastError}` : "Connection closed")
+        client.onclose = () => callback(lastError ? `Connection closed: ${lastError}` : "Connection closed", needsAuth)
       },
       onSessionExpired: (callback) => {
         session.expired = callback

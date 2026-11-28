@@ -1,5 +1,6 @@
 import type { Platform } from "@opencode/app/desktop"
 import type { ElectronAPI } from "../api-types"
+import { invoke, listen } from "../ipc-client"
 import { setPinchZoomEnabled, webviewZoom } from "../window/zoom"
 import { windowFullscreen } from "../window/fullscreen"
 import { DragCancelEvent } from "../../shared/ipc-transport"
@@ -37,6 +38,11 @@ export function createDesktopPlatform(api: ElectronAPI, windowState: DesktopWind
     },
     webviewZoom,
     windowFullscreen,
+    onSystemResume: (callback) => listen("SystemResumed", callback),
+    setTaskbarState: os === "windows" ? ({ busy, attention, flash, description }) => {
+      const overlay = attention > 0 ? taskbarBadge(attention) : undefined
+      void invoke("WindowSetTaskbarState", { busy, flash, overlay, description }).catch(() => undefined)
+    } : undefined,
     getPinchZoomEnabled: () => api.getPinchZoomEnabled(),
     setPinchZoomEnabled,
     onDragCancel: (callback) => {
@@ -50,6 +56,23 @@ export function createDesktopPlatform(api: ElectronAPI, windowState: DesktopWind
     },
     extensions: createExtensionBridge(),
   }
+}
+
+function taskbarBadge(count: number) {
+  const canvas = document.createElement("canvas")
+  canvas.width = canvas.height = 32
+  const context = canvas.getContext("2d")
+  if (!context) return undefined
+  context.fillStyle = "#c52248"
+  context.beginPath()
+  context.arc(16, 16, 16, 0, Math.PI * 2)
+  context.fill()
+  context.fillStyle = "white"
+  context.textAlign = "center"
+  context.textBaseline = "middle"
+  context.font = `bold ${count > 99 ? 13 : 19}px system-ui, sans-serif`
+  context.fillText(count > 99 ? "99+" : String(count), 16, 16)
+  return canvas.toDataURL("image/png")
 }
 
 function desktopOS() {

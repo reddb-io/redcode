@@ -75,6 +75,7 @@ const Response = Schema.Struct({
         role: Schema.Literal("assistant"),
         content: Schema.Array(Text).check(Schema.isMinLength(1)),
       }),
+      Schema.Struct({ ...MessageFields, role: Schema.Literal("developer"), content: Schema.Unknown }),
     ]),
   ),
   usage: Schema.optional(Schema.StructWithRest(OpenResponses.OpenResponsesUsage, [JsonObject])),
@@ -143,12 +144,17 @@ export const make = (
     if (!result.output.some((item) => item.type === "compaction"))
       return yield* invalid("Compaction response did not contain a checkpoint")
     return new CompactionResponse({
-      replacement: result.output.map((item) => toMessage(item, request.model)),
+      // The next request adds its current system prompt. Keep the compacted conversation only.
+      replacement: result.output
+        .filter((item): item is CompactedItem => item.type !== "message" || item.role !== "developer")
+        .map((item) => toMessage(item, request.model)),
       usage: OpenResponses.mapUsage(result.usage, OpenResponses.metadataKey(request.model)),
     })
   })
 
-function toMessage(item: (typeof Response.Type.output)[number], model: LLMRequest["model"]): Message {
+type CompactedItem = Exclude<(typeof Response.Type.output)[number], { readonly role: "developer" }>
+
+function toMessage(item: CompactedItem, model: LLMRequest["model"]): Message {
   if (item.type === "compaction")
     return Message.assistant(
       CompactionPart.make({ provider: model.provider, id: item.id ?? undefined, encrypted: item.encrypted_content }),

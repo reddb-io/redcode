@@ -31,6 +31,8 @@ import type {
   ServerCancelPairOutput,
   ServerConnectInput,
   ServerConnectOutput,
+  AutomationMcpEventsInput,
+  AutomationMcpEventsOutput,
   AutomationListInput,
   AutomationListOutput,
   AutomationCreateInput,
@@ -759,9 +761,23 @@ const adaptGroupServer = (raw: RawClient["server.server"]) => ({
   connect: EndpointServerConnect(raw),
 })
 
+const EndpointAutomationMcpEvents = (raw: RawClient["server.automation"]) => (input: AutomationMcpEventsInput) =>
+  preserveEffect<AutomationMcpEventsOutput>()(
+    raw["session.automation.mcpEvents"]({
+      params: { sessionID: input["sessionID"] },
+      query: { server: input["server"] },
+    }).pipe(
+      Effect.mapError(mapClientError),
+      Effect.map((value) => value.data),
+    ),
+  )
+
 const EndpointAutomationList = (raw: RawClient["server.automation"]) => (input: AutomationListInput) =>
   preserveEffect<AutomationListOutput>()(
-    raw["session.automation.list"]({ params: { sessionID: input["sessionID"] } }).pipe(
+    raw["session.automation.list"]({
+      params: { sessionID: input["sessionID"] },
+      query: { includeEvents: input["includeEvents"] },
+    }).pipe(
       Effect.mapError(mapClientError),
       Effect.map((value) => value.data),
     ),
@@ -842,6 +858,7 @@ const EndpointAutomationRemove = (raw: RawClient["server.automation"]) => (input
   )
 
 const adaptGroupAutomation = (raw: RawClient["server.automation"]) => ({
+  mcpEvents: EndpointAutomationMcpEvents(raw),
   list: EndpointAutomationList(raw),
   create: EndpointAutomationCreate(raw),
   createConditional: EndpointAutomationCreateConditional(raw),

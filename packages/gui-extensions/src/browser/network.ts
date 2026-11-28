@@ -3,6 +3,8 @@ import type { RpcClient } from "@opencode/client/effect/api"
 import type { Session } from "@opencode/schema/session"
 import { Browser } from "@opencode/plugin-browser/rpc"
 import { BrowserProxy } from "@opencode/plugin-browser/proxy"
+import { createBinaryTunnel } from "./binary-tunnel"
+import type { ServerEndpoint } from "../sdk/main"
 import { Effect, Encoding } from "effect"
 import { serverBypass } from "./policy"
 
@@ -14,30 +16,40 @@ export const createBrowserNetwork = Effect.fn("BrowserNetwork.create")(function*
   location: { directory: string; workspace?: string }
   partition: string
   /** The Redcode server this pane belongs to, which the desktop already reaches directly. */
-  server: string
+  server: ServerEndpoint
 }) {
   const options = { location: input.location }
+  const binary = createBinaryTunnel({
+    server: input.server,
+    attachment: input.attachment,
+    location: input.location,
+    issue: (signal) => Effect.runPromise(input.rpc["tunnel.ticket"](input.attachment, options), { signal }),
+  })
+  yield* Effect.addFinalizer(() => Effect.sync(binary.close))
 
   const proxy = yield* Effect.acquireRelease(
     Effect.tryPromise(() =>
-      BrowserProxy.make({
-        open: (target, signal) =>
-          Effect.runPromise(input.rpc["tunnel.open"]({ ...input.attachment, target }, options), { signal }),
-        read: (tunnelID, signal) =>
-          Effect.runPromise(input.rpc["tunnel.read"]({ ...input.attachment, tunnelID }, options), { signal }),
-        write: (tunnelID, data, end, signal) =>
-          Effect.runPromise(
-            input.rpc["tunnel.write"](
-              { ...input.attachment, tunnelID, data: Encoding.encodeBase64(data), end },
-              options,
+      BrowserProxy.make(
+        {
+          open: (target, signal) =>
+            Effect.runPromise(input.rpc["tunnel.open"]({ ...input.attachment, target }, options), { signal }),
+          read: (tunnelID, signal) =>
+            Effect.runPromise(input.rpc["tunnel.read"]({ ...input.attachment, tunnelID }, options), { signal }),
+          write: (tunnelID, data, end, signal) =>
+            Effect.runPromise(
+              input.rpc["tunnel.write"](
+                { ...input.attachment, tunnelID, data: Encoding.encodeBase64(data), end },
+                options,
+              ),
+              { signal },
             ),
-            { signal },
-          ),
-        close: (tunnelID) =>
-          Effect.runPromise(
-            input.rpc["tunnel.close"]({ ...input.attachment, tunnelID }, options).pipe(Effect.timeout("5 seconds")),
-          ),
-      }),
+          close: (tunnelID) =>
+            Effect.runPromise(
+              input.rpc["tunnel.close"]({ ...input.attachment, tunnelID }, options).pipe(Effect.timeout("5 seconds")),
+            ),
+        },
+        binary.open,
+      ),
     ),
     (proxy) => Effect.promise(() => proxy.close()),
   )
@@ -53,12 +65,13 @@ export const createBrowserNetwork = Effect.fn("BrowserNetwork.create")(function*
     partition.setProxy({
       mode: "fixed_servers",
       proxyRules: proxy.url,
-      proxyBypassRules: ["<-loopback>", serverBypass(input.server)].filter(Boolean).join(";"),
+      proxyBypassRules: ["<-loopback>", serverBypass(input.server.url)].filter(Boolean).join(";"),
     }),
   )
   yield* Effect.tryPromise(() => partition.closeAllConnections())
 
   return {
+    negotiate: binary.negotiate,
     attach(contents: WebContents) {
       const login = (
         event: Electron.Event,

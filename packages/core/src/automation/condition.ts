@@ -4,6 +4,12 @@ import { Automation } from "@opencode/schema/automation"
 import { Monitor } from "@opencode/schema/monitor"
 import { MonitorProbe } from "../monitor-probe.js"
 
+export class ObservationError extends Error {
+  constructor(message: string, readonly transient: boolean) {
+    super(message)
+  }
+}
+
 /** The initial condition types are read-only and never carry reusable credentials. */
 export function problem(condition: Automation.Condition): string | undefined {
   const probe = condition.probe
@@ -25,7 +31,11 @@ export async function observe(condition: Automation.Condition) {
     condition.probe.type === "http"
       ? await MonitorProbe.http(condition.probe)
       : MonitorProbe.processCheck(condition.probe)
-  if (observation.probe.error) throw new Error(observation.probe.error)
+  if (observation.probe.error) {
+    const status = observation.probe.status
+    const transient = condition.probe.type === "http" && (status === undefined || status === 429 || status >= 500)
+    throw new ObservationError(observation.probe.error, transient)
+  }
   return {
     matched: condition.when === "matches" ? observation.probe.matched : !observation.probe.matched,
     summary: observation.output.slice(0, 1000),

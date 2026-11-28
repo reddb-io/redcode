@@ -968,6 +968,35 @@ test("delivery automations persist conversation schedules, review admissions and
   expect(state.historyReads).toEqual(historyReads)
 })
 
+test("delivery creates an automation from a discovered MCP event", async ({ page }) => {
+  await page.setViewportSize({ width: 1560, height: 1000 })
+  await mockStressTimeline(page)
+  await installStressSessionTabs(page, { sessionIDs: [fixture.childID] })
+  await mockAgentTasks(page)
+  const state = await mockDeliveryAutomations(page, { mcpEvents: true })
+  await page.goto(sessionHref(fixture.childID))
+  await page.getByRole("button", { name: "Open delivery overview", exact: true }).click()
+  const delivery = page.getByRole("region", { name: "Delivery", exact: true })
+  await delivery.getByRole("tab", { name: "Automations", exact: true }).click()
+  await delivery.getByRole("button", { name: "Create automation", exact: true }).click()
+  const form = page.getByRole("dialog", { name: "Create automation", exact: true })
+  await form.getByRole("textbox", { name: "Automation name", exact: true }).fill("Build completion")
+  await form.getByRole("textbox", { name: "Scheduled prompt", exact: true }).fill("Review the completed build")
+  await form.getByRole("combobox", { name: "Schedule", exact: true }).selectOption("mcp_event")
+  await form.getByRole("combobox", { name: "MCP server", exact: true }).selectOption("ci")
+  await form.getByRole("combobox", { name: "Event type", exact: true }).selectOption("build.finished")
+  await form.getByRole("textbox", { name: "Subscription arguments (JSON)", exact: true }).fill('{"branch":"main"}')
+  await form.getByRole("button", { name: "Create automation", exact: true }).click()
+  const row = delivery.getByRole("listitem").filter({ hasText: "Build completion" })
+  await expect(row).toContainText("ci · build.finished")
+  expect(state.creates).toMatchObject([{ sessionID: fixture.childID, input: {
+    title: "Build completion",
+    schedule: { type: "mcp_event", server: "ci", event: "build.finished", arguments: { branch: "main" } },
+  } }])
+  await row.getByRole("button", { name: "Inspect automation", exact: true }).click()
+  await expect(delivery.getByRole("region", { name: "Automation details", exact: true })).toContainText("Waiting for MCP events")
+})
+
 test("conditional automations require a supporting server and retain the selected probe", async ({ page }) => {
   await page.setViewportSize({ width: 1560, height: 1000 })
   await seed(page, { theme: { id: "oc-2", scheme: "dark" } })

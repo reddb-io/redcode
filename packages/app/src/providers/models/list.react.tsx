@@ -1,6 +1,6 @@
 /** @jsxImportSource react */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react"
-import { useVirtualizer } from "@tanstack/react-virtual"
+import { defaultRangeExtractor, useVirtualizer } from "@tanstack/react-virtual"
 import { Badge } from "@reddb-io/design-system/base/Badge"
 import { Button } from "@reddb-io/design-system/base/Button"
 import { Input } from "@reddb-io/design-system/base/Input"
@@ -30,6 +30,7 @@ export function ModelListView(props: {
     view.mobile || props.menu ? (view.current ?? (props.menu ? (view.options[0]?.key ?? "") : "")) : "",
   )
   const [offers, setOffers] = useState<Record<string, boolean>>({})
+  const [focusedRow, setFocusedRow] = useState<string>()
   const scroll = useRef<HTMLDivElement>(null)
   const input = useRef<HTMLInputElement>(null)
   const previousSearch = useRef(search)
@@ -42,20 +43,36 @@ export function ModelListView(props: {
   }), [view.options, view.favorites, view.recent, view.provider, search])
   const options = useMemo(() => sections.flatMap((section) => section.items), [sections])
   const positions = useMemo(() => new Map(options.map((option, index) => [option.key, index + 1])), [options])
+  const navigationKeys = useMemo(
+    () => [...options.map((option) => option.key), ...(props.actions ?? []).map((action) => action.key)],
+    [options, props.actions],
+  )
   const rows = useMemo(() => sections.flatMap((section) => [
     ...(section.kind === "results" ? [] : [{ type: "heading" as const, section }]),
     ...section.items.map((option) => ({ type: "model" as const, option, section })),
   ]), [sections])
+  const modelRows = useMemo(() => new Map(rows.flatMap((row, index) =>
+    row.type === "model" ? [[row.option.key, index] as const] : [],
+  )), [rows])
   const virtual = useVirtualizer({
-    count: props.menu ? rows.length : 0,
+    count: rows.length,
     getScrollElement: () => scroll.current,
-    estimateSize: (index) => rows[index]?.type === "heading" ? 32 : 56,
+    estimateSize: (index) => rows[index]?.type === "heading" ? 32 : view.mobile ? 76 : props.menu ? 56 : 68,
     getItemKey: (index) => {
       const row = rows[index]
       return row?.type === "model" ? row.option.key : row?.section.key ?? index
     },
+    rangeExtractor: (range) => {
+      const visible = defaultRangeExtractor(range)
+      const index = focusedRow === undefined ? undefined : modelRows.get(focusedRow)
+      return index === undefined || visible.includes(index) ? visible : [...visible, index].toSorted((a, b) => a - b)
+    },
     overscan: 4,
   })
+  const reveal = (index: number) => {
+    const target = virtual.getOffsetForIndex(index, "auto")
+    if (target) virtual.scrollToOffset(target[0])
+  }
   useEffect(() => {
     if (!view.mobile || !view.open) return
     setSearch("")
@@ -65,15 +82,16 @@ export function ModelListView(props: {
     if (previousSearch.current === search) return
     previousSearch.current = search
     setActive(options[0]?.key ?? "")
+    if (scroll.current) scroll.current.scrollTop = 0
   }, [search, options])
   const filter = (value: string) => {
     setSearch(value)
   }
   useLayoutEffect(() => {
-    if (!props.menu || !view.current) return
-    const index = rows.findIndex((row) => row.type === "model" && row.option.key === view.current)
-    if (index >= 0) virtual.scrollToIndex(index, { align: "auto" })
-  }, [props.menu, view.current, rows, virtual])
+    if (!props.menu || !view.current || search) return
+    const index = modelRows.get(view.current)
+    if (index !== undefined) reveal(index)
+  }, [props.menu, view.current, modelRows, virtual, search])
   const select = props.select ?? props.services.select
   useEffect(() => {
     if (!props.menu) return
@@ -81,23 +99,18 @@ export function ModelListView(props: {
       handleDocumentSearchKeydown(input.current ?? undefined, event, search, filter)
     document.addEventListener("keydown", keydown, true)
     return () => document.removeEventListener("keydown", keydown, true)
-  }, [props.menu, search, view])
+  }, [props.menu, search])
   const move = (delta: 1 | -1) => {
     keyboardNavigation.current = true
-    const keys = [...options.map((option) => option.key), ...(props.actions ?? []).map((action) => action.key)]
+    const keys = navigationKeys
     if (!keys.length) return
-    const index = keys.indexOf(active)
+    const position = positions.get(active)
+    const index = position === undefined ? keys.indexOf(active) : position - 1
     const start = index === -1 ? (delta > 0 ? -1 : 0) : index
     const next = keys[(start + delta + keys.length) % keys.length]
     setActive(next)
-    if (props.menu) {
-      const index = rows.findIndex((row) => row.type === "model" && row.option.key === next)
-      if (index >= 0) virtual.scrollToIndex(index, { align: "auto" })
-      return
-    }
-    scroll.current
-      ?.querySelector<HTMLElement>(`[data-option-key="${CSS.escape(next)}"]`)
-      ?.scrollIntoView({ block: "nearest" })
+    const row = modelRows.get(next)
+    if (row !== undefined) reveal(row)
   }
   const row = (option: Option) => {
     const control = (trigger: Record<string, unknown> = {}) => (
@@ -282,19 +295,19 @@ export function ModelListView(props: {
       <div className={`relative min-h-0 ${view.mobile ? "" : "flex-1"}`}>
         <div
           ref={scroll}
-          data-slot={props.menu ? "model-selector-scroll" : undefined}
+          data-slot="model-selector-scroll"
           className={
             props.menu
               ? "max-h-[320px] min-h-0 overflow-y-auto px-1 pt-1 pb-2"
-              : `settings-panel settings-models pt-1 pb-4 ${view.mobile ? "max-h-[min(360px,40dvh)]" : "h-full px-4"}`
+              : `settings-panel settings-models overflow-y-auto pt-1 pb-4 ${view.mobile ? "max-h-[min(360px,40dvh)]" : "h-full px-4"}`
           }
         >
           {!options.length ? (
             <div role="status" className="settings-models-status">
               {view.language.t("dialog.model.empty")}
             </div>
-          ) : props.menu ? (
-            <div style={{ height: virtual.getTotalSize(), position: "relative" }}>
+          ) : (
+            <div className={view.mobile ? "relative mx-3" : "relative"} style={{ height: virtual.getTotalSize() }}>
               {virtual.getVirtualItems().map((virtualRow) => {
                 const entry = rows[virtualRow.index]
                 if (!entry) return null
@@ -303,6 +316,12 @@ export function ModelListView(props: {
                     key={virtualRow.key}
                     data-index={virtualRow.index}
                     ref={virtual.measureElement}
+                    onFocus={() => {
+                      if (entry.type === "model") setFocusedRow(entry.option.key)
+                    }}
+                    onBlur={(event) => {
+                      if (!event.currentTarget.contains(event.relatedTarget)) setFocusedRow(undefined)
+                    }}
                     style={{ position: "absolute", top: 0, left: 0, width: "100%", transform: `translateY(${virtualRow.start}px)` }}
                   >
                     {entry.type === "heading" ? (
@@ -321,39 +340,6 @@ export function ModelListView(props: {
                   </div>
                 )
               })}
-            </div>
-          ) : (
-            <div className="flex flex-col gap-4">
-              {sections.map((section) => (
-                <section key={section.key} className="flex flex-col gap-2" data-section={section.key}>
-                  {section.kind !== "results" && (
-                    <h3
-                      className={`m-0 flex items-center gap-2 text-eyebrow uppercase text-ink-muted ${props.menu ? "px-3" : ""}`}
-                    >
-                      {section.kind === "route" ? (
-                        <ProviderModelIcon provider={section.items[0].item.provider} className="shrink-0" />
-                      ) : (
-                        <Icon name={section.kind === "favorites" ? "star" : "reset"} size="small" />
-                      )}
-                      <span className="min-w-0 truncate">
-                        {section.kind === "favorites"
-                          ? view.language.t("dialog.model.section.favorites")
-                          : section.kind === "recent"
-                            ? view.language.t("dialog.model.section.recent")
-                            : section.category}
-                      </span>
-                    </h3>
-                  )}
-                  <div
-                    data-component={props.menu ? undefined : "settings-list"}
-                    data-variant={props.menu ? undefined : "catalog"}
-                  >
-                    {section.items.map((option) => (
-                      <div key={option.key}>{row(option)}</div>
-                    ))}
-                  </div>
-                </section>
-              ))}
             </div>
           )}
         </div>

@@ -19,7 +19,11 @@
   "exports": {
     ".": "./src/index.ts",
     "./rpc": "./src/rpc.ts",
-    "./proxy": "./src/proxy.ts"
+    "./proxy": "./src/proxy.ts",
+    "./stream-mux": "./src/stream-mux.ts",
+    "./stream-wire": "./src/stream-wire.ts",
+    "./tunnel-host": "./src/tunnel-host.ts",
+    "./websocket": "./src/websocket.ts"
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
@@ -29,11 +33,13 @@
   "dependencies": {
     "@opencode/plugin": "workspace:*",
     "@opencode/schema": "workspace:*",
-    "effect": "catalog:"
+    "effect": "catalog:",
+    "ws": "8.21.3"
   },
   "devDependencies": {
     "@tsconfig/bun": "catalog:",
     "@types/bun": "catalog:",
+    "@types/ws": "8.18.1",
     "@typescript/native-preview": "catalog:",
     "typescript": "catalog:"
   }

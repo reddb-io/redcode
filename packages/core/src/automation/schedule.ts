@@ -5,6 +5,7 @@ import { DateTime } from "effect"
 
 /** Next instant strictly after `from`; calendar occurrences retain the schedule's wall-clock zone. */
 export function next(schedule: Automation.Schedule, from: number): number | null {
+  if (schedule.type === "mcp_event") return null
   if (schedule.type === "once") return schedule.at > from ? schedule.at : null
   if (schedule.type === "interval") return from + schedule.everyMs
   const today = DateTime.toParts(DateTime.makeZonedUnsafe(from, { timeZone: schedule.timeZone }))

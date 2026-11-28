@@ -760,8 +760,11 @@ export const lowerConversation = Effect.fn("OpenResponses.lowerConversation")(fu
   const instructions = ProviderShared.joinText(request.system)
   return {
     model: request.model.id,
-    input: yield* lowerMessages(request, adapter),
-    ...(instructions ? { instructions } : {}),
+    // Put the system prompt in the prefix shared by generation and native compaction.
+    input: [
+      ...(instructions ? [{ type: "message" as const, role: "developer" as const, content: instructions }] : []),
+      ...(yield* lowerMessages(request, adapter)),
+    ],
   }
 })
 

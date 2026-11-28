@@ -4,19 +4,25 @@ import type { Context } from "@opencode/plugin/effect/plugin"
 import type { RpcRegistration } from "@opencode/plugin/effect/rpc"
 import { Agent } from "@opencode/schema/agent"
 import { ExecutionCapability } from "@opencode/schema/execution-capability"
+import type { Location } from "@opencode/schema/location"
 import type { Session } from "@opencode/schema/session"
 import { Tool } from "@opencode/schema/tool"
 import { Cause, Deferred, Duration, Effect, Exit, Option, Schema, Scope, Semaphore, Stream } from "effect"
 import { BrowserMachine } from "./machine.js"
 import { Browser } from "./rpc.js"
+import type { StreamMux } from "./stream-mux.js"
+import { BrowserTunnelHost } from "./tunnel-host.js"
 import { BrowserTunnel } from "./tunnel.js"
 
 type Attachment = {
+  readonly location: Location.Ref
   readonly connectionID: string
   readonly ready: Deferred.Deferred<void>
   readonly closed: Deferred.Deferred<"closed" | "replaced", "unavailable">
   readonly privateTargets: Set<string>
+  readonly policy: BrowserTunnel.Policy
   readonly tunnels: BrowserTunnel.Tunnels
+  stream?: StreamMux.ServerMux
 }
 
 export type Connection = Effect.Success<ReturnType<typeof make>>
@@ -24,6 +30,7 @@ export type Connection = Effect.Success<ReturnType<typeof make>>
 export const make = Effect.fn("BrowserConnection.make")(function* (
   ctx: Pick<Context, "agent" | "rpc" | "session" | "location" | "event" | "capability">,
 ) {
+  const streamHost = yield* BrowserTunnelHost.Reference
   // Other agents inherit attachment permissions. Question ignores session grants and keeps only
   // observations; its commands still require a live attachment at the connection boundary.
   yield* ctx.agent.transform((editor) =>
@@ -63,6 +70,10 @@ export const make = Effect.fn("BrowserConnection.make")(function* (
         const attachment = attachments.get(effect.attempt)
         if (!attachment) return Effect.void
         attachments.delete(effect.attempt)
+        streamHost?.revoke(attachment)
+        if (effect.outcome === "replaced")
+          attachment.stream?.close(BrowserTunnelHost.CLOSE_ATTACHMENT_REPLACED, "replaced")
+        else attachment.stream?.close()
         attachment.tunnels.dispose()
         return Deferred.done(
           attachment.closed,
@@ -74,8 +85,12 @@ export const make = Effect.fn("BrowserConnection.make")(function* (
         effect.control.type === "attached"
           ? Array.from(attachments.values()).find((item) => item.connectionID === effect.control.connectionID)
           : undefined
+      const control =
+        effect.control.type === "attached" && streamHost
+          ? { ...effect.control, capabilities: [BrowserTunnelHost.STREAM_CAPABILITY] }
+          : effect.control
       return rpc.events
-        .emit("control", effect.control)
+        .emit("control", control)
         .pipe(Effect.andThen(attachment ? Deferred.succeed(attachment.ready, undefined) : Effect.void), Effect.asVoid)
     }
     if (effect.type === "dispatch-command")
@@ -121,15 +136,17 @@ export const make = Effect.fn("BrowserConnection.make")(function* (
           }),
       }),
     )
+  const activeAttachment = (input: { sessionID: Session.ID; connectionID: string }) => {
+    const attempt = BrowserMachine.selectAttachment(machine.state, input.sessionID, input.connectionID)
+    return attempt === undefined ? undefined : attachments.get(attempt)
+  }
   const tunnels = (input: {
     sessionID: Session.ID
     connectionID: string
   }): Effect.Effect<BrowserTunnel.Tunnels, Error> => {
-    const attempt = BrowserMachine.selectAttachment(machine.state, input.sessionID, input.connectionID)
-    const attachment = attempt === undefined ? undefined : attachments.get(attempt)
-    return attachment
-      ? Effect.succeed(attachment.tunnels)
-      : Effect.fail(new Error("Browser attachment is unavailable; its network connections were closed."))
+    const attachment = activeAttachment(input)
+    if (attachment) return Effect.succeed(attachment.tunnels)
+    return Effect.fail(new Error("Browser attachment is unavailable; its network connections were closed."))
   }
   const rpc: RpcRegistration<typeof Browser.Definition> = yield* ctx.rpc
     .register(Browser.Definition, {
@@ -147,14 +164,17 @@ export const make = Effect.fn("BrowserConnection.make")(function* (
                   return Effect.fail(call.error("unavailable", "Browser is unavailable.", {}))
                 const attempt = BrowserMachine.selectNextAttempt(machine.state)
                 const privateTargets = new Set<string>()
+                const policy: BrowserTunnel.Policy = {
+                  allowPrivateTarget: (host, port) => privateTargets.has(BrowserTunnel.targetKey(host, port)),
+                }
                 const attachment: Attachment = {
+                  location: session.location,
                   connectionID: input.connectionID,
                   ready: Deferred.makeUnsafe(),
                   closed: Deferred.makeUnsafe(),
                   privateTargets,
-                  tunnels: BrowserTunnel.make({
-                    allowPrivateTarget: (host, port) => privateTargets.has(BrowserTunnel.targetKey(host, port)),
-                  }),
+                  policy,
+                  tunnels: BrowserTunnel.make(policy),
                 }
                 attachments.set(attempt, attachment)
                 return step({
@@ -221,6 +241,50 @@ export const make = Effect.fn("BrowserConnection.make")(function* (
           BrowserMachine.isAttachedConnection(machine.state, input.sessionID, input.connectionID)
             ? dispatch({ type: "request.settled", ...input })
             : Effect.fail(call.error("unavailable", "Browser is unavailable.", {})),
+        ),
+      "tunnel.ticket": (input, call) =>
+        lock.withPermit(
+          Effect.gen(function* () {
+            const attachment = activeAttachment(input)
+            if (!attachment || !streamHost)
+              return yield* Effect.fail(call.error("unavailable", "Browser stream tunnel is unavailable.", {}))
+            return yield* streamHost
+              .issue({
+                ...input,
+                owner: attachment,
+                location: attachment.location,
+                onUpgrade: (socket) =>
+                  Effect.gen(function* () {
+                    const { StreamMux } = yield* Effect.promise(() => import("./stream-mux.js"))
+                    const mux = yield* lock.withPermit(
+                      Effect.sync(() => {
+                        if (socket.readyState !== 1) return
+                        if (activeAttachment(input) !== attachment) {
+                          socket.close(BrowserTunnelHost.CLOSE_ATTACHMENT_CLOSED, "attachment closed")
+                          return
+                        }
+                        attachment.stream?.close(BrowserTunnelHost.CLOSE_ATTACHMENT_REPLACED, "replaced")
+                        const stream = StreamMux.createServerMux(socket, {
+                          connect: (target, signal) =>
+                            Effect.runPromise(BrowserTunnel.connect(target, attachment.policy), { signal }),
+                        })
+                        attachment.stream = stream
+                        return stream
+                      }),
+                    )
+                    if (!mux) return
+                    yield* Effect.promise(() => mux.closed).pipe(
+                      Effect.ensuring(
+                        Effect.sync(() => {
+                          mux.close()
+                          if (attachment.stream === mux) attachment.stream = undefined
+                        }),
+                      ),
+                    )
+                  }),
+              })
+              .pipe(Effect.mapError((error) => call.error("unavailable", error.message, {})))
+          }),
         ),
       "tunnel.open": (input, call) =>
         tunnels(input).pipe(
