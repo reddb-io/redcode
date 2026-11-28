@@ -64,15 +64,24 @@ export const layer = Layer.effect(
       // Hash the connection settings because URLs may contain credentials in their query string.
       const key = createHash("sha256")
         .update(
-          JSON.stringify([
-            input.name,
-            input.config.url,
-            input.config.codemode,
-            input.config.skills === true,
-            [input.config.timeout?.startup, input.config.timeout?.catalog, input.config.timeout?.execution],
-            input.clientInfo,
-            Object.entries(input.config.headers ?? {}).toSorted(([a], [b]) => a.localeCompare(b)),
-          ]),
+          JSON.stringify({
+            name: input.name,
+            clientInfo: [input.clientInfo?.name ?? "opencode", input.clientInfo?.version ?? "unknown"],
+            config: {
+              type: "remote",
+              url: input.config.url,
+              protocol: input.config.protocol,
+              pool: input.config.pool,
+              oauth: input.config.oauth,
+              disabled: null,
+              // Media preferences are applied by the project after a tool result is received.
+              media: null,
+              codemode: input.config.codemode !== false,
+              skills: input.config.skills === true,
+              timeout: [input.config.timeout?.startup, input.config.timeout?.catalog, input.config.timeout?.execution],
+              headers: Object.entries(input.config.headers ?? {}).toSorted(([a], [b]) => a.localeCompare(b)),
+            } satisfies Record<keyof typeof Mcp.RemoteConfig.fields, unknown>,
+          }),
         )
         .digest("hex")
       const holder: Holder = { name: input.name, elicitation: input.elicitation }

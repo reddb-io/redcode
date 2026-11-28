@@ -18,7 +18,11 @@ const retained = {
   status: "completed",
   content: [{ type: "input_text", text: "retained" }],
 }
-const output = [retained, checkpoint]
+const output = [
+  { type: "message", role: "developer", content: [{ type: "input_text", text: "echoed instructions" }] },
+  retained,
+  checkpoint,
+]
 
 testEffect(
   dynamicResponse(({ request, text, respond }) =>
@@ -32,7 +36,10 @@ testEffect(
       if (new URL(request.url).pathname.endsWith("/compact")) {
         expect(JSON.parse(text)).toEqual({
           model: "overlaid",
-          input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "hello" }] }],
+          input: [
+            { type: "message", role: "developer", content: "system instructions" },
+            { type: "message", role: "user", content: [{ type: "input_text", text: "hello" }] },
+          ],
           instructions: "request instructions",
           previous_response_id: "resp_previous",
         })
@@ -112,8 +119,7 @@ for (const model of [
         expect(new URL(request.url).pathname).toEndWith("/responses/compact")
         expect(JSON.parse(text)).toEqual({
           model: "fixture",
-          input: [item],
-          instructions: "Keep the context",
+          input: [{ type: "message", role: "developer", content: "Keep the context" }, item],
           include: ["reasoning.encrypted_content"],
         })
         return respond(JSON.stringify({ object: "response.compaction", output: [checkpoint] }))
@@ -419,8 +425,10 @@ for (const model of [
         if (new URL(request.url).pathname.endsWith("/responses/compact")) {
           expect(body).toEqual({
             model: model.id,
-            input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "original" }] }],
-            instructions: "system",
+            input: [
+              { type: "message", role: "developer", content: "system" },
+              { type: "message", role: "user", content: [{ type: "input_text", text: "original" }] },
+            ],
             include: ["reasoning.encrypted_content"],
             ...(model.id === "gpt-5.3-codex" ? { reasoning: { effort: "medium", summary: "auto" } } : {}),
           })
@@ -435,7 +443,9 @@ for (const model of [
         }
         expect(new URL(request.url).pathname.endsWith("/responses")).toBe(true)
         expect(body.input).toEqual([
-          ...output,
+          { type: "message", role: "developer", content: "system" },
+          retained,
+          checkpoint,
           { type: "message", role: "user", content: [{ type: "input_text", text: "continue" }] },
         ])
         return respond(sseEvents({ type: "response.completed", response: { id: "resp_1", output: [] } }), {
