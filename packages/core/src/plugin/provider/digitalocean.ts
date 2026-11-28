@@ -164,7 +164,7 @@ export const DigitalOceanPlugin = define({
           draft.name = router.name
           draft.family = Model.Family.make("digitalocean-inference-routers")
           draft.capabilities = { tools: true, input: ["text"], output: ["text"] }
-          draft.limit = { context: 128_000, output: 8_192 }
+          draft.limit = { context: 128_000, output: 0 }
         })
       }
     })

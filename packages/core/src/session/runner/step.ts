@@ -47,7 +47,15 @@ import { createLLMEventPublisher } from "./publish-llm-event.js"
 import { SessionRunnerRetry } from "./retry.js"
 
 export type Outcome = Data.TaggedEnum<{
-  Completed: { readonly needsContinuation: boolean; readonly guardStop?: string; readonly truncated?: boolean }
+  Completed: {
+    readonly needsContinuation: boolean
+    readonly guardStop?: string
+    readonly truncated?: {
+      readonly contextExceeded: boolean
+      readonly outputTokens?: number
+      readonly reasoningTokens?: number
+    }
+  }
   Retry: { readonly error: SessionError.Error; readonly decision: SessionRunnerRetry.Decision }
   Continue: {
     readonly error: SessionError.Error
@@ -65,7 +73,7 @@ interface Input {
   readonly assistantMessageID: SessionMessage.ID
   readonly agent: Agent.ID
   readonly model: SessionRunnerModel.Resolved
-  readonly prepared: Omit<SessionModelRequest.Prepared, "event">
+  readonly prepared: Omit<SessionModelRequest.Prepared, "event" | "outputLimitSource">
   /** Set when this attempt runs because an earlier one in the logical step scheduled a retry. */
   readonly retryAttempt?: number
   readonly retry: (
@@ -524,7 +532,15 @@ export const make = Effect.gen(function* () {
           needsContinuation:
             !guardStop && input.prepared.request.toolChoice?.type !== "none" && record.needsContinuation,
           ...(guardStop ? { guardStop } : {}),
-          ...(!guardStop && record.finish?.finish === "length" ? { truncated: true } : {}),
+          ...(!guardStop && record.finish?.finish === "length"
+            ? {
+                truncated: {
+                  contextExceeded: record.finish.rawFinish === "model_context_window_exceeded",
+                  outputTokens: record.finish.usage?.outputTokens,
+                  reasoningTokens: record.finish.usage?.reasoningTokens,
+                },
+              }
+            : {}),
         })
       }),
     )

@@ -52,8 +52,6 @@ const IMAGE_BYTES_TARGET = 15 * 1024 * 1024 // 15 MiB
 const IMAGE_REMOVED =
   "[This image was removed to reduce the request size and is no longer visible. Do not make claims about its contents from memory. If needed, retrieve it again with an available tool or ask the user to attach it again.]"
 const GENERATION_KEYS = new Set(Object.keys(GenerationOptions.fields))
-// Used when the catalog has no output limit for the model.
-const OUTPUT_TOKEN_FALLBACK = 32_000
 // A summary never needs more, and a request asking for more cannot be shrunk to fit a window the catalog overstates.
 const SUMMARY_OUTPUT_MAX = 32_000
 // Prompt text is estimated at about 4 characters per token, which can run low on dense text such as code.
@@ -71,6 +69,7 @@ export type ExecuteError =
 export interface Prepared<Event = SessionRequest> {
   readonly event: Event
   readonly request: LLMRequest
+  readonly outputLimitSource?: "catalog" | "context" | "request" | "hook"
   readonly options: StreamOptions
   readonly retry: (event: PluginHooks.Domains["session"]["retry"]) => Effect.Effect<void>
   /** Runs a tool call against the tools this request advertised. */
@@ -118,11 +117,14 @@ const outputLimit = (
   kind: "primary" | "compaction",
   inputTokens?: Input["inputTokens"],
 ) => {
-  const model = limit.output > 0 ? limit.output : OUTPUT_TOKEN_FALLBACK
-  const requested = kind === "compaction" ? Math.min(model, SUMMARY_OUTPUT_MAX) : model
-  if (inputTokens === undefined || limit.context <= 0) return requested
+  const model = limit.output > 0 ? limit.output : undefined
+  const requested = kind === "compaction" ? Math.min(model ?? SUMMARY_OUTPUT_MAX, SUMMARY_OUTPUT_MAX) : model
+  if (requested === undefined) return undefined
+  const whole = { tokens: requested, source: "catalog" } as const
+  if (inputTokens === undefined || limit.context <= 0) return whole
   const room = limit.context - inputTokens.measured - Math.ceil(inputTokens.estimated * (1 + ESTIMATE_ERROR))
-  return Math.min(requested, Math.max(OUTPUT_TOKEN_MIN, room))
+  const fitted = Math.max(OUTPUT_TOKEN_MIN, room)
+  return fitted < requested ? ({ tokens: fitted, source: "context" } as const) : whole
 }
 
 export const baseTranscript = (input: {
@@ -327,6 +329,10 @@ export const layer = Layer.effect(
       )
       // Hooks see the default output limit and may change or remove it. Titles and generate keep the provider default,
       // because their reasoning is hard to budget.
+      const limit =
+        kind === "primary" || kind === "compaction" ? outputLimit(model.limit, kind, input.inputTokens) : undefined
+      const maxTokens = limit && Math.min(limit.tokens, input.compactionMaxTokens ?? Infinity)
+      const requested = input.options?.maxTokens ?? maxTokens
       const shaped = yield* shape(
         {
           sessionID: session.id,
@@ -334,14 +340,7 @@ export const layer = Layer.effect(
           system: input.system,
           messages: input.messages,
           options: {
-            ...(kind === "primary" || kind === "compaction"
-              ? {
-                  maxTokens: Math.min(
-                    outputLimit(model.limit, kind, input.inputTokens),
-                    input.compactionMaxTokens ?? Infinity,
-                  ),
-                }
-              : {}),
+            ...(maxTokens === undefined ? {} : { maxTokens }),
             ...input.options,
           },
         },
@@ -499,6 +498,14 @@ export const layer = Layer.effect(
       return {
         event: shaped,
         request,
+        outputLimitSource:
+          generation.maxTokens === undefined
+            ? undefined
+            : generation.maxTokens !== requested
+              ? ("hook" as const)
+              : input.options?.maxTokens !== undefined
+                ? ("request" as const)
+                : limit?.source,
         options: { http, ...(webSocket ? { webSocket } : {}) },
         retry: (event: Parameters<Prepared["retry"]>[0]) =>
           hooks.trigger("session", "retry", event).pipe(Effect.asVoid),

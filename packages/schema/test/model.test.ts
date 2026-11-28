@@ -97,7 +97,7 @@ describe("Model.Info", () => {
   test("uses practical token limits for unknown models", () => {
     const model = Model.Info.default(Provider.ID.make("custom"), Model.ID.make("gpt-5.6"))
 
-    expect(model.limit).toEqual({ context: 200_000, output: 32_000 })
+    expect(model.limit).toEqual({ context: 200_000, output: 0 })
   })
 })
 

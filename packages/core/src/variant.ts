@@ -71,8 +71,8 @@ function budgets(
   spell: (tokens: number) => Overlay,
   ceiling = model.limit.output,
 ): Variants {
-  const maximum = Math.min(support.max ?? ceiling - 1, model.limit.output - 1, ceiling - 1)
-  if (maximum <= 0) return []
+  const maximum = Math.min(support.max ?? Infinity, (model.limit.output || Infinity) - 1, (ceiling || Infinity) - 1)
+  if (!Number.isFinite(maximum) || maximum <= 0) return []
   const high = Math.min(Math.max(support.min ?? 0, Math.floor((maximum + 1) / 2)), maximum)
   return [variant("high", spell(high)), variant("max", spell(maximum))]
 }
@@ -96,7 +96,7 @@ function claudeInfo(model: Model.Info) {
 }
 
 function manualThinking(model: Model.Info): Overlay | undefined {
-  const tokens = Math.min(16_000, model.limit.output - 1)
+  const tokens = Math.min(16_000, (model.limit.output || ANTHROPIC_OUTPUT_TOKEN_MAX) - 1)
   if (tokens < 1024) return
   return { settings: { thinking: { type: "enabled", budgetTokens: tokens } } }
 }

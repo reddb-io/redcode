@@ -1,6 +1,7 @@
 export * as ConfigModelReasoning from "./model-reasoning.js"
 
 import { Provider } from "../provider.js"
+import { DEFAULT_MAX_TOKENS } from "@opencode/ai/protocols/anthropic-messages"
 
 /** Provider request defaults for a model with reasoning capability. */
 export function defaults(input: {
@@ -97,7 +98,10 @@ export function defaults(input: {
   )
     return {
       settings: {
-        thinking: { type: "enabled", budgetTokens: Math.min(16_000, Math.floor(input.outputLimit / 2 - 1)) },
+        thinking: {
+          type: "enabled",
+          budgetTokens: Math.min(16_000, Math.floor((input.outputLimit || DEFAULT_MAX_TOKENS) / 2 - 1)),
+        },
       },
     }
 

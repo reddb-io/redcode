@@ -157,7 +157,7 @@ describe("OpenAI-compatible endpoints where the server runs the wizard", () => {
         const reloadedGPT = yield* loaded("gpt-4.1")
         expect(reloadedGPT.limit).toEqual(expected("gpt-4.1"))
         expect(reloadedGPT.capabilities).toEqual(knownGPT.capabilities)
-        expect((yield* loaded("nobody-knows-this-one")).limit).toEqual({ context: guess, output: 8_192 })
+        expect((yield* loaded("nobody-knows-this-one")).limit).toEqual({ context: guess, output: 0 })
       }).pipe(Effect.scoped, Effect.provide(LocationServiceMap.Service.get(ref)))
     }),
     20_000,

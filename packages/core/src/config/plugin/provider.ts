@@ -14,6 +14,7 @@ import {
   catalogLimits,
   knownLimit,
   knownModel,
+  legacyGuessedOutput,
   undescribedLimit,
   type CatalogModels,
   type CatalogLimits,
@@ -348,7 +349,7 @@ type Authored = { readonly context?: number; readonly input?: number; readonly o
 function authoredLimit(limit: Authored | undefined): Authored {
   if (!limit) return {}
   const frozen = limit.context === undescribedLimit.context
-  const guessedOutput = frozen && (limit.output === undescribedLimit.output || limit.output === limit.context)
+  const guessedOutput = frozen && (limit.output === legacyGuessedOutput || limit.output === limit.context)
   return {
     ...(limit.context === undefined || frozen ? {} : { context: limit.context }),
     ...(limit.input === undefined ? {} : { input: limit.input }),

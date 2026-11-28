@@ -2,6 +2,7 @@ export * as SessionRunnerLLM from "./llm.js"
 
 import path from "node:path"
 import { AIError, Message, ProviderErrorEvent, SystemPart } from "@opencode/ai"
+import { DEFAULT_MAX_TOKENS } from "@opencode/ai/protocols/anthropic-messages"
 import { Monitor } from "@opencode/schema/monitor"
 import { Global } from "@opencode/util/global"
 import { and, desc, eq, sql } from "drizzle-orm"
@@ -84,8 +85,17 @@ const CONTINUE_AFTER_INCOMPLETE_STREAM =
   "The previous response was interrupted. Continue from where you left off without repeating completed content."
 const CONTINUE_AFTER_OUTPUT_LIMIT =
   "The provider stopped the previous response at its output token limit; the work is not complete. Continue from the saved state without repeating reasoning or completed work. Execute the next tool now. Make small, incremental edits instead of rewriting the entire artifact in one call. Keep feedback items pending until implemented and verified."
+const CONTINUE_AFTER_CONTEXT_LIMIT =
+  "The provider stopped the previous response because its context window filled. Continue from the saved state and perform the next unfinished action in a small tool call."
 /** Output-limit stops in a row that made no tool progress before the step fails as incomplete. */
 const OUTPUT_LIMIT_STALLS = 1
+const OUTPUT_LIMIT_SOURCES = {
+  catalog: "resolved model settings",
+  context: "fitted to the remaining context",
+  request: "explicit request setting",
+  hook: "provider or plugin hook",
+  check: "internal verification budget",
+}
 /** Messages read back when judging a goal or reviewing a final response. */
 const RECENT = 60
 type DrainInput = Parameters<Interface["drain"]>[0]
@@ -1670,27 +1680,24 @@ const layer = Layer.effect(
             // Slow tools keep the prepared request alive; discard the hook's unbounded transcript copy.
             Effect.map((prepared) => ({
               request: prepared.request,
+              outputLimitSource: prepared.outputLimitSource,
               options: prepared.options,
               retry: prepared.retry,
               executeTool: prepared.executeTool,
             })),
-            Effect.map((prepared) =>
-              verifying || codeRepair?.pending
-                ? {
-                    ...prepared,
-                    request: {
-                      ...prepared.request,
-                      generation: {
-                        ...prepared.request.generation,
-                        maxTokens: Math.min(
-                          IntelligenceCodeRepair.MAX_TOKENS,
-                          prepared.request.generation?.maxTokens ?? IntelligenceCodeRepair.MAX_TOKENS,
-                        ),
-                      },
-                    },
-                  }
-                : prepared,
-            ),
+            Effect.map((prepared) => {
+              if (!verifying && !codeRepair?.pending) return prepared
+              const current = prepared.request.generation?.maxTokens
+              if (current !== undefined && current <= IntelligenceCodeRepair.MAX_TOKENS) return prepared
+              return {
+                ...prepared,
+                outputLimitSource: "check" as const,
+                request: {
+                  ...prepared.request,
+                  generation: { ...prepared.request.generation, maxTokens: IntelligenceCodeRepair.MAX_TOKENS },
+                },
+              }
+            }),
           )
         const output = prepared.request.generation?.maxTokens ?? loaded.model.limit.output
         const declared = { context: loaded.model.limit.context, input: loaded.model.limit.input }
@@ -1764,25 +1771,57 @@ const layer = Layer.effect(
                 yield* goals.save(goal, { ...goal, status: "paused", reason: outcome.guardStop }).pipe(Effect.orDie)
             }
             if (outcome.truncated) {
+              const continuation = outcome.truncated.contextExceeded
+                ? CONTINUE_AFTER_CONTEXT_LIMIT
+                : CONTINUE_AFTER_OUTPUT_LIMIT
               // A step that ran tools made progress; only repeated stops without work fail the step.
               if (outcome.needsContinuation) {
                 outputLimitStalls = 0
-                yield* bus.publish(SessionEvent.Synthetic, { sessionID, text: CONTINUE_AFTER_OUTPUT_LIMIT })
+                yield* bus.publish(SessionEvent.Synthetic, { sessionID, text: continuation })
                 // Completed tools are already durable. Advance the normal loop rather than replaying them.
                 return true
               }
-              if (outputLimitStalls >= OUTPUT_LIMIT_STALLS)
+              if (outputLimitStalls >= OUTPUT_LIMIT_STALLS) {
+                const maxTokens = prepared.request.generation?.maxTokens
+                const protocol = prepared.request.model.route.protocol
+                const source = prepared.outputLimitSource ? OUTPUT_LIMIT_SOURCES[prepared.outputLimitSource] : "request"
+                const requested =
+                  maxTokens !== undefined
+                    ? `Redcode requested up to ${maxTokens} output tokens (${source}).`
+                    : protocol === "anthropic-messages" || protocol === "alibaba-messages"
+                      ? `The Messages adapter uses its required default of ${DEFAULT_MAX_TOKENS} output tokens for this model.`
+                      : "Redcode left the output limit to the provider."
+                const reported = outcome.truncated.outputTokens
+                const reasoning = outcome.truncated.reasoningTokens
+                const usage =
+                  reported === undefined
+                    ? ""
+                    : `The provider reported ${reported} output tokens${reasoning === undefined ? "" : `, including ${reasoning} reasoning tokens`}.`
                 return yield* new StepFailedError({
                   error: {
-                    type: "provider.output-limit",
-                    message:
-                      "The model reached its output token limit again after automatic continuation without making progress. Work remains incomplete; saved edits and pending tasks were preserved. Increase the model output limit, reduce its reasoning budget or choose another model, then resume.",
+                    type: outcome.truncated.contextExceeded ? "provider.context-overflow" : "provider.output-limit",
+                    message: [
+                      outcome.truncated.contextExceeded
+                        ? "The provider reported that the model's context window filled during continuation."
+                        : "The provider stopped generation at a token limit again.",
+                      requested,
+                      usage,
+                      "Work remains incomplete. The continuation did not execute a local tool. Saved edits and pending tasks were preserved.",
+                      outcome.truncated.contextExceeded
+                        ? "Compact the conversation or choose a model with a larger context window, then resume."
+                        : "Try a lower reasoning budget or another model, then resume.",
+                    ].filter(Boolean).join(" "),
                     provider: loaded.model.ref.providerID,
                     model: loaded.model.ref.id,
                   },
                 })
+              }
               outputLimitStalls++
-              yield* bus.publish(SessionEvent.Synthetic, { sessionID, text: CONTINUE_AFTER_OUTPUT_LIMIT })
+              if (recoverOverflow && (outcome.truncated.contextExceeded || prepared.outputLimitSource === "context")) {
+                recoverOverflow = false
+                yield* compaction.compact({ reason: "overflow", context: loaded, estimate })
+              }
+              yield* bus.publish(SessionEvent.Synthetic, { sessionID, text: continuation })
               assistantMessageID = SessionMessage.ID.create()
               return
             }

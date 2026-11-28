@@ -626,7 +626,7 @@ describe("ConfigProviderPlugin.Plugin", () => {
 
       const model = required(yield* models.get(providerID, modelID))
       expect(model.capabilities).toEqual({ tools: true, input: ["text", "image"], output: ["text"] })
-      expect(model.limit).toEqual({ context: 200_000, output: 32_000 })
+      expect(model.limit).toEqual({ context: 200_000, output: 0 })
     }),
   )
 
@@ -665,7 +665,7 @@ describe("ConfigProviderPlugin.Plugin", () => {
       // A model the catalog does not know keeps its defaults off a generic endpoint.
       expect(required(yield* models.get(providerID, Model.ID.make("chat"))).limit).toEqual({
         context: 200_000,
-        output: 32_000,
+        output: 0,
       })
     }),
   )
@@ -676,7 +676,7 @@ describe("ConfigProviderPlugin.Plugin", () => {
       const modelsDev = yield* ModelsDev.Service
       const providerID = Provider.ID.make("api-example-com")
       const known = required(knownLimit(catalogLimits(yield* modelsDev.get()), "glm-5.3-flash"))
-      const frozen = { context: undescribedLimit.context, output: undescribedLimit.output }
+      const frozen = { context: undescribedLimit.context, output: 8_192 }
       yield* addPlugin([
         new Document({
           type: "document",
@@ -701,7 +701,7 @@ describe("ConfigProviderPlugin.Plugin", () => {
       ])
       const limit = (id: string) =>
         models.get(providerID, Model.ID.make(id)).pipe(Effect.map((model) => required(model).limit))
-      expect(yield* limit("nobody")).toEqual(frozen)
+      expect(yield* limit("nobody")).toEqual(undescribedLimit)
       expect(yield* limit("reported")).toEqual({ context: 64_000, output: 4_000 })
       // A guess an older version wrote is not a fact: the catalog now knows the model.
       expect(yield* limit("glm-5.3-flash")).toEqual(known)
@@ -709,10 +709,9 @@ describe("ConfigProviderPlugin.Plugin", () => {
       expect((yield* limit("mimo-v2.6-pro")).output).toBe(4_000)
       expect((yield* limit("mimo-v2.6-pro")).context).toBeGreaterThan(undescribedLimit.context)
       // A model the catalog still does not know is guessed again, not frozen.
-      expect(yield* limit("stale")).toEqual(frozen)
-      expect(yield* limit("capped")).toEqual(frozen)
-      // The default output never exceeds a declared context.
-      expect(yield* limit("wide")).toEqual({ context: 4_000, output: 4_000 })
+      expect(yield* limit("stale")).toEqual(undescribedLimit)
+      expect(yield* limit("capped")).toEqual(undescribedLimit)
+      expect(yield* limit("wide")).toEqual({ context: 4_000, output: 0 })
     }),
   )
 

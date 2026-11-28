@@ -122,10 +122,10 @@ describe("OllamaPlugin", () => {
             name: "gemma3:4b",
             family: "gemma3",
             capabilities: { tools: true, input: ["text", "image"], output: ["text"] },
-            limit: { context: 131_072, output: 32_000 },
+            limit: { context: 131_072, output: 0 },
           })
           expect(yield* modelState.get(providerID, Model.ID.make("unknown-context"))).toMatchObject({
-            limit: { context: 200_000, output: 32_000 },
+            limit: { context: 200_000, output: 0 },
           })
           expect(yield* modelState.get(providerID, Model.ID.make("nomic-embed"))).toBeUndefined()
           expect(requests).toContainEqual({ method: "GET", path: "/api/tags" })

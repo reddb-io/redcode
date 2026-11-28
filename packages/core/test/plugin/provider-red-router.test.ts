@@ -198,7 +198,7 @@ describe("RedRouterPlugin", () => {
     })
 
     test("guesses an unknown context held back by the estimate reserve", () => {
-      expect(limit({ id: "unknown/model" })).toEqual({ context: 115_200, output: 8_192 })
+      expect(limit({ id: "unknown/model" })).toEqual({ context: 115_200, output: 0 })
       expect(limit({ id: "unknown/model", context_length: 0, max_output_tokens: 1_000 })).toEqual({
         context: 115_200,
         output: 1_000,

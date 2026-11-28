@@ -76,7 +76,7 @@ describe("knownLimit", () => {
   })
 
   test("the guess for a model nobody described is the conservative 128k window", () => {
-    expect(undescribedLimit).toEqual({ context: ModelLimit.conservative(128_000), output: 8_192 })
+    expect(undescribedLimit).toEqual({ context: ModelLimit.conservative(128_000), output: 0 })
     expect(catalogLimits([]).size).toBe(0)
   })
 })

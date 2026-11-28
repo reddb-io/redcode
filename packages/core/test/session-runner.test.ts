@@ -199,7 +199,7 @@ const recoveryModel = testModel("recovery", { context: 200_000, output: 1_000 })
 const fittedOutputModel = testModel("fitted-output", { context: 100_000, output: 64_000 })
 const smallWindowModel = testModel("small-window", { context: 64_000, output: 16_000 })
 // The window an endpoint gets for a model it reports no limit for and the catalog does not list.
-const guessedModel = testModel("guessed", { context: SessionCompaction.GUESSED_WINDOW, output: 8_192 })
+const guessedModel = testModel("guessed", { context: SessionCompaction.GUESSED_WINDOW, output: 0 })
 
 test("calculates step cost using the matching context tier", () => {
   expect(
@@ -4950,6 +4950,14 @@ describe("SessionRunnerLLM", () => {
     expect(s.requests[1]?.generation?.maxTokens).toBeGreaterThan(100_000 - 50_000 - 200)
   })
 
+  scenario("leaves the output limit unset when the model does not declare one", function* (s) {
+    s.currentModel = testModel("unknown-output", { context: 200_000, output: 0 })
+    yield* s.llm.push(TestLLM.text("Completed", "text-unknown-output"))
+    yield* s.runPrompt("Continue")
+    expect(s.requests).toHaveLength(1)
+    expect(s.requests[0]?.generation?.maxTokens).toBeUndefined()
+  })
+
   scenario("gives the summary its full output limit when the conversation overshot the threshold", function* (s) {
     // The conversation overshot the threshold, so the prepared summary request exceeds the budget and `deliver`
     // shrinks it before sending. The output limit must follow the budget, not the oversized prepared request.
@@ -5011,7 +5019,7 @@ describe("SessionRunnerLLM", () => {
     expect(SessionCompaction.estimateRequest(steps[0]!)).toBeLessThan(20_000)
     for (const request of steps) {
       expect(SessionCompaction.estimateRequest(request)).toBeLessThanOrEqual(SessionCompaction.GUESSED_WINDOW)
-      expect(request.generation?.maxTokens).toBe(8_192)
+      expect(request.generation?.maxTokens).toBeUndefined()
     }
     const checkpoints = (yield* s.messages).toReversed().filter((message) => message.type === "compaction")
     expect(checkpoints.every((message) => message.status === "completed")).toBeTrue()
@@ -7129,18 +7137,36 @@ describe("SessionRunnerLLM", () => {
     yield* s.llm.push(
       ...[1, 2].map((index) =>
         TestLLM.complete(
-          { reason: { normalized: "length", raw: "max_output_tokens" } },
+          {
+            reason: { normalized: "length", raw: "max_output_tokens" },
+            usage: { outputTokens: 32_000, reasoningTokens: 29_000 },
+          },
           LLMEvent.textStart({ id: `promise-${index}` }),
           LLMEvent.textDelta({ id: `promise-${index}`, text: "Writing now" }),
           LLMEvent.textEnd({ id: `promise-${index}` }),
         ),
       ),
     )
-    expect(yield* s.runPrompt("Finish the prototype").pipe(Effect.flip)).toMatchObject({
-      error: { type: "provider.output-limit", message: expect.stringContaining("Work remains incomplete") },
-    })
+    const failure = yield* s.runPrompt("Finish the prototype").pipe(Effect.flip)
+    expect(failure).toMatchObject({ error: { type: "provider.output-limit" } })
+    expect(failure.message).toContain("Work remains incomplete")
+    expect(failure.message).toContain("Redcode requested up to 32000 output tokens (resolved model settings)")
+    expect(failure.message).toContain("including 29000 reasoning tokens")
     expect(s.requests).toHaveLength(2)
     expect(s.executions).toEqual([])
+  })
+
+  scenario("compacts and continues when the provider reports its context window filled", function* (s) {
+    yield* setupOverflowRecovery(s)
+    yield* s.llm.push(
+      TestLLM.complete({ reason: { normalized: "length", raw: "model_context_window_exceeded" } }),
+      TestLLM.text(checkpoint("Preserve the request"), "filled-context-summary"),
+      TestLLM.text("Recovered", "filled-context-recovered"),
+    )
+    yield* s.runPrompt("Continue")
+    expect(s.requests).toHaveLength(3)
+    expect(userTexts(s.requests[1]).at(-1)).toContain("## Objective")
+    expect(yield* s.context).toContainEqual(expect.objectContaining({ type: "compaction" }))
   })
 
   scenario("projects content-filter finishes as visible terminal failures", function* (s) {

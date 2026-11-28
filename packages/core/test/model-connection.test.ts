@@ -543,7 +543,7 @@ it.effect("a saved router connection resolves limits the router did not report f
       const glm = Model.ID.make("zai/glm-5.3-flash")
       const qwen = Model.ID.make("local/qwen")
       // Neither the router nor the catalog describes the model yet: the live catalog carries the guess.
-      expect((yield* models.get(providerID, glm))?.limit).toEqual({ context: 115_200, output: 8_192 })
+      expect((yield* models.get(providerID, glm))?.limit).toEqual({ context: 115_200, output: 0 })
       // The saved catalog keeps only what the router reported and names what it did not.
       expect(yield* kv.get(`${cacheKey}:resolved:format`)).toBe(2)
       expect(
@@ -557,7 +557,7 @@ it.effect("a saved router connection resolves limits the router did not report f
           ),
         )(yield* kv.get(`${cacheKey}:resolved:0`)),
       ).toEqual([
-        { id: "zai/glm-5.3-flash", limit: { context: 115_200, output: 8_192 }, unreported: ["context", "output"] },
+        { id: "zai/glm-5.3-flash", limit: { context: 115_200, output: 0 }, unreported: ["context", "output"] },
         { id: "local/qwen", limit: { context: 32_000, output: 4_000 }, unreported: [] },
       ])
       const pinned = yield* ModelResolver.bind(Model.Ref.make({ providerID, id: glm }))

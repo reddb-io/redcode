@@ -122,10 +122,10 @@ describe("VLLMPlugin", () => {
             modelID: "Qwen/Qwen3-Coder",
             name: "Qwen/Qwen3-Coder",
             capabilities: { tools: false, input: ["text"], output: ["text"] },
-            limit: { context: 65_536, output: 32_000 },
+            limit: { context: 65_536, output: 0 },
           })
           expect(yield* modelState.get(providerID, Model.ID.make("unknown-limit"))).toMatchObject({
-            limit: { context: 200_000, output: 32_000 },
+            limit: { context: 200_000, output: 0 },
           })
           expect(yield* modelState.get(providerID, Model.ID.make("foreign-model"))).toBeUndefined()
         }),

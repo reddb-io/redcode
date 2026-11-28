@@ -17,7 +17,7 @@ import { Money } from "@opencode/schema/money"
 import { Router } from "@opencode/schema/router"
 import { RemoteCheck } from "../../remote-check.js"
 import { ConnectionCheck } from "@opencode/schema/connection-check"
-import { catalogLimits, knownLimit, undescribedLimit } from "./catalog-limits.js"
+import { catalogLimits, knownLimit, legacyGuessedOutput, undescribedLimit } from "./catalog-limits.js"
 
 /**
  * What the saved catalog of a connection keeps per model. Format 1 stored catalog values and guesses as if the
@@ -633,7 +633,7 @@ function savedReported(limit: Model.Info["limit"], unreported: readonly LimitFie
  */
 function frozenGuess(limit: Model.Info["limit"]): readonly LimitField[] {
   if (limit.context !== undescribedLimit.context) return []
-  return limit.output === undescribedLimit.output ? ["context", "output"] : ["context"]
+  return limit.output === legacyGuessedOutput ? ["context", "output"] : ["context"]
 }
 
 /**

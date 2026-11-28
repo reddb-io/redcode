@@ -11,7 +11,9 @@ export type CatalogModels = ReadonlyMap<string, ModelsDev.Snapshot["models"][num
  * A guess is resolved again on every load and never written to configuration; a configuration an older version
  * froze it into is recognised by these numbers and resolved again.
  */
-export const undescribedLimit: Limit = { context: ModelLimit.conservative(128_000), output: 8_192 }
+export const undescribedLimit: Limit = { context: ModelLimit.conservative(128_000), output: 0 }
+/** Used only to recognise estimates stored by older versions. */
+export const legacyGuessedOutput = 8_192
 
 const limitsBySnapshot = new WeakMap<readonly ModelsDev.Snapshot[], CatalogLimits>()
 const modelsBySnapshot = new WeakMap<readonly ModelsDev.Snapshot[], CatalogModels>()

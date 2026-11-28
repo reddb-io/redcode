@@ -221,7 +221,7 @@ export const Info = Schema.Struct({
           cost: [],
           status: "active",
           enabled: true,
-          limit: { context: 200_000, output: 32_000 },
+          limit: { context: 200_000, output: 0 },
         }) satisfies Info,
     })),
   )

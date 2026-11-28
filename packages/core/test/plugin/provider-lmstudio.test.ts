@@ -130,14 +130,14 @@ describe("LMStudioPlugin", () => {
             family: "gemma4",
             name: "Gemma 4 26B A4B",
             capabilities: { tools: true, input: ["text", "image"], output: ["text"] },
-            limit: { context: 16_384, output: 32_000 },
+            limit: { context: 16_384, output: 0 },
           })
           expect(yield* modelState.get(providerID, Model.ID.make("deepseek-r1"))).toMatchObject({
             capabilities: { tools: false, input: ["text"], output: ["text"] },
-            limit: { context: 131_072, output: 32_000 },
+            limit: { context: 131_072, output: 0 },
           })
           expect(yield* modelState.get(providerID, Model.ID.make("unknown-context"))).toMatchObject({
-            limit: { context: 200_000, output: 32_000 },
+            limit: { context: 200_000, output: 0 },
           })
           expect(yield* modelState.get(providerID, Model.ID.make("nomic-embed"))).toBeUndefined()
         }),

@@ -155,7 +155,7 @@ describe("DigitalOceanPlugin", () => {
         package: "@opencode/ai/providers/openai-compatible",
         settings: { baseURL: "https://inference.do-ai.run/v1" },
         capabilities: { tools: true, input: ["text"], output: ["text"] },
-        limit: { context: 128_000, output: 8_192 },
+        limit: { context: 128_000, output: 0 },
       })
       expect(yield* fixture.models.get(providerID, Model.ID.make("router:configured"))).toMatchObject({
         name: "Configured router",
