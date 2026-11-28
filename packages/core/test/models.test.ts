@@ -839,6 +839,7 @@ const v2Offering = {
     "chat-completions": {
       base_url: "https://api.acme.test/chat",
       sdk: { opencodeai: "@opencode/ai/providers/openai/chat" },
+      capabilities: { tools: { updates: ["add", "remove"] } },
     },
     future: { base_url: "https://future.acme.test", sdk: { opencodeai: "unregistered-package" } },
   },
@@ -898,6 +899,10 @@ describe("ModelsDev V2", () => {
         expect(model.catalog?.apis.responses?.capabilities.reasoning).toEqual({ supported: false })
         expect(model.catalog?.apis.responses?.capabilities.system_updates).toBe(false)
         expect(model.catalog?.apis["chat-completions"]?.capabilities.system_updates).toBe(true)
+        expect(model.catalog?.apis["chat-completions"]?.capabilities.tools).toEqual({
+          supported: true,
+          updates: ["add", "remove"],
+        })
         expect(model.catalog?.apis.future?.sdk?.opencodeai).toBe("unregistered-package")
         expect(model.catalog?.modalities?.input).toEqual(v2Offering.modalities.input)
         expect(model.catalog?.pricing).toEqual(v2Offering.cost)

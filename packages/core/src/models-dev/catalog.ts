@@ -19,9 +19,14 @@ const Reasoning = Schema.StructWithRest(
   }),
   [json],
 )
-const Tools = Schema.StructWithRest(Schema.Struct({ supported: Schema.Boolean, updates: optional(Schema.Boolean) }), [
-  json,
-])
+export const toolUpdateOperations = ["add", "remove", "replace"] as const
+const Tools = Schema.StructWithRest(
+  Schema.Struct({
+    supported: Schema.Boolean,
+    updates: optional(Schema.Union([Schema.Boolean, Schema.Array(Schema.Literals(toolUpdateOperations))])),
+  }),
+  [json],
+)
 const Capabilities = Schema.StructWithRest(
   Schema.Struct({
     tools: Tools,

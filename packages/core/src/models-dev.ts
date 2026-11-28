@@ -227,6 +227,7 @@ export const layer = (options?: Options) =>
           return {
             catalog: catalog.value,
             updatedAt: cached.value.updatedAt,
+            digest: cached.value.digest,
             bodyDigest: bodyDigest(cached.value.body),
           }
         if (value !== undefined) yield* kv.remove(CACHE_KEY)
@@ -365,7 +366,7 @@ export const layer = (options?: Options) =>
           const state = yield* readState
           return {
             catalog: normalize(cached.catalog, cached.bodyDigest),
-            digest: cached.bodyDigest,
+            digest: cached.digest,
             status:
               state.source && state.digest === cached.bodyDigest
                 ? remoteStatus(state.source, state.fetchedAt ?? cached.updatedAt)

@@ -7,7 +7,8 @@ import { ModelsDevCatalog } from "../src/models-dev/catalog.js"
 const target = new URL("../src/models-dev/snapshot.txt", import.meta.url)
 const manifest = new URL("../src/models-dev/snapshot.meta.json", import.meta.url)
 const file = process.argv.find((arg) => arg.startsWith("--file="))?.slice("--file=".length)
-const verifyFile = process.argv.find((arg) => arg.startsWith("--verify-file="))?.slice("--verify-file=".length)
+const prepareMirror = process.argv.find((arg) => arg.startsWith("--prepare-mirror="))?.slice("--prepare-mirror=".length)
+const verifyFile = prepareMirror ?? process.argv.find((arg) => arg.startsWith("--verify-file="))?.slice("--verify-file=".length)
 const source = new URL(
   process.env.REDCODE_MODELS_URL || process.env.OPENCODE_MODELS_URL || "https://models.dev/experimental/v2.0/api.json",
 )
@@ -18,7 +19,7 @@ const checking = process.argv.includes("--check")
 const response =
   checking || file || verifyFile ? undefined : await fetch(source, { signal: AbortSignal.timeout(30_000) })
 if (response && !response.ok) throw new Error(`Catalog request failed: HTTP ${response.status}`)
-const text = checking
+let text = checking
   ? await Bun.file(target).text()
   : verifyFile
     ? await Bun.file(verifyFile).text()
@@ -34,6 +35,33 @@ const counts = {
 }
 if (counts.providers < 100 || counts.models < 1_000 || counts.decisionModels === 0)
   throw new Error("Refusing an incomplete snapshot: expected the full provider catalog including decision models")
+
+if (prepareMirror) {
+  // Use the original JSON so projecting this one field preserves other upstream metadata.
+  const mirror = JSON.parse(text) as typeof catalog
+  let changed = 0
+  const projectTools = (tools?: Pick<(typeof models)[number]["capabilities"]["tools"], "updates">) => {
+    const operations = tools?.updates
+    if (!tools || operations === undefined || typeof operations === "boolean") return
+    Object.assign(tools, {
+      updates: ModelsDevCatalog.toolUpdateOperations.every((operation) => operations.includes(operation)),
+      update_operations: operations,
+    })
+    changed++
+  }
+  for (const provider of Object.values(mirror)) {
+    for (const model of Object.values(provider.models)) {
+      projectTools(model.capabilities.tools)
+      for (const api of Object.values(model.api)) projectTools(api.capabilities?.tools)
+      for (const mode of Object.values(model.experimental?.modes ?? {})) projectTools(mode.capabilities?.tools)
+    }
+  }
+  if (changed > 0) {
+    text = JSON.stringify(mirror)
+    await Bun.write(prepareMirror, text)
+    console.log(`Projected ${changed} tool-update declarations for older Redcode servers and retained their operations`)
+  }
+}
 const digest = new Bun.CryptoHasher("sha256").update(text).digest("hex")
 
 if (verifyFile) {

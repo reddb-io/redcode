@@ -37,7 +37,7 @@ jobs:
           if [ "$CATALOG_SOURCE" != repository ] && curl --fail --location --retry 3 --max-time 60 \
             'https://models.dev/experimental/v2.0/api.json?type=all' \
             --output "$RUNNER_TEMP/models.json" && \
-            bun packages/core/script/update-models-snapshot.ts --verify-file="$RUNNER_TEMP/models.json"; then
+            bun packages/core/script/update-models-snapshot.ts --prepare-mirror="$RUNNER_TEMP/models.json"; then
             echo 'Using the validated models.dev API.'
           else
             echo 'The API is unavailable or invalid; generating V2 from the upstream repository.'
@@ -47,6 +47,7 @@ jobs:
               bun install --frozen-lockfile --ignore-scripts --filter @models.dev/core
               bun -e 'import { generateV2 } from "./packages/core/src/generate-v2.ts"; import path from "node:path"; const catalog = await generateV2(path.resolve("providers")); await Bun.write(process.env.RUNNER_TEMP + "/models.json", JSON.stringify(catalog));'
             )
+            bun packages/core/script/update-models-snapshot.ts --prepare-mirror="$RUNNER_TEMP/models.json"
           fi
           bun packages/core/script/update-models-snapshot.ts --verify-file="$RUNNER_TEMP/models.json"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
