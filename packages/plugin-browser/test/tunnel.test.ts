@@ -64,7 +64,7 @@ test("cancelled reads release their listener and attachment disposal closes sock
   }
 }, 15_000)
 
-test("HTTP proxy requires local credentials and resolves targets only through its transport", async () => {
+test("HTTP proxy requires local credentials and uses RPC if the binary transport is unavailable", async () => {
   const target = Bun.serve({
     hostname: "127.0.0.1",
     port: 0,
@@ -80,15 +80,22 @@ test("HTTP proxy requires local credentials and resolves targets only through it
   if (port === undefined) throw new Error("No HTTP port")
   const tunnel = BrowserTunnel.make({ allowPrivateTarget: (host) => host === "127.0.0.1" })
   const destinations: Browser.TunnelTarget[] = []
-  const proxy = await BrowserProxy.make({
-    open: (destination, signal) => {
-      destinations.push(destination)
-      return Effect.runPromise(tunnel.open({ ...destination, host: "127.0.0.1" }), { signal })
+  const attempted: Browser.TunnelTarget[] = []
+  const proxy = await BrowserProxy.make(
+    {
+      open: (destination, signal) => {
+        destinations.push(destination)
+        return Effect.runPromise(tunnel.open({ ...destination, host: "127.0.0.1" }), { signal })
+      },
+      read: (id, signal) => Effect.runPromise(tunnel.read(id), { signal }),
+      write: (id, data, end, signal) => Effect.runPromise(tunnel.write(id, data, end), { signal }),
+      close: (id) => Effect.runPromise(tunnel.close(id)),
     },
-    read: (id, signal) => Effect.runPromise(tunnel.read(id), { signal }),
-    write: (id, data, end, signal) => Effect.runPromise(tunnel.write(id, data, end), { signal }),
-    close: (id) => Effect.runPromise(tunnel.close(id)),
-  })
+    async (destination) => {
+      attempted.push(destination)
+      return undefined
+    },
+  )
   const send = (authorization?: string) =>
     new Promise<{ status?: number; body: string }>((resolve, reject) => {
       const req = request(
@@ -113,6 +120,7 @@ test("HTTP proxy requires local credentials and resolves targets only through it
   try {
     expect((await send()).status).toBe(407)
     expect(destinations).toEqual([])
+    expect(attempted).toEqual([])
     const response = await send(
       `Basic ${Buffer.from(`${proxy.credentials.username}:${proxy.credentials.password}`).toString("base64")}`,
     )
@@ -123,6 +131,7 @@ test("HTTP proxy requires local credentials and resolves targets only through it
       proxyAuthorization: null,
     })
     expect(destinations).toEqual([{ host: "vps-only.invalid", port }])
+    expect(attempted).toEqual(destinations)
   } finally {
     await proxy.close()
     tunnel.dispose()

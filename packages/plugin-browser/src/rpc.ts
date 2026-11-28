@@ -534,7 +534,12 @@ export const TunnelRead = Schema.Struct({ data: bytes, eof: Schema.Boolean })
 export type TunnelRead = typeof TunnelRead.Type
 const errors = { unavailable: Schema.Struct({}) }
 export const Control = Schema.Union([
-  Schema.Struct({ type: Schema.Literal("attached"), connectionID: Schema.String, version: Schema.Literal(4) }),
+  Schema.Struct({
+    type: Schema.Literal("attached"),
+    connectionID: Schema.String,
+    version: Schema.Literal(4),
+    capabilities: optional(Schema.Array(Schema.String)),
+  }),
   Schema.Struct({
     type: Schema.Literal("command"),
     connectionID: Schema.String,
@@ -556,6 +561,11 @@ export const Definition = Rpc.define({
     state: { input: Schema.Struct({ ...attachment, state: State }), output: Schema.Void, errors },
     command: { input: Schema.Struct(request), output: Command, errors },
     result: { input: Schema.Struct({ ...request, outcome: Outcome }), output: Schema.Void, errors },
+    "tunnel.ticket": {
+      input: Schema.Struct(attachment),
+      output: Schema.Struct({ ticket: short }),
+      errors,
+    },
     "tunnel.open": { input: Schema.Struct({ ...attachment, target: TunnelTarget }), output: short, errors },
     "tunnel.read": { input: Schema.Struct(tunnel), output: TunnelRead, errors },
     "tunnel.write": {

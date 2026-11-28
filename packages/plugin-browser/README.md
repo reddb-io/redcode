@@ -89,11 +89,17 @@ resumable file-transfer service or object store. Browsing uses the connected
 server's network: `localhost:8000` reaches that server's port 8000, while Chromium
 and page JavaScript still run on the desktop. Dev-server ports need not be public.
 
-`tunnel.open/read/write/close` relay bounded TCP chunks through the existing
-authenticated plugin RPC route. The desktop-only `/proxy` entrypoint adapts
-Chromium's HTTP/CONNECT proxy traffic, including WebSockets, to those methods.
+The desktop-only `/proxy` entrypoint relays Chromium's HTTP/CONNECT proxy
+traffic, including WebSockets. When the server advertises `tunnel.ws.v1`, one
+binary WebSocket per live attachment multiplexes TCP streams with bounded flow
+control. The desktop gets a short-lived, single-use upgrade ticket over the
+authenticated plugin RPC route. Older servers and blocked WebSocket upgrades
+use the existing bounded `tunnel.open/read/write/close` RPCs. The binary data
+path is based on [OpenCode #66217](https://github.com/anomalyco/opencode/pull/66217).
 Network bytes never go onto the global event stream. Attachment closure releases
-the sockets; failed writes are not replayed and there is no direct-network fallback.
+the sockets. After a disconnect, new streams negotiate again with a fresh ticket.
+Existing streams fail and their bytes are never replayed. Both transports use the
+connected server's network.
 The tunnel resolves each destination once, validates every returned address and
 connects to the selected numeric address. Private, loopback, link-local,
 metadata and reserved ranges are denied unless the session approved

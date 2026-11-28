@@ -1,6 +1,7 @@
 export * as ServerProcess from "./process"
 
 import { NodeHttpServer } from "@effect/platform-node"
+import { BrowserTunnelGateway } from "@opencode/core/browser-tunnel"
 import { Bus } from "@opencode/core/bus"
 import { SessionRestart } from "@opencode/core/session/execution/restart"
 import { Harnesses } from "./harness"
@@ -133,6 +134,7 @@ export const start = Effect.fn("ServerProcess.start")(function* <E, R>(
   const boot = Effect.gen(function* () {
     const routes = createRoutes({ ...options, password }, urls, [], {
       ptySockets,
+      browserTunnel: true,
       remoteAccess,
       workerConnection,
     }).pipe(Layer.provideMerge(NodeHttpServer.layerHttpServices))
@@ -254,6 +256,7 @@ function dispatch(
       (!ready ||
         (!hasPtyConnectTicketURL(url) &&
           !hasPersistentPtyConnectTicketURL(url) &&
+          !BrowserTunnelGateway.hasUpgradeTicket(request) &&
           !["/design", "/design/", "/design/new"].includes(url.pathname) &&
           !url.pathname.startsWith("/design/session/"))) &&
       !(

@@ -22,7 +22,10 @@ export type Transport = {
 export type Proxy = Awaited<ReturnType<typeof make>>
 
 // Desktop-only leaf. This listener is never loaded by the server plugin.
-export async function make(transport: Transport) {
+export async function make(
+  transport: Transport,
+  openStream?: (target: Browser.TunnelTarget, signal: AbortSignal) => Promise<Duplex | undefined>,
+) {
   const username = randomBytes(16).toString("hex")
   const password = randomBytes(32).toString("hex")
   const expected = Buffer.from(`Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`)
@@ -43,8 +46,8 @@ export async function make(transport: Transport) {
     if (signal.aborted) cancel()
     pending.add(abort)
     try {
-      const id = await transport.open(target, abort.signal)
-      const socket = new TunnelSocket(transport, id)
+      const stream = openStream ? await openStream(target, abort.signal) : undefined
+      const socket = stream ?? new TunnelSocket(transport, await transport.open(target, abort.signal))
       if (closed || abort.signal.aborted) {
         socket.destroy()
         throw new Error("Browser proxy connection was cancelled")

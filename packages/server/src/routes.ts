@@ -1,5 +1,6 @@
 import { Database } from "@opencode/core/database/database"
 import { App } from "@opencode/core/app"
+import { BrowserTunnelGateway } from "@opencode/core/browser-tunnel"
 import { LayerNode } from "@opencode/util/effect/layer-node"
 import { Node } from "@opencode/util/effect/app-node"
 import { httpClient } from "@opencode/util/effect/app-node-platform"
@@ -92,6 +93,7 @@ import path from "node:path"
 
 const applicationServiceNodes = [
   Global.node,
+  BrowserTunnelGateway.node,
   Database.node,
   Bus.node,
   EventLogger.node,
@@ -157,6 +159,7 @@ export function createRoutes(
   overrides: LayerNode.Replacements = [],
   features: {
     readonly ptySockets?: PtySockets.Interface
+    readonly browserTunnel?: boolean
     readonly remoteAccess?: RemoteAccessHost.Interface
     readonly workerConnection?: { readonly url: () => string; readonly ready: () => boolean }
   } = {},
@@ -172,6 +175,7 @@ export function createRoutes(
     features.ptySockets,
     features.remoteAccess,
     features.workerConnection,
+    features.browserTunnel,
   )
 }
 
@@ -197,8 +201,10 @@ function makeRoutes<AuthError, AuthServices>(
   ptySockets?: PtySockets.Interface,
   remoteAccess?: RemoteAccessHost.Interface,
   workerConnection?: { readonly url: () => string; readonly ready: () => boolean },
+  browserTunnel = false,
 ) {
   const standard: LayerNode.Replacements = [
+    BrowserTunnelGateway.node.replace(BrowserTunnelGateway.configured(browserTunnel)),
     Harnesses.node.replace(Harnesses.configured({ sessionDelegation: !options.access })),
     Database.node.replace(Database.configured(options.database)),
     PersistentPty.node.replace(PersistentPty.configured(options.pty)),
@@ -319,7 +325,16 @@ function makeRoutes<AuthError, AuthServices>(
           remoteAccess,
         ),
       )
+      const binaryBrowser = browserTunnel
+        ? Layer.unwrap(
+            Effect.promise(async () => {
+              const { browserTunnelRoutes } = await import("./handlers/browser-tunnel")
+              return browserTunnelRoutes(Context.get(context, BrowserTunnelGateway.Service), options)
+            }),
+          )
+        : Layer.empty
       const api = Layer.mergeAll(
+        binaryBrowser,
         HttpApiBuilder.layer(Api, { openapiPath: "/openapi.json" }).pipe(
           Layer.provide(
             handlers.pipe(
