@@ -8,6 +8,7 @@ import { HostResources } from "@opencode/schema/host-resources"
 import { Memory } from "@opencode/schema/memory"
 import { ClientPresence } from "@opencode/schema/client-presence"
 import { ModelPerformance } from "@opencode/schema/model-performance"
+import { ModelsDev } from "@opencode/schema/models-dev"
 import { ServerCapabilities } from "@opencode/schema/server-capabilities"
 import { optional } from "@opencode/schema/schema"
 
@@ -124,6 +125,21 @@ export function isPairingConnectURL(url: URL) {
 }
 
 export const ServerGroup = HttpApiGroup.make("server.server")
+  .add(
+    HttpApiEndpoint.get("server.modelCatalog", "/api/model-catalog", {
+      success: ModelsDev.CatalogStatus,
+    }).annotateMerge(
+      OpenApi.annotations({ identifier: "server.modelCatalog", summary: "Read the active server model catalog source" }),
+    ),
+  )
+  .add(
+    HttpApiEndpoint.post("server.refreshModelCatalog", "/api/model-catalog/refresh", {
+      success: ModelsDev.CatalogRefresh,
+      error: ConsoleForbiddenError,
+    }).annotateMerge(
+      OpenApi.annotations({ identifier: "server.refreshModelCatalog", summary: "Refresh the shared server model catalog" }),
+    ),
+  )
   .add(
     HttpApiEndpoint.get("server.remoteAccess", "/api/remote-access", {
       success: RemoteAccess.Status,

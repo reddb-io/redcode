@@ -5,6 +5,7 @@ import { Database } from "@opencode/core/database/database"
 import { Global } from "@opencode/util/global"
 import { Duration, Effect, RcMap } from "effect"
 import { LocationServiceMap } from "@opencode/core/location-service-map"
+import { ModelsDev } from "@opencode/core/models-dev"
 import { SessionExecution } from "@opencode/core/session/execution"
 import { HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
 import { HttpApiBuilder } from "effect/unstable/httpapi"
@@ -76,7 +77,28 @@ export const ServerHandler = HttpApiBuilder.group(Api, "server.server", (handler
         })
       })
 
+    const canRefreshCatalog = ServerAccess.Current.pipe(
+      Effect.map((principal) => !principal || principal.access.ownerRole === "admin"),
+    )
     return handlers
+      .handle("server.modelCatalog", () =>
+        Effect.gen(function* () {
+          const catalog = yield* ModelsDev.Service
+          const status = yield* catalog.status()
+          return (yield* canRefreshCatalog) ? status : { ...status, refreshEnabled: false }
+        }),
+      )
+      .handle(
+        "server.refreshModelCatalog",
+        Effect.fn(function* () {
+          if (!(yield* canRefreshCatalog))
+            return yield* new ConsoleForbiddenError({
+              message: "Infrastructure administration is required to refresh the model catalog",
+            })
+          const catalog = yield* ModelsDev.Service
+          return yield* catalog.refreshCatalog()
+        }),
+      )
       .handle("server.memory", () =>
         Effect.gen(function* () {
           const principal = yield* ServerAccess.Current

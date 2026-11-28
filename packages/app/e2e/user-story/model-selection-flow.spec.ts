@@ -105,9 +105,12 @@ test("creates a session in a new project and selects its model", async ({ page }
 
   const modelControl = page.locator('[data-action="composer-model"]')
   await expect(modelControl).toContainText("Go Model 1")
+  const unsupportedCatalog = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/model-catalog")
   await modelControl.click()
   const modelSearch = page.getByPlaceholder("Search models", { exact: true })
   await expect(modelSearch).toBeFocused()
+  expect((await unsupportedCatalog).status()).toBe(404)
+  await expect(page.getByRole("menuitem", { name: "Update server catalog" })).toHaveCount(0)
   await modelSearch.press("ArrowDown")
   await modelSearch.press("Enter")
   await expect(modelControl).toContainText("Free Model")
@@ -119,6 +122,26 @@ test("creates a session in a new project and selects its model", async ({ page }
   await modelSearch.press("Enter")
 
   await expect(modelControl).toContainText("Go Model 1")
+})
+
+test("updates the shared catalog from the model picker and shows the new source and date", async ({ page }) => {
+  const updatedAt = Date.UTC(2026, 10, 28, 12, 0)
+  const source = "https://raw.githubusercontent.com"
+  let refreshes = 0
+  await openSession(page, {
+    name: "Server catalog",
+    modelCatalog: { source: "bundled", refreshEnabled: true },
+    refreshModelCatalog: () => {
+      refreshes++
+      return { outcome: "updated", catalog: { source: "remote", origin: source, updatedAt, refreshEnabled: true } }
+    },
+  })
+  await page.locator('[data-action="composer-model"]').click()
+  await expect(page.getByText("Catalog: Bundled snapshot", { exact: true })).toBeVisible()
+  await page.getByRole("menuitem", { name: "Update server catalog", exact: true }).click()
+  await expect(page.getByText(`Catalog: ${source}`, { exact: true })).toBeVisible()
+  await expect(page.getByText(/^Last updated /)).toBeVisible()
+  expect(refreshes).toBe(1)
 })
 
 test("restores each existing session's model and variant when switching tabs", async ({ page }) => {

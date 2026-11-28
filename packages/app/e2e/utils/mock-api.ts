@@ -108,6 +108,14 @@ const Group = HttpApiGroup.make("mock")
   .add(HttpApiEndpoint.get("provider", "/api/provider", { success: Json }))
   .add(HttpApiEndpoint.get("model", "/api/model", { success: Json }))
   .add(HttpApiEndpoint.get("modelDefault", "/api/model/default", { success: Json }))
+  .add(HttpApiEndpoint.get("modelCatalog", "/api/model-catalog", {
+    success: Json,
+    error: MockNotFound.pipe(HttpApiSchema.status(404)),
+  }))
+  .add(HttpApiEndpoint.post("refreshModelCatalog", "/api/model-catalog/refresh", {
+    success: Json,
+    error: MockNotFound.pipe(HttpApiSchema.status(404)),
+  }))
   .add(HttpApiEndpoint.get("integrationList", "/api/integration", { success: Json }))
   .add(
     HttpApiEndpoint.get("integrationGet", "/api/integration/:integrationID", {

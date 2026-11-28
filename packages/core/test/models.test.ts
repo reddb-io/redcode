@@ -469,6 +469,33 @@ describe("ModelsDev Service", () => {
     }),
   )
 
+  it.live("manual refresh reports the safe source and preserves the last good catalog on failure", () =>
+    Effect.gen(function* () {
+      const cache = makeCache()
+      writeCache(cache, fixture)
+      const state = yield* Ref.make({ ...initialState, body: JSON.stringify(fixture2) })
+      const result = yield* Effect.gen(function* () {
+        const svc = yield* ModelsDev.Service
+        expect(yield* svc.status()).toMatchObject({ source: "cache", refreshEnabled: true })
+        const update = yield* svc.refreshCatalog()
+        expect(update).toEqual({
+          outcome: "updated",
+          catalog: { source: "remote", origin: "https://mirror.example", updatedAt: expect.any(Number), refreshEnabled: true },
+        })
+        expect(yield* svc.get()).toEqual(fixture2Snapshot)
+        expect((yield* svc.refreshCatalog()).outcome).toBe("unchanged")
+        const good = yield* svc.status()
+        yield* Ref.update(state, (value) => ({ ...value, body: "<html>not a catalog</html>" }))
+        return { failed: yield* svc.refreshCatalog(), good, models: yield* svc.get() }
+      }).pipe(Effect.provide(buildLayer(state, cache, {
+        fetch: true,
+        url: "https://mirror.example/private/catalog.json?key=fixture-only",
+      })))
+      expect(result.failed).toEqual({ outcome: "unavailable", catalog: result.good })
+      expect(result.models).toEqual(fixture2Snapshot)
+    }),
+  )
+
   it.live("refresh(false) skips fetch when the KV entry is fresh", () =>
     Effect.gen(function* () {
       const cache = makeCache()

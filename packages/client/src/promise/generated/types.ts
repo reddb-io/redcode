@@ -1,5 +1,12 @@
 export type JsonValue = null | boolean | number | string | Array<JsonValue> | { [key: string]: JsonValue }
 
+export type ModelsDevCatalogStatus = {
+  source: "remote" | "file" | "cache" | "bundled" | "empty"
+  origin?: string
+  updatedAt?: number
+  refreshEnabled: boolean
+}
+
 export type RemoteAccessStatus = {
   available: boolean
   state: "disabled" | "provisioning" | "connecting" | "ready" | "failed"
@@ -1398,6 +1405,11 @@ export type WorktreeReview = {
   diff: string
   truncated: boolean
   managed: boolean
+}
+
+export type ModelsDevCatalogRefresh = {
+  outcome: "updated" | "unchanged" | "unavailable" | "disabled"
+  catalog: ModelsDevCatalogStatus
 }
 
 export type ConnectionRef = { type: "credential"; id: string } | ConnectionEnvInfo
@@ -5201,6 +5213,10 @@ export type VcsInitNotSupportedError = {
 }
 export const isVcsInitNotSupportedError = (value: unknown): value is VcsInitNotSupportedError =>
   typeof value === "object" && value !== null && "_tag" in value && value["_tag"] === "VcsInitNotSupportedError"
+
+export type ServerModelCatalogOutput = ModelsDevCatalogStatus
+
+export type ServerRefreshModelCatalogOutput = ModelsDevCatalogRefresh
 
 export type ServerRemoteAccessOutput = RemoteAccessStatus
 

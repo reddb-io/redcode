@@ -1,3 +1,4 @@
+import { modelCatalogFixture } from "../fixture/models-dev"
 import { describe, expect } from "bun:test"
 import { Money } from "@opencode/schema/money"
 import { Document, Info, type Entry } from "@opencode/schema/config"
@@ -747,7 +748,7 @@ describe("ConfigProviderPlugin.Plugin", () => {
         Effect.provide(Config.testLayer(entries)),
         Effect.provideService(
           ModelsDev.Service,
-          ModelsDev.Service.of({ get: () => Effect.sync(() => catalog.data), refresh: () => Effect.void }),
+          modelCatalogFixture({ get: () => Effect.sync(() => catalog.data), refresh: () => Effect.void }),
         ),
       )
       const limit = (id: string) =>

@@ -7,6 +7,8 @@ import { ProviderModelIcon } from "@/settings/providers/provider-icon.react"
 import type { SharedLanguage } from "@/runtime/react/language"
 import type { SharedSource } from "@/runtime/react/source"
 import { ModelListView } from "./list.react"
+import { ModelCatalogStatus } from "./catalog-status.react"
+import type { ModelsDev } from "@opencode/schema/models-dev"
 import type { createModelListServices } from "./select-dialog"
 
 export function ModelTriggerButton(props: {
@@ -42,9 +44,12 @@ export function ModelPopoverView(props: {
     triggerClass: string | undefined
     chatgptPlan: boolean
     refreshing: boolean
+    catalog: ModelsDev.CatalogStatus | undefined
+    catalogBusy: boolean
   }>
   services: ReturnType<typeof createModelListServices>
   refresh: () => void
+  refreshCatalog: () => void
   connect: () => void
   manage: () => void
   close: () => void
@@ -100,9 +105,18 @@ export function ModelPopoverView(props: {
                 key: "action:refresh",
                 label: view.language.t(view.refreshing ? "dialog.model.refresh.pending" : "dialog.model.refresh"),
                 icon: "reset",
-                disabled: view.refreshing,
+                disabled: view.refreshing || view.catalogBusy,
                 run: props.refresh,
               },
+              ...(view.catalog?.refreshEnabled
+                ? [{
+                    key: "action:refresh-server-catalog",
+                    label: view.language.t(view.catalogBusy ? "dialog.model.catalog.pending" : "dialog.model.catalog.refresh"),
+                    icon: "reset",
+                    disabled: view.refreshing || view.catalogBusy,
+                    run: props.refreshCatalog,
+                  }]
+                : []),
               {
                 key: "action:connect",
                 label: view.language.t("command.provider.connect"),
@@ -117,6 +131,11 @@ export function ModelPopoverView(props: {
               },
             ]}
           />
+        )}
+        {open && view.catalog && (
+          <div className="shrink-0 border-t border-muted px-2 py-1">
+            <ModelCatalogStatus catalog={view.catalog} language={view.language} />
+          </div>
         )}
         {view.chatgptPlan && <ChatGPTPlan language={view.language} />}
       </Popover>

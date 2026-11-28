@@ -95,6 +95,7 @@ const applicationServiceNodes = [
   Database.node,
   Bus.node,
   EventLogger.node,
+  ModelsDev.node,
   httpClient,
   Job.node,
   MonitorRuntime.node,

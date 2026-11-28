@@ -31,6 +31,7 @@ import type { UsageReporter } from "@opencode/schema/usage-reporter"
 import { AgentTools } from "@opencode/schema/agent-tools"
 import { ExecutionCapability } from "@opencode/schema/execution-capability"
 import { Model } from "@opencode/schema/model"
+import type { ModelsDev } from "@opencode/schema/models-dev"
 import { Provider } from "@opencode/schema/provider"
 
 export async function mockAgentTools(page: Page, server = SERVER) {
@@ -195,6 +196,8 @@ export interface MockServerConfig {
   memory?: Resolvable<unknown>
   server?: string
   provider: Resolvable<MockProviderCatalog>
+  modelCatalog?: Resolvable<ModelsDev.CatalogStatus>
+  refreshModelCatalog?: () => ModelsDev.CatalogRefresh
   integrations?: unknown[]
   intelligence?: Resolvable<IntelligenceStatus>
   intelligenceHistory?: Resolvable<IntelligenceEvaluation[]>
@@ -1075,6 +1078,14 @@ function mockHandlers(
         model: () => Effect.succeed({ location: location(config), data: currentModels(resolve(config.provider)) }),
         modelDefault: () =>
           Effect.succeed({ location: location(config), data: currentDefaultModel(resolve(config.provider)) }),
+        modelCatalog: () =>
+          config.modelCatalog
+            ? Effect.sync(() => resolve(config.modelCatalog!))
+            : Effect.fail(new MockNotFound({ message: "The server does not expose a model catalog" })),
+        refreshModelCatalog: () =>
+          config.refreshModelCatalog
+            ? Effect.sync(config.refreshModelCatalog)
+            : Effect.fail(new MockNotFound({ message: "The server does not refresh its model catalog" })),
         integrationList: () => Effect.succeed({ location: location(config), data: config.integrations ?? [] }),
         integrationGet: (ctx) =>
           Effect.succeed({

@@ -1,4 +1,6 @@
 import type {
+  ServerModelCatalogOutput,
+  ServerRefreshModelCatalogOutput,
   ServerRemoteAccessOutput,
   ServerConfigureRemoteAccessInput,
   ServerConfigureRemoteAccessOutput,
@@ -821,6 +823,28 @@ export function make(options: ClientOptions) {
 
   return {
     server: {
+      modelCatalog: (requestOptions?: RequestOptions) =>
+        request<ServerModelCatalogOutput>(
+          {
+            method: "GET",
+            path: `/api/model-catalog`,
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403, 409],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      refreshModelCatalog: (requestOptions?: RequestOptions) =>
+        request<ServerRefreshModelCatalogOutput>(
+          {
+            method: "POST",
+            path: `/api/model-catalog/refresh`,
+            successStatus: 200,
+            declaredStatuses: [400, 401, 403, 409],
+            empty: false,
+          },
+          requestOptions,
+        ),
       remoteAccess: (requestOptions?: RequestOptions) =>
         request<ServerRemoteAccessOutput>(
           {

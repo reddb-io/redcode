@@ -17,6 +17,30 @@ export default Runtime.handler(
       baseUrl: server.endpoint.url,
       headers: Service.headers(server.endpoint),
     })
+    if (input.refresh || input.catalogStatus) {
+      const result = input.refresh
+        ? yield* Effect.tryPromise({
+            try: (signal) => client.server.refreshModelCatalog({ signal }),
+            catch: (cause) => cause,
+          })
+        : undefined
+      const catalog =
+        result?.catalog ??
+        (yield* Effect.tryPromise({
+          try: (signal) => client.server.modelCatalog({ signal }),
+          catch: (cause) => cause,
+        }))
+      process.stdout.write(
+        [
+          `Source: ${catalog.origin ?? catalog.source}`,
+          `Last successful update: ${catalog.updatedAt === undefined ? "unavailable" : new Date(catalog.updatedAt).toISOString()}`,
+          ...(result ? [`Refresh: ${result.outcome}`] : []),
+        ].join(EOL) + EOL,
+      )
+      if (result?.outcome === "unavailable") return yield* Effect.fail(new Error("No catalog source returned a valid catalog. The existing catalog was kept."))
+      if (result?.outcome === "disabled") return yield* Effect.fail(new Error("Catalog refresh is disabled on this server."))
+      return
+    }
     const response = yield* Effect.promise(() => client.model.list({ location: { directory: process.cwd() } }))
     const models = response.data
       .map((model) => `${model.providerID}/${model.id}`)

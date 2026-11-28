@@ -8,6 +8,61 @@ import { it } from "../../core/test/lib/effect"
 import { startServer } from "./fixture/server"
 import { ServerFetch } from "../src/fetch"
 
+it.live("serves catalog status and refresh over the authenticated server API", () =>
+  Effect.gen(function* () {
+    const tmp = yield* Effect.acquireDisposable(Effect.promise(() => tmpdir("redcode-model-catalog-")))
+    const file = path.join(tmp.path, "models.json")
+    const write = (id: string) =>
+      Effect.promise(() => fs.writeFile(file, JSON.stringify({
+        openai: {
+          id: "openai",
+          name: "OpenAI",
+          env: ["OPENAI_API_KEY"],
+          models: {
+            [id]: {
+              id,
+              name: id,
+              type: "chat",
+              release_date: "2026-01-01",
+              modalities: { input: ["text"], output: ["text"] },
+              capabilities: { tools: { supported: true }, reasoning: { supported: false }, temperature: true },
+              limit: { context: 100_000, output: 8_000 },
+              api: {
+                "chat-completions": {
+                  base_url: "https://example.test/v1",
+                  sdk: { opencodeai: "@opencode/ai/providers/openai-compatible" },
+                },
+              },
+            },
+          },
+        },
+      })))
+    yield* write("fixture-old")
+    const handler = yield* ServerFetch.make({
+      password: "fixture-secret",
+      models: { file, fetch: false, snapshot: false },
+      config: { project: false, global: false },
+      database: { path: ":memory:" },
+      fs: { filewatcher: false },
+    })
+    const headers = { authorization: `Basic ${btoa("opencode:fixture-secret")}` }
+    const url = "http://opencode.local/api/model-catalog"
+    const unauthorized = yield* Effect.promise(() => handler(new Request(`${url}/refresh`, { method: "POST" })))
+    expect(unauthorized.status).toBe(401)
+    const status = yield* Effect.promise(() => handler(new Request(url, { headers })))
+    expect(status.status).toBe(200)
+    expect(yield* Effect.promise(() => status.json())).toEqual({
+      source: "file", updatedAt: expect.any(Number), refreshEnabled: true,
+    })
+    yield* write("fixture-new")
+    const refreshed = yield* Effect.promise(() => handler(new Request(`${url}/refresh`, { method: "POST", headers })))
+    expect(refreshed.status).toBe(200)
+    expect(yield* Effect.promise(() => refreshed.json())).toMatchObject({
+      outcome: "updated", catalog: { source: "file", refreshEnabled: true },
+    })
+  }),
+)
+
 it.live("lists models without blocking on plugin initialization", () =>
   Effect.gen(function* () {
     const tmp = yield* Effect.acquireDisposable(Effect.promise(() => tmpdir("opencode-model-endpoint-")))

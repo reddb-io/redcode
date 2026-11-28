@@ -1,3 +1,4 @@
+import { modelCatalogFixture } from "./fixture/models-dev"
 import { expect, test } from "bun:test"
 import { LLM } from "@opencode/ai"
 import { Config } from "@opencode/core/config"
@@ -109,7 +110,7 @@ const replaceableCatalog = Effect.fn(function* (initial: readonly ModelsDev.Snap
   const bus = yield* Bus.Service
   const state = { value: initial }
   return {
-    service: ModelsDev.Service.of({ get: () => Effect.sync(() => state.value), refresh: () => Effect.void }),
+    service: modelCatalogFixture({ get: () => Effect.sync(() => state.value), refresh: () => Effect.void }),
     replace: (next: readonly ModelsDev.Snapshot[]) =>
       Effect.suspend(() => {
         state.value = next

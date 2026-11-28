@@ -5,7 +5,7 @@ import { sharedLanguage } from "@/runtime/react/language"
 import { ModelDrawerBody } from "./drawer.react"
 import { ModelSelectionDialog } from "./select-dialog.react"
 import { useNativeDialog } from "@/runtime/react/dialog"
-import { Component, createMemo, JSX, Show, Suspense, lazy } from "solid-js"
+import { Component, createMemo, JSX, Show, Suspense, lazy, onCleanup, onMount } from "solid-js"
 import { createStore } from "solid-js/store"
 import { createMediaQuery } from "@solid-primitives/media"
 
@@ -20,6 +20,7 @@ import { showToast } from "@/shell/notifications/toast"
 import { useWorkspaceLocation } from "@/workspaces/location"
 import type { ModelOptionBase } from "./sections"
 import { ModelPresentation } from "@opencode/schema/model-presentation"
+import type { ModelsDev } from "@opencode/schema/models-dev"
 import { Router } from "@opencode/schema/router"
 import "@/settings/settings.css"
 import "./select-dialog.css"
@@ -313,7 +314,50 @@ function createModelSelectorController(input: {
   const location = useWorkspaceLocation()
   const language = useLanguage()
   const words = useModelWords()
-  const [state, setState] = createStore({ refreshing: false })
+  const [state, setState] = createStore<{
+    refreshing: boolean
+    catalogBusy: boolean
+    catalog?: ModelsDev.CatalogStatus
+  }>({ refreshing: false, catalogBusy: false })
+  const lifetime = new AbortController()
+  onCleanup(() => lifetime.abort())
+  const loadCatalog = async () => {
+    if (state.catalogBusy) return
+    const result = await sdk.api.server.modelCatalog({ signal: lifetime.signal }).catch(() => undefined)
+    if (result && !lifetime.signal.aborted && !state.catalogBusy) setState("catalog", result)
+  }
+  const syncModels = async (ref: ReturnType<typeof location>["ref"]) => {
+    data.location.integration.invalidate(ref)
+    data.location.provider.invalidate(ref)
+    data.location.model.invalidate(ref)
+    await Promise.all([
+      data.location.integration.sync(ref),
+      data.location.provider.sync(ref),
+      data.location.model.sync(ref),
+    ])
+  }
+  const refreshCatalog = async () => {
+    if (!state.catalog?.refreshEnabled || state.catalogBusy || state.refreshing) return
+    setState("catalogBusy", true)
+    const ref = location().ref
+    try {
+      const result = await sdk.api.server.refreshModelCatalog({ signal: lifetime.signal })
+      if (lifetime.signal.aborted) return
+      setState("catalog", result.catalog)
+      if (result.outcome === "updated" || result.outcome === "unchanged") {
+        await syncModels(ref)
+        if (!lifetime.signal.aborted)
+          showToast({ variant: "success", title: language.t(`dialog.model.catalog.${result.outcome}`) })
+      } else {
+        showToast({ title: language.t("common.requestFailed"), description: language.t(`dialog.model.catalog.${result.outcome}`) })
+      }
+    } catch (error) {
+      if (!lifetime.signal.aborted)
+        showToast({ title: language.t("common.requestFailed"), description: formatServerError(error, language.t) })
+    } finally {
+      setState("catalogBusy", false)
+    }
+  }
 
   const all = () => model.list().filter((item) => (input.provider() ? item.provider.id === input.provider() : true))
   const infos = createMemo(
@@ -356,7 +400,7 @@ function createModelSelectorController(input: {
 
   // Account catalogs can update without rebuilding every service in the Location.
   const refresh = async () => {
-    if (state.refreshing) return
+    if (state.refreshing || state.catalogBusy) return
     setState("refreshing", true)
     const ref = location().ref
     const catalogs = [...providers().values()].filter(
@@ -368,14 +412,7 @@ function createModelSelectorController(input: {
             catalogs.map((provider) => sdk.api.provider.refresh({ providerID: provider.id, location: ref })),
           )
         : (await sdk.api.location.reload(), [])
-      data.location.integration.invalidate(ref)
-      data.location.provider.invalidate(ref)
-      data.location.model.invalidate(ref)
-      await Promise.all([
-        data.location.integration.sync(ref),
-        data.location.provider.sync(ref),
-        data.location.model.sync(ref),
-      ])
+      await syncModels(ref)
       const failed = results.find((result) => result.status === "rejected")
       if (failed?.status === "rejected") throw failed.reason
     })()
@@ -396,6 +433,10 @@ function createModelSelectorController(input: {
     favorite,
     toggleFavorite: (option: ModelOption) => models.favorite.toggle(option.value),
     refreshing: () => state.refreshing,
+    catalog: () => state.catalog,
+    catalogBusy: () => state.catalogBusy,
+    loadCatalog,
+    refreshCatalog,
     refresh,
     current: () => {
       const value = model.current()
@@ -434,6 +475,8 @@ export function ModelSelectorPopoverView(props: {
     triggerClass: props.triggerClass,
     chatgptPlan: props.chatgptPlan ?? false,
     refreshing: props.controller.refreshing(),
+    catalog: props.controller.catalog(),
+    catalogBusy: props.controller.catalogBusy(),
   }))
   return (
     <ReactView
@@ -442,10 +485,14 @@ export function ModelSelectorPopoverView(props: {
         source,
         services,
         refresh: () => void props.controller.refresh(),
+        refreshCatalog: () => void props.controller.refreshCatalog(),
         connect: props.onConnect,
         manage: props.onManage,
         close: props.onClose,
-        onOpenChange: (open) => setState("open", open),
+        onOpenChange: (open) => {
+          setState("open", open)
+          if (open) void props.controller.loadCatalog()
+        },
       }}
     />
   )
@@ -497,6 +544,7 @@ export const DialogSelectModel: Component<{ provider?: string; model?: ModelStat
     onSelect: chosen,
   })
   const services = createModelListServices({ controller })
+  onMount(() => void controller.loadCatalog())
   const source = sharedSource(() => ({
     language: sharedLanguage(language),
     open: modal.open(),
@@ -506,6 +554,8 @@ export const DialogSelectModel: Component<{ provider?: string; model?: ModelStat
     choices: ["default", ...model.variant.list()],
     current: model.variant.current() ?? "default",
     refreshing: controller.refreshing(),
+    catalog: controller.catalog(),
+    catalogBusy: controller.catalogBusy(),
   }))
   return (
     <ReactView
@@ -515,6 +565,7 @@ export const DialogSelectModel: Component<{ provider?: string; model?: ModelStat
         services,
         close: modal.close,
         refresh: () => void controller.refresh(),
+        refreshCatalog: () => void controller.refreshCatalog(),
         connect,
         manage,
         selectVariant: (value) => {

@@ -8,6 +8,8 @@ import { DialogHeader } from "@/runtime/react/dialog-header.react"
 import type { SharedLanguage } from "@/runtime/react/language"
 import type { SharedSource } from "@/runtime/react/source"
 import { ModelListView } from "./list.react"
+import { ModelCatalogStatus } from "./catalog-status.react"
+import type { ModelsDev } from "@opencode/schema/models-dev"
 import type { createModelListServices } from "./select-dialog"
 
 export function ModelSelectionDialog(props: {
@@ -20,10 +22,13 @@ export function ModelSelectionDialog(props: {
     choices: string[]
     current: string
     refreshing: boolean
+    catalog: ModelsDev.CatalogStatus | undefined
+    catalogBusy: boolean
   }>
   services: ReturnType<typeof createModelListServices>
   close: () => void
   refresh: () => void
+  refreshCatalog: () => void
   connect: () => void
   manage: () => void
   selectVariant: (value: string) => void
@@ -41,15 +46,24 @@ export function ModelSelectionDialog(props: {
         <>
           <DialogHeader title={view.title} language={view.language} close={props.close} />
           {!view.variants && (
-            <div className="mb-4 flex flex-wrap items-center gap-2">
-              <Button variant="ghost" disabled={view.refreshing} aria-busy={view.refreshing} onClick={props.refresh}>
-                <Icon name="reset" />
-                {view.language.t(view.refreshing ? "dialog.model.refresh.pending" : "dialog.model.refresh")}
-              </Button>
-              <Button variant="secondary" onClick={props.connect}>
-                <Icon name="plus" />
-                {view.language.t("command.provider.connect")}
-              </Button>
+            <div className="mb-4 flex flex-col gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <Button variant="ghost" disabled={view.refreshing || view.catalogBusy} aria-busy={view.refreshing} onClick={props.refresh}>
+                  <Icon name="reset" />
+                  {view.language.t(view.refreshing ? "dialog.model.refresh.pending" : "dialog.model.refresh")}
+                </Button>
+                {view.catalog?.refreshEnabled && (
+                  <Button variant="ghost" disabled={view.refreshing || view.catalogBusy} aria-busy={view.catalogBusy} onClick={props.refreshCatalog}>
+                    <Icon name="reset" />
+                    {view.language.t(view.catalogBusy ? "dialog.model.catalog.pending" : "dialog.model.catalog.refresh")}
+                  </Button>
+                )}
+                <Button variant="secondary" onClick={props.connect}>
+                  <Icon name="plus" />
+                  {view.language.t("command.provider.connect")}
+                </Button>
+              </div>
+              {view.catalog && <ModelCatalogStatus catalog={view.catalog} language={view.language} />}
             </div>
           )}
         </>

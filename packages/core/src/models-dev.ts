@@ -31,6 +31,8 @@ export { Event } from "@opencode/schema/models-dev"
 export interface Interface {
   readonly get: () => Effect.Effect<readonly Snapshot[]>
   readonly refresh: (force?: boolean) => Effect.Effect<void>
+  readonly status: () => Effect.Effect<ModelsDev.CatalogStatus>
+  readonly refreshCatalog: () => Effect.Effect<ModelsDev.CatalogRefresh>
 }
 
 export const Options = Schema.Struct({
@@ -119,12 +121,14 @@ const StateJson = Schema.fromJsonString(
   Schema.Struct({
     source: Schema.optional(Schema.String),
     fetchedAt: Schema.optional(Schema.Number),
+    digest: Schema.optional(Schema.String),
     sources: Schema.Record(Schema.String, SourceState),
   }),
 )
 export type SourcesState = {
   source?: string
   fetchedAt?: number
+  digest?: string
   sources: Record<string, { failures: number; blockedUntil?: number; reason?: string }>
 }
 
@@ -138,6 +142,7 @@ export function decodeState(value: unknown, now = Date.now()): SourcesState {
   return {
     ...(decoded.value.source === undefined ? {} : { source: decoded.value.source }),
     ...(decoded.value.fetchedAt === undefined ? {} : { fetchedAt: decoded.value.fetchedAt }),
+    ...(decoded.value.digest === undefined ? {} : { digest: decoded.value.digest }),
     sources: Object.fromEntries(
       Object.entries(decoded.value.sources).map(([url, entry]) => [
         url,
@@ -154,7 +159,7 @@ export function decodeState(value: unknown, now = Date.now()): SourcesState {
 }
 
 type Outcome =
-  | { readonly ok: true; readonly text: string }
+  | { readonly ok: true; readonly text: string; readonly catalog: typeof ModelsDevCatalog.Document.Type }
   | { readonly ok: false; readonly blocked: boolean; readonly reason: string }
 
 // Bundled full provider catalog from models.dev, committed with its SHA-256 at
@@ -200,9 +205,17 @@ export const layer = (options?: Options) =>
 
       const list = sources([options?.url, ...(options?.sources ?? [])])
       const fetch = options?.fetch ?? true
+      const file = options?.file || undefined
+      const refreshEnabled = fetch || file !== undefined
       const userAgent = App.useragent(app)
       const ttl = Duration.minutes(5)
       const lock = Semaphore.makeUnsafe(1)
+      type Active = {
+        catalog: readonly Snapshot[]
+        status: ModelsDev.CatalogStatus
+        digest?: string
+      }
+      let active: Active | undefined
 
       const loadFromCache = Effect.fnUntraced(function* () {
         const value = yield* kv.get(CACHE_KEY)
@@ -214,7 +227,6 @@ export const layer = (options?: Options) =>
           return {
             catalog: catalog.value,
             updatedAt: cached.value.updatedAt,
-            digest: cached.value.digest,
             bodyDigest: bodyDigest(cached.value.body),
           }
         if (value !== undefined) yield* kv.remove(CACHE_KEY)
@@ -238,7 +250,7 @@ export const layer = (options?: Options) =>
                         Effect.map(
                           (catalog): Outcome =>
                             Object.keys(catalog).length > 0
-                              ? { ok: true, text }
+                              ? { ok: true, text, catalog }
                               : { ok: false, blocked: true, reason: "response is not a models catalog" },
                         ),
                         // A 200 that is not a catalog is a captive portal or a proxy block page.
@@ -274,12 +286,15 @@ export const layer = (options?: Options) =>
           if (outcome.ok) {
             if (previous?.blockedUntil !== undefined)
               yield* Effect.logInfo("Models catalog source reachable again", { source: url })
+            const digest = bodyDigest(outcome.text)
+            const fetchedAt = Date.now()
             yield* writeState({
               source: url,
-              fetchedAt: now,
+              fetchedAt,
+              digest,
               sources: Object.fromEntries(Object.entries(state.sources).filter(([key]) => key !== url)),
             })
-            return outcome.text
+            return { ...outcome, url, digest, fetchedAt }
           }
           if (!outcome.blocked) {
             yield* Effect.logDebug("Models catalog source failed", { source: url, reason: outcome.reason })
@@ -299,14 +314,22 @@ export const layer = (options?: Options) =>
         return undefined
       })
 
-      const loadFromFile = options?.file
-        ? fs
-            .readFileString(options.file)
-            .pipe(
-              Effect.flatMap((text) =>
-                decodeCatalog(text).pipe(Effect.map((catalog) => normalize(catalog, bodyDigest(text)))),
+      const loadFromFile = file
+        ? fs.readFileString(file).pipe(
+            Effect.flatMap((text) =>
+              decodeCatalog(text).pipe(
+                Effect.map((catalog) =>
+                  Object.keys(catalog).length
+                    ? {
+                        catalog,
+                        digest: bodyDigest(text),
+                        status: { source: "file", updatedAt: Date.now(), refreshEnabled } satisfies ModelsDev.CatalogStatus,
+                      }
+                    : undefined,
+                ),
               ),
-            )
+            ),
+          )
         : Effect.undefined
 
       // The bundled snapshot is the boot-time floor for the catalog; the
@@ -317,8 +340,8 @@ export const layer = (options?: Options) =>
       // population. The payload has outgrown some KV backends' per-value
       // limits (Durable Object SQLite caps values at 2 MB and api.json
       // passed it in Aug 2026); a boot without a cache hit just refetches.
-      const writeCache = Effect.fn("ModelsDev.writeCache")(function* (text: string, digest = bodyDigest(text)) {
-        yield* kv.set(CACHE_KEY, { updatedAt: Date.now(), digest, body: text }).pipe(
+      const writeCache = Effect.fn("ModelsDev.writeCache")(function* (text: string, digest: string, updatedAt: number) {
+        yield* kv.set(CACHE_KEY, { updatedAt, digest, body: text }).pipe(
           Effect.catchCauseIf(
             (cause) => !Cause.hasInterruptsOnly(cause),
             (cause) => Effect.logWarning("Failed to cache models.dev catalog", { cause }),
@@ -326,70 +349,92 @@ export const layer = (options?: Options) =>
         )
       })
 
-      const fetchAndWrite = Effect.fn("ModelsDev.fetchAndWrite")(function* () {
-        const text = yield* fetchChain(false)
-        // No source answered and there is no cache or bundled catalog: start empty; the refresh retries.
-        const empty: typeof ModelsDevCatalog.Document.Type = {}
-        if (text === undefined) return { catalog: empty, bodyDigest: bodyDigest("{}") }
-        const catalog = yield* decodeCatalog(text)
-        yield* writeCache(text)
-        return { catalog, bodyDigest: bodyDigest(text) }
+      const remoteStatus = (url: string, updatedAt: number): ModelsDev.CatalogStatus => ({
+        source: "remote",
+        // A configured mirror can carry credentials in its URL.
+        origin: URL.parse(url)?.origin,
+        updatedAt,
+        refreshEnabled,
       })
 
       const populate = Effect.gen(function* () {
         const fromFile = yield* loadFromFile
-        if (fromFile) return fromFile
-        const cached = options?.file ? undefined : yield* loadFromCache()
-        if (cached) return normalize(cached.catalog, cached.bodyDigest)
+        if (fromFile) return { ...fromFile, catalog: normalize(fromFile.catalog, fromFile.digest) }
+        const cached = yield* loadFromCache()
+        if (cached) {
+          const state = yield* readState
+          return {
+            catalog: normalize(cached.catalog, cached.bodyDigest),
+            digest: cached.bodyDigest,
+            status:
+              state.source && state.digest === cached.bodyDigest
+                ? remoteStatus(state.source, state.fetchedAt ?? cached.updatedAt)
+                : { source: "cache" as const, updatedAt: cached.updatedAt, refreshEnabled },
+          }
+        }
         const bundled = yield* loadSnapshot
-        if (bundled) return bundled
-        if (!fetch) return []
-        const catalog = yield* lock.withPermit(
-          Effect.gen(function* () {
-            const stored = options?.file ? undefined : yield* loadFromCache()
-            if (stored) return stored
-            return yield* fetchAndWrite()
+        if (bundled) return { catalog: bundled, status: { source: "bundled" as const, refreshEnabled } }
+        if (fetch && !file) {
+          const result = yield* fetchChain(false)
+          if (result) {
+            yield* writeCache(result.text, result.digest, result.fetchedAt)
+            return {
+              catalog: normalize(result.catalog, result.digest),
+              digest: result.digest,
+              status: remoteStatus(result.url, result.fetchedAt),
+            }
+          }
+        }
+        return { catalog: [], status: { source: "empty" as const, refreshEnabled } }
+      }).pipe(
+        Effect.tap((loaded) => Effect.sync(() => (active = loaded))),
+        Effect.withSpan("ModelsDev.populate"),
+        Effect.orDie,
+      )
+
+      const [initial, releaseInitial] = yield* Effect.cachedInvalidateWithTTL(populate, Duration.infinity)
+      const current = Effect.suspend(() => (active ? Effect.succeed(active) : initial))
+      const status = () => current.pipe(Effect.map((loaded) => loaded.status))
+      const get = () => current.pipe(Effect.map((loaded) => loaded.catalog))
+      const update = Effect.fn("ModelsDev.update")(function* (force: boolean) {
+        const before = yield* current
+        return yield* lock.withPermit(
+          Effect.gen(function* (): Effect.fn.Return<ModelsDev.CatalogRefresh> {
+            const previous = active ?? before
+            const checked = previous.status.updatedAt
+            if (previous !== before || (!force && checked !== undefined && Date.now() - checked < Duration.toMillis(ttl)))
+              return { outcome: "unchanged", catalog: previous.status }
+            const next = yield* (file ? loadFromFile.pipe(Effect.orElseSucceed(() => undefined)) : fetchChain(force))
+            if (!next) return { outcome: "unavailable", catalog: previous.status }
+            const catalog = "url" in next ? remoteStatus(next.url, next.fetchedAt) : next.status
+            if (next.digest === previous.digest) {
+              active = { ...previous, status: catalog }
+              return { outcome: "unchanged", catalog }
+            }
+            if ("url" in next) yield* writeCache(next.text, next.digest, next.fetchedAt)
+            active = { catalog: normalize(next.catalog, next.digest), digest: next.digest, status: catalog }
+            yield* releaseInitial
+            yield* bus.publish(ModelsDev.Event.Refreshed, {}, { global: true })
+            return { outcome: "updated", catalog }
           }),
         )
-        return normalize(catalog.catalog, catalog.bodyDigest)
-      }).pipe(Effect.withSpan("ModelsDev.populate"), Effect.orDie)
-
-      const [cachedGet, invalidate] = yield* Effect.cachedInvalidateWithTTL(populate, Duration.infinity)
-
-      const get = (): Effect.Effect<readonly Snapshot[]> => cachedGet
-
-      const refresh = Effect.fn("ModelsDev.refresh")(function* (force = false) {
-        yield* lock
-          .withPermit(
-            Effect.gen(function* () {
-              const stored = yield* loadFromCache()
-              if (!force && stored && Date.now() - stored.updatedAt < Duration.toMillis(ttl)) return
-              // Blocked sources are skipped until their backoff ends; a block page never replaces the cache.
-              const text = yield* fetchChain(force)
-              if (text === undefined) return
-              const digest = bodyDigest(text)
-              // models.dev rarely changes between polls; skip the cache write,
-              // invalidation, and Refreshed event for a byte-identical body so
-              // downstream provider/model update listeners stay quiet.
-              if (!force && stored?.digest === digest) return
-              yield* decodeCatalog(text)
-              yield* writeCache(text, digest)
-              yield* invalidate
-              yield* bus.publish(ModelsDev.Event.Refreshed, {}, { global: true })
-            }),
-          )
-          .pipe(
-            Effect.tapCause((cause) => Effect.logWarning("Failed to refresh the models catalog", { cause: cause })),
-            Effect.ignore,
-          )
       })
+      const refresh = (force = false) =>
+        update(force).pipe(
+          Effect.tapCause((cause) => Effect.logWarning("Failed to refresh the models catalog", { cause })),
+          Effect.ignore,
+        )
+      const refreshCatalog = () =>
+        refreshEnabled
+          ? update(true)
+          : status().pipe(Effect.map((catalog): ModelsDev.CatalogRefresh => ({ outcome: "disabled", catalog })))
 
-      if (fetch && !process.argv.includes("--get-yargs-completions")) {
+      if (fetch && !file && !process.argv.includes("--get-yargs-completions")) {
         // Schedule.spaced runs the effect once, then waits between completions.
         yield* Effect.forkScoped(refresh().pipe(Effect.repeat(Schedule.spaced(ttl)), Effect.ignore))
       }
 
-      return Service.of({ get, refresh })
+      return Service.of({ get, refresh, status, refreshCatalog })
     }),
   )
 

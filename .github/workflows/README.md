@@ -32,7 +32,7 @@ identity and version requirements; this policy does not publish anything itself.
 | File | Events |
 | --- | --- |
 | `claude-cli-contract.yml` | workflow_dispatch |
-| `models-catalog.yml` | workflow_dispatch |
+| `models-catalog.yml` | schedule, workflow_dispatch |
 | `npm-release-diagnostics.yml` | workflow_dispatch |
 | `npm-release-recovery.yml` | workflow_dispatch |
 | `quality.yml` | workflow_dispatch |

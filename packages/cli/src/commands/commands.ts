@@ -876,7 +876,11 @@ const Root = Spec.make(typeof OPENCODE_CLI_NAME === "string" ? OPENCODE_CLI_NAME
     }),
     Spec.make("models", {
       description: "List all available models",
-      params: ServerParams,
+      params: {
+        ...ServerParams,
+        refresh: Flag.boolean("refresh").pipe(Flag.withDescription("Refresh the server's public model catalog"), Flag.withDefault(false)),
+        catalogStatus: Flag.boolean("catalog-status").pipe(Flag.withDescription("Show the server's model catalog source and last successful refresh"), Flag.withDefault(false)),
+      },
     }),
     Spec.make("usage", {
       description: "Manage the local usage sidecar",

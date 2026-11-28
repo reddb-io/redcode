@@ -22,6 +22,7 @@ import { Automation } from "@opencode/schema/automation"
 import { LSP } from "@opencode/schema/lsp"
 import { Mcp } from "@opencode/schema/mcp"
 import { Model } from "@opencode/schema/model"
+import { ModelsDev } from "@opencode/schema/models-dev"
 import { Permission } from "@opencode/schema/permission"
 import { PermissionSaved } from "@opencode/schema/permission-saved"
 import { Plugin } from "@opencode/schema/plugin"
@@ -59,6 +60,7 @@ const promiseContract = compile(ClientApi, { groupNames, omitEndpoints: promiseO
 const effectContract = compile(ClientApi, { groupNames, omitEndpoints: effectOmitEndpoints })
 const effectTypeReferences = [
   ...namespaceTypes("Agent", "@opencode/schema/agent", Agent),
+  ...namespaceTypes("ModelsDev", "@opencode/schema/models-dev", ModelsDev),
   ...namespaceTypes("Attention", "@opencode/schema/attention", Attention),
   ...namespaceTypes("HostResources", "@opencode/schema/host-resources", HostResources),
   ...namespaceTypes("Command", "@opencode/schema/command", Command),

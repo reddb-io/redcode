@@ -38,6 +38,13 @@ connected server's catalog, cache and bundled snapshot. The GitHub copies are re
 and are fallback mirrors, not independent provider data. If all sources fail, the last valid cache or
 bundled snapshot remains available. Configured sources must return V2 as well. Incompatible
 caches are discarded, and an invalid explicitly configured file fails instead of switching sources.
+
+Use **Update server catalog** in the Desktop or web model picker, **Update catalog** (`Alt+R`) in the
+TUI model picker, or `redcode models --refresh` in the CLI. The picker and `redcode models --catalog-status`
+show the source and the server's last successful update. Use `--server <url>` to target a remote server
+from the CLI. A failed update keeps the active catalog, and the action can also reload an explicitly
+configured local catalog file. Provider account refreshes remain separate.
+
 There are no V1 normalizers, public V1 fallbacks or pinned compatibility aliases. Public catalog
 metadata accepts only `format: 2`. Unsupported media or decision APIs remain descriptive and do not
 become chat routes merely because the catalog names an SDK.

@@ -1,4 +1,5 @@
-import { createMemo, createSignal, onMount } from "solid-js"
+import { createMemo, createSignal, onCleanup, onMount, Show } from "solid-js"
+import { TextAttributes } from "@opentui/core"
 import { useLocal } from "../context/local"
 import { DialogSelect } from "../ui/dialog-select"
 import { useDialog } from "../ui/dialog"
@@ -10,7 +11,9 @@ import { useClient } from "../context/client"
 import { useData } from "../context/data"
 import { useToast } from "../ui/toast"
 import { useLocation } from "../context/location"
+import { useTheme } from "../context/theme"
 import { ModelPresentation } from "@opencode/schema/model-presentation"
+import type { ModelsDev } from "@opencode/schema/models-dev"
 import { Router } from "@opencode/schema/router"
 
 // Offer rows carry the flat model they belong to, so a pinned model listed elsewhere (favorites,
@@ -24,8 +27,13 @@ export function DialogModel(props: { providerID?: string }) {
   const client = useClient()
   const toast = useToast()
   const location = useLocation()
+  const theme = useTheme().surface("dialog")
   const [query, setQuery] = createSignal("")
   const [refreshing, setRefreshing] = createSignal(false)
+  const [catalogBusy, setCatalogBusy] = createSignal(false)
+  const [catalog, setCatalog] = createSignal<ModelsDev.CatalogStatus>()
+  const lifetime = new AbortController()
+  onCleanup(() => lifetime.abort())
   const favoritePriority = new Set(local.model.favorite().map(ModelPresentation.preferenceKey))
 
   const connected = useConnected()
@@ -211,7 +219,7 @@ export function DialogModel(props: { providerID?: string }) {
 
   // Refresh account inventories without rebuilding every service in the Location.
   const refresh = async () => {
-    if (refreshing()) return
+    if (refreshing() || catalogBusy()) return
     setRefreshing(true)
     toast.show({ variant: "info", message: "Refreshing models…", duration: 30000 })
     const catalogs = [...providers().values()].filter(
@@ -238,9 +246,34 @@ export function DialogModel(props: { providerID?: string }) {
       .finally(() => setRefreshing(false))
   }
 
+  const refreshCatalog = async () => {
+    if (!catalog()?.refreshEnabled || catalogBusy() || refreshing()) return
+    setCatalogBusy(true)
+    try {
+      const result = await client.api.server.refreshModelCatalog({ signal: lifetime.signal })
+      if (lifetime.signal.aborted) return
+      setCatalog(result.catalog)
+      if (result.outcome === "unavailable")
+        throw new Error("No source returned a valid catalog. The server kept its existing list.")
+      if (result.outcome === "disabled") throw new Error("Catalog refresh is disabled on this server.")
+      await data.location.sync(location.ref)
+      if (!lifetime.signal.aborted)
+        toast.show({ variant: "success", message: result.outcome === "updated" ? "Server catalog updated" : "Server catalog checked, no changes" })
+    } catch (error) {
+      if (!lifetime.signal.aborted) toast.error(error)
+    } finally {
+      setCatalogBusy(false)
+    }
+  }
+
   onMount(() => {
     dialog.setSize("xlarge")
     dialog.setCentered(true)
+    void client.api.server.modelCatalog({ signal: lifetime.signal })
+      .then((result) => {
+        if (!lifetime.signal.aborted) setCatalog(result)
+      })
+      .catch(() => undefined)
   })
 
   return (
@@ -263,8 +296,17 @@ export function DialogModel(props: { providerID?: string }) {
         {
           command: "model.dialog.refresh",
           title: refreshing() ? "Refreshing…" : "Refresh",
+          disabled: refreshing() || catalogBusy(),
           selection: "none",
           onTrigger: () => void refresh(),
+        },
+        {
+          command: "model.dialog.catalog.refresh",
+          title: catalogBusy() ? "Updating catalog…" : "Update catalog",
+          hidden: !catalog()?.refreshEnabled,
+          disabled: catalogBusy() || refreshing(),
+          selection: "none",
+          onTrigger: () => void refreshCatalog(),
         },
         {
           command: "model.dialog.favorite",
@@ -293,8 +335,35 @@ export function DialogModel(props: { providerID?: string }) {
       flat={true}
       skipFilter={true}
       title={title()}
+      titleView={
+        <box flexDirection="column" flexShrink={1}>
+          <text attributes={TextAttributes.BOLD} fg={theme.text.base} wrapMode="word">{title()}</text>
+          <Show when={catalog()}>
+            {(value) => {
+              const updatedAt = () => value().updatedAt
+              return (
+                <text fg={theme.text.muted} wrapMode="word">
+                  Catalog: {value().origin ?? catalogSource[value().source]}
+                  {" · "}
+                  <Show when={updatedAt()} fallback="No successful update recorded">
+                    {(time) => `Last updated ${new Date(time()).toLocaleString()}`}
+                  </Show>
+                </text>
+              )
+            }}
+          </Show>
+        </box>
+      }
       current={local.model.current()}
       focusCurrent={false}
     />
   )
+}
+
+const catalogSource = {
+  remote: "Remote source",
+  file: "Server file",
+  cache: "Saved cache",
+  bundled: "Bundled snapshot",
+  empty: "No catalog loaded",
 }

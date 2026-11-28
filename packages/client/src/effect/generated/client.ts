@@ -5,6 +5,8 @@ import { HttpClientError } from "effect/unstable/http"
 import { HttpApiClient } from "effect/unstable/httpapi"
 import { ClientApi } from "../../contract"
 import type {
+  ServerModelCatalogOutput,
+  ServerRefreshModelCatalogOutput,
   ServerRemoteAccessOutput,
   ServerConfigureRemoteAccessInput,
   ServerConfigureRemoteAccessOutput,
@@ -647,6 +649,14 @@ const preserveStream =
   <E, R>(stream: Stream.Stream<A, E, R>) =>
     stream
 
+const EndpointServerModelCatalog = (raw: RawClient["server.server"]) => () =>
+  preserveEffect<ServerModelCatalogOutput>()(raw["server.modelCatalog"]({}).pipe(Effect.mapError(mapClientError)))
+
+const EndpointServerRefreshModelCatalog = (raw: RawClient["server.server"]) => () =>
+  preserveEffect<ServerRefreshModelCatalogOutput>()(
+    raw["server.refreshModelCatalog"]({}).pipe(Effect.mapError(mapClientError)),
+  )
+
 const EndpointServerRemoteAccess = (raw: RawClient["server.server"]) => () =>
   preserveEffect<ServerRemoteAccessOutput>()(raw["server.remoteAccess"]({}).pipe(Effect.mapError(mapClientError)))
 
@@ -728,6 +738,8 @@ const EndpointServerConnect = (raw: RawClient["server.server"]) => (input: Serve
   )
 
 const adaptGroupServer = (raw: RawClient["server.server"]) => ({
+  modelCatalog: EndpointServerModelCatalog(raw),
+  refreshModelCatalog: EndpointServerRefreshModelCatalog(raw),
   remoteAccess: EndpointServerRemoteAccess(raw),
   configureRemoteAccess: EndpointServerConfigureRemoteAccess(raw),
   disableRemoteAccess: EndpointServerDisableRemoteAccess(raw),
