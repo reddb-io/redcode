@@ -758,9 +758,18 @@ export const lowerConversation = Effect.fn("OpenResponses.lowerConversation")(fu
   adapter: ProviderAdapter,
 ) {
   const instructions = ProviderShared.joinText(request.system)
+  const model = request.model.id.toLowerCase().split("/").at(-1) ?? ""
+  const cacheable = /^(?:gpt-6[.-]?2(?:-|$)|gpt-(?:(?:sol|astra|terra)-)?latest$)/.test(model)
+  const input = yield* lowerMessages(request, adapter)
+  if (instructions && cacheable) {
+    return {
+      model: request.model.id,
+      input: [{ type: "message" as const, role: "developer" as const, content: instructions }, ...input],
+    }
+  }
   return {
     model: request.model.id,
-    input: yield* lowerMessages(request, adapter),
+    input,
     ...(instructions ? { instructions } : {}),
   }
 })

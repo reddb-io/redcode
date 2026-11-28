@@ -72,6 +72,8 @@ type PlatformBase = {
 
   /** Observe native drag cancellation that does not reach the renderer event loop. */
   onDragCancel?(callback: () => void): () => void
+  onSystemResume?(callback: () => void): () => void
+  setTaskbarState?(state: { busy: boolean; attention: number; flash: boolean; description: string }): void
 
   /** Open a native save file dialog and write content to the selected path (desktop only) */
   saveFile?(opts: SaveFilePickerOptions, content: string): Promise<boolean>

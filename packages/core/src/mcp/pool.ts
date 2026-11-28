@@ -68,7 +68,7 @@ export const layer = Layer.effect(
             input.name,
             input.config.url,
             input.config.codemode,
-            input.config.timeout,
+            [input.config.timeout?.startup, input.config.timeout?.catalog, input.config.timeout?.execution],
             input.clientInfo,
             Object.entries(input.config.headers ?? {}).toSorted(([a], [b]) => a.localeCompare(b)),
           ]),

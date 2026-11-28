@@ -119,7 +119,7 @@ type ComposerAdapterBase = {
 export type ActiveComposerAdapter = ComposerAdapterBase & {
   kind: "active-session"
   session: () => ComposerSession
-  interrupt: () => Promise<void>
+  interrupt: (options?: { takeBack: boolean }) => Promise<void>
   setEditor: (element: HTMLDivElement) => void
 }
 

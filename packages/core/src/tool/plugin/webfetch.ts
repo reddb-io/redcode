@@ -3,7 +3,7 @@ export * as WebFetchTool from "./webfetch.js"
 import type { Context } from "@opencode/plugin/effect/plugin"
 import { ToolFailure } from "@opencode/ai"
 import { Duration, Effect, Schema } from "effect"
-import { HttpClient, type HttpClientError, HttpClientRequest, HttpClientResponse } from "effect/unstable/http"
+import { FetchHttpClient, HttpClient, type HttpClientError, HttpClientRequest, HttpClientResponse } from "effect/unstable/http"
 import { Parser } from "htmlparser2"
 import { Permission } from "../../permission.js"
 import { convertHTMLToMarkdown, MAX_MARKDOWN_BYTES } from "../html-markdown.js"
@@ -71,10 +71,43 @@ const request = (url: string, format: Format, userAgent = openCodeUserAgent) =>
 
 const assertHttpUrl = (url: URL) => {
   if (url.protocol !== "http:" && url.protocol !== "https:") throw new Error("URL must use http:// or https://")
+  if (url.username || url.password) throw new Error("URL must not contain credentials")
 }
 
-const execute = (http: HttpClient.HttpClient, url: string, format: Format, userAgent = openCodeUserAgent) =>
-  http.execute(request(url, format, userAgent)).pipe(Effect.flatMap(HttpClientResponse.filterStatusOk))
+export function approvalResources(written: string, target: URL) {
+  const origin = URL.parse(written)?.origin
+  return origin === target.origin ? [origin, `${origin}/*`] : []
+}
+
+const execute = Effect.fnUntraced(function* (
+  http: HttpClient.HttpClient,
+  target: URL,
+  format: Format,
+  approveRedirect: (target: URL) => Effect.Effect<void, Error>,
+  userAgent = openCodeUserAgent,
+) {
+  let url = target
+  for (let redirects = 0; ; redirects++) {
+    const response = yield* http.execute(request(url.href, format, userAgent)).pipe(
+      Effect.provideService(FetchHttpClient.RequestInit, { redirect: "manual" }),
+    )
+    const location = response.headers.location
+    if (!location || ![301, 302, 303, 307, 308].includes(response.status))
+      return yield* HttpClientResponse.filterStatusOk(response)
+    if (redirects >= 10) return yield* Effect.fail(new Error("Too many HTTP redirects"))
+    const next = yield* Effect.try({
+      try: () => {
+        const parsed = new URL(location, url)
+        assertHttpUrl(parsed)
+        parsed.hash = ""
+        return parsed
+      },
+      catch: (cause) => new Error("Invalid HTTP redirect URL", { cause }),
+    })
+    if (url.origin !== next.origin) yield* approveRedirect(next)
+    url = next
+  }
+})
 
 const collectBody = (response: HttpClientResponse.HttpClientResponse) =>
   collectBoundedResponseBody(
@@ -125,19 +158,27 @@ export const Plugin = {
               if ("missing" in vaulted)
                 return yield* new ToolFailure({ message: Vault.unknownReference(vaulted.missing) })
               const url = Vault.fill(requested, vaulted.values)
-              yield* Effect.try({
-                try: () => assertHttpUrl(new URL(url)),
+              const target = yield* Effect.try({
+                try: () => {
+                  const parsed = new URL(url)
+                  assertHttpUrl(parsed)
+                  return parsed
+                },
                 catch: (error) => error,
               })
 
-              yield* permission.assert({
+              const permissionSource = {
                 action: name,
-                resources: [requested],
-                save: ["*"],
-                metadata: input,
                 sessionID: context.sessionID,
                 agent: context.agent,
-                source: { type: "tool", messageID: context.messageID, id: context.id },
+                source: { type: "tool" as const, messageID: context.messageID, id: context.id },
+              }
+
+              yield* permission.assert({
+                ...permissionSource,
+                resources: [requested],
+                save: approvalResources(requested, target),
+                metadata: input,
               })
               const destination = VaultHosts.url(requested)
               yield* VaultHosts.approve({
@@ -149,8 +190,20 @@ export const Plugin = {
               })
 
               const { body, contentType } = yield* Effect.gen(function* () {
-                const response = yield* execute(http, url, input.format).pipe(
-                  Effect.catchIf(isCloudflareChallenge, () => execute(http, url, input.format, "opencode")),
+                const approveRedirect = (next: URL) =>
+                  vaulted.values.size > 0
+                    ? Effect.fail(new Error("A request using Vault values cannot redirect to another origin"))
+                    : permission.assert({
+                        ...permissionSource,
+                        resources: [next.href],
+                        save: approvalResources(next.href, next),
+                        metadata: { ...input, url: next.href },
+                      })
+                const response = yield* execute(http, target, input.format, approveRedirect).pipe(
+                  Effect.catchIf(
+                    (error) => "reason" in error && isCloudflareChallenge(error),
+                    () => execute(http, target, input.format, approveRedirect, "opencode"),
+                  ),
                 )
                 const contentType = response.headers["content-type"] || ""
                 const mime = mimeFrom(contentType)

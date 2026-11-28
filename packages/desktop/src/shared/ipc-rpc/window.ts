@@ -11,6 +11,14 @@ export const WindowGetFullscreen = Rpc.make("WindowGetFullscreen", { success: Sc
 export const WindowSetFocus = Rpc.make("WindowSetFocus")
 
 export const WindowShow = Rpc.make("WindowShow")
+export const WindowSetTaskbarState = Rpc.make("WindowSetTaskbarState", {
+  payload: {
+    busy: Schema.Boolean,
+    flash: Schema.Boolean,
+    overlay: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(4096))),
+    description: Schema.String,
+  },
+})
 
 export const WindowGetZoomFactor = Rpc.make("WindowGetZoomFactor", { success: Schema.Number })
 
@@ -42,6 +50,7 @@ export const WindowRpcs = RpcGroup.make(
   WindowGetFullscreen,
   WindowSetFocus,
   WindowShow,
+  WindowSetTaskbarState,
   WindowGetZoomFactor,
   WindowSetZoomFactor,
   WindowGetPinchZoomEnabled,

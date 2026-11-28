@@ -21,20 +21,24 @@ export function createSessionRequestModel() {
   const data = useData()
   const language = useLanguage()
   const settings = useSettings()
+  const requestSessions = createMemo(() => sessionTreeIDs(data.session.list(), params.id), undefined, {
+    equals: (before, after) => before.length === after.length && before.every((id, index) => id === after[index]),
+  })
   createEffect(() => {
     const id = params.id
 
     if (!id || serverSDK.connection.status() !== "connected") return
-    void Promise.all([data.shell.sync({ directory: sdk().directory }), data.session.permission.sync(id)]).catch(
-      () => undefined,
-    )
+    void data.shell.sync({ directory: sdk().directory }).catch(() => undefined)
   })
   createEffect(() => {
     const id = params.id
 
     if (!id || serverSDK.connection.status() !== "connected") return
     void Promise.all(
-      sessionTreeIDs(data.session.list(), id).map((sessionID) => data.session.form.sync(sessionID)),
+      requestSessions().flatMap((sessionID) => [
+        data.session.form.sync(sessionID),
+        data.session.permission.sync(sessionID),
+      ]),
     ).catch(() => undefined)
   })
 

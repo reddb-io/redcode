@@ -87,6 +87,8 @@ import { ModelPresentation } from "@opencode/schema/model-presentation"
 import { startVoiceCapture } from "../../util/voice-capture"
 import { showVoiceSettings } from "../dialog-voice"
 import { openUrl } from "@opencode/util/open"
+import { unansweredPrompt } from "@opencode/client/promise"
+import { projectedPromptInput } from "../../prompt/codec"
 
 export type PromptProps = {
   sessionID?: string
@@ -649,10 +651,26 @@ export function Prompt(props: PromptProps) {
           }, 5000)
 
           if (store.interrupt >= 2) {
-            void client.api.session.interrupt({
-              sessionID: props.sessionID,
-              resume: true,
-            })
+            const sessionID = props.sessionID
+            const empty = () => !store.prompt.text.trim() && !store.prompt.files?.length && !store.prompt.agents?.length && !store.prompt.skills?.length
+            const candidate = empty() && data.session.pending.list(sessionID).length === 0
+              ? unansweredPrompt(data.session.message.list(sessionID))
+              : undefined
+            void (async () => {
+              const result = await client.api.session.interrupt({ sessionID, resume: true })
+              if (!result.interrupted || !candidate) return
+              await client.api.session.wait({ sessionID })
+              const page = await client.api.message.list({ sessionID, limit: 20, order: "desc" })
+              const message = unansweredPrompt(page.data.toReversed())
+              if (message?.id !== candidate.id || disposed || props.sessionID !== sessionID || !empty()) return
+              if (data.session.pending.list(sessionID).length > 0) return
+              await client.api.session.revert.stage({ sessionID, messageID: message.id, files: false })
+              if (disposed || props.sessionID !== sessionID || !empty()) {
+                await client.api.session.revert.clear({ sessionID })
+                return
+              }
+              ref.set({ ...projectedPromptInput(message), pasted: [] })
+            })().catch(toast.error)
             setStore("interrupt", 0)
           }
           dialog.clear()

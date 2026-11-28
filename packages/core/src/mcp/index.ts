@@ -463,16 +463,16 @@ export const layer = (options?: Options) =>
 
       const watch = (name: ServerName, entry: ServerEntry, connection: McpClient.Connection) => {
         const live = whenLive(name, entry, connection)
-        connection.onClose((reason) =>
+        connection.onClose((reason, needsAuth) =>
           live(
             Effect.gen(function* () {
               if (entry.connectedAt !== undefined && (yield* Clock.currentTimeMillis) - entry.connectedAt >= 60_000)
                 entry.recoveryAttempts = 0
-              entry.retryable = true
-              entry.status = { status: "failed", error: reason }
+              entry.retryable = !needsAuth
+              entry.status = { status: needsAuth ? "needs_auth" : "failed", error: reason }
               yield* stopServer(name, entry)
               yield* bus.publish(McpEvent.StatusChanged, { server: name })
-              yield* scheduleRecovery(name, entry)
+              if (!needsAuth) yield* scheduleRecovery(name, entry)
             }),
           ),
         )

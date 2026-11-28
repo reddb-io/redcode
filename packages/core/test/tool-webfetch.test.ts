@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { Duration, Effect, Fiber, Layer, Schema } from "effect"
+import { Deferred, Duration, Effect, Fiber, Layer, Schema } from "effect"
 import * as TestClock from "effect/testing/TestClock"
 import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/unstable/http"
 import { AppNodeBuilder } from "@opencode/core/effect/app-node-builder"
@@ -436,7 +436,13 @@ describe("WebFetchTool registration", () => {
         metadata: { contentType: "text/plain" },
       })
       expect(assertions).toMatchObject([
-        { sessionID, action: "webfetch", resources: [url], save: ["*"], metadata: { url, format: "text", timeout: 4 } },
+        {
+          sessionID,
+          action: "webfetch",
+          resources: [url],
+          save: ["http://example.com", "http://example.com/*"],
+          metadata: { url, format: "text", timeout: 4 },
+        },
       ])
       expect(requests).toMatchObject([
         {
@@ -463,7 +469,7 @@ describe("WebFetchTool registration", () => {
         content: [{ type: "text", text: "hello" }],
       })
       expect(assertions).toMatchObject([
-        { sessionID, action: "webfetch", resources: [url], save: ["*"], metadata: { url, format: "text" } },
+        { sessionID, action: "webfetch", resources: [url], save: ["http://localhost", "http://localhost/*"] },
       ])
       expect(requests.map((request) => request.url)).toEqual([url])
     }),
@@ -484,11 +490,35 @@ describe("WebFetchTool registration", () => {
           sessionID,
           action: "webfetch",
           resources: ["https://Example.com/page"],
-          save: ["*"],
+          save: ["https://example.com", "https://example.com/*"],
           metadata: { url, format: "text" },
         },
       ])
       expect(requests[0]?.url).not.toContain("#top")
+    }),
+  )
+
+  it.effect("uses separate persisted permission scopes for different redirect origins", () =>
+    Effect.gen(function* () {
+      reset()
+      const registry = yield* Tool.Service
+      const source = "https://example.test/docs"
+      const target = "https://docs.example.test/page"
+      respond = (request) =>
+        Effect.succeed(
+          request.url === source
+            ? new Response(null, { status: 302, headers: { location: target } })
+            : new Response("redirected", { headers: { "content-type": "text/plain" } }),
+        )
+      expect(yield* executeTool(registry, call({ url: source, format: "text" }))).toMatchObject({ status: "completed" })
+      expect(assertions).toMatchObject([
+        { action: "webfetch", resources: [source], save: ["https://example.test", "https://example.test/*"] },
+        {
+          action: "webfetch",
+          resources: [target],
+          save: ["https://docs.example.test", "https://docs.example.test/*"],
+        },
+      ])
     }),
   )
 
@@ -522,7 +552,7 @@ describe("WebFetchTool registration", () => {
             content: [{ type: "text", text: "redirected" }],
           })
           expect(assertions).toMatchObject([
-            { sessionID, action: "webfetch", resources: [url], save: ["*"], metadata: { url, format: "text" } },
+            { sessionID, action: "webfetch", resources: [url], save: [server.url.origin, `${server.url.origin}/*`] },
           ])
           expect(received).toEqual(
             Array.from({ length: 2 }, () => ({
@@ -684,14 +714,14 @@ describe("WebFetchTool registration", () => {
   it.effect("times out stalled requests", () =>
     Effect.gen(function* () {
       reset()
-      respond = () => Effect.never
+      const started = yield* Deferred.make<void>()
+      respond = () => Deferred.succeed(started, undefined).pipe(Effect.andThen(Effect.never))
       const registry = yield* Tool.Service
       const fiber = yield* executeTool(
         registry,
         call({ url: "https://1.1.1.1/slow", format: "text", timeout: 1 }),
       ).pipe(Effect.forkChild)
-      // Let registration and request setup install the timeout before advancing the test clock.
-      yield* Effect.yieldNow
+      yield* Deferred.await(started)
       yield* TestClock.adjust(Duration.seconds(1))
 
       expect(yield* Fiber.join(fiber)).toEqual({

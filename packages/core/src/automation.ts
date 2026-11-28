@@ -197,9 +197,9 @@ export const make = Effect.gen(function* () {
           : {
               status: "failed" as const,
               // An unknown failure may have happened after the durable admission boundary.
-              // Keep it terminal so restart recovery never repeats a possibly delivered prompt.
+              // Keep this run terminal. Later scheduled runs have their own admission receipts.
               delivery: "uncertain" as const,
-              pause: true,
+              pause: false,
               error: Cause.prettyErrors(decision.cause)
                 .map((error) => error.message || error.name)
                 .join("\n")

@@ -2,6 +2,7 @@ import type { OpenCode } from "./client.js"
 
 export * from "./generated/index.js"
 export { OpenCode } from "./client.js"
+export { unansweredPrompt } from "./unanswered-prompt.js"
 export { Harness } from "@opencode/schema/harness"
 export { AgentTools } from "@opencode/schema/agent-tools"
 export { UsageReporter } from "@opencode/schema/usage-reporter"

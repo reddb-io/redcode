@@ -1,4 +1,4 @@
-import { BrowserWindow, systemPreferences } from "electron"
+import { BrowserWindow, nativeImage, systemPreferences } from "electron"
 import { Effect } from "effect"
 import { WindowRpcs } from "../../shared/ipc-rpc"
 import { IpcPortHandoff } from "../ipc-transport"
@@ -32,6 +32,17 @@ export const windowHandlers = WindowRpcs.toLayer(
         Effect.sync(() => BrowserWindow.fromWebContents(sender(handoff, context))?.focus()),
       WindowShow: (_args, context) =>
         Effect.sync(() => BrowserWindow.fromWebContents(sender(handoff, context))?.show()),
+      WindowSetTaskbarState: ({ busy, flash, overlay, description }, context) =>
+        Effect.sync(() => {
+          const win = BrowserWindow.fromWebContents(sender(handoff, context))
+          if (!win || process.platform !== "win32") return
+          const icon = overlay?.startsWith("data:image/png;base64,") ? nativeImage.createFromDataURL(overlay) : null
+          win.setOverlayIcon(icon, description)
+          if (icon) win.setProgressBar(1, { mode: "paused" })
+          else win.setProgressBar(busy ? 2 : -1)
+          if (!icon || win.isFocused()) win.flashFrame(false)
+          else if (flash) win.flashFrame(true)
+        }),
       WindowGetZoomFactor: (_args, context) => Effect.sync(() => sender(handoff, context).getZoomFactor()),
       WindowSetZoomFactor: ({ factor }, context) =>
         Effect.sync(() => {

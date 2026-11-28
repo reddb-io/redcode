@@ -286,7 +286,7 @@ export function createComposerSubmit(input: ComposerSubmitInput) {
         return Promise.resolve()
       }
 
-      return input.adapter.kind === "active-session" ? input.adapter.interrupt() : Promise.resolve()
+      return input.adapter.kind === "active-session" ? input.adapter.interrupt({ takeBack: true }) : Promise.resolve()
     },
   }
 }

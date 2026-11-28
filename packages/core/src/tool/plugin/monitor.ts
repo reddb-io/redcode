@@ -14,6 +14,7 @@ import { Permission } from "../../permission.js"
 import { SafeRegex } from "../../safe-regex.js"
 import { Session } from "../../session.js"
 import type { Tool } from "../../tool.js"
+import { WebFetchTool } from "./webfetch.js"
 
 export const name = "monitor"
 export const ALWAYS_ASK_MS = 600_000
@@ -65,7 +66,7 @@ export const Plugin = {
           yield* permission.assert({
             action: "webfetch",
             resources: [probe.url],
-            ...(force ? { force } : { save: ["*"] }),
+            ...(force ? { force } : { save: WebFetchTool.approvalResources(probe.url, new URL(probe.url)) }),
             metadata: { ...metadata, url: probe.url, headers: Object.keys(probe.headers ?? {}) },
             sessionID: context.sessionID,
             agent: context.agent,
