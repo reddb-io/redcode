@@ -45,8 +45,10 @@ const http = Layer.succeed(
   ),
 )
 let reply: Permission.Decision = "once"
+let deniedRedirect: string | undefined
 const permission = permissionLayer({
   assert: (input) => Effect.sync(() => assertions.push(input)),
+  evaluate: ({ resources }) => Effect.succeed(deniedRedirect && resources.includes(deniedRedirect) ? "deny" : "ask"),
   // A vault host prompt; only a call under a vault binding asks it.
   decide: (input) => Effect.sync(() => assertions.push(input)).pipe(Effect.map(() => reply)),
 })
@@ -65,6 +67,7 @@ const reset = () => {
   requests.length = 0
   assertions.length = 0
   reply = "once"
+  deniedRedirect = undefined
   respond = () => Effect.succeed(new Response("hello", { headers: { "content-type": "text/plain" } }))
 }
 
@@ -519,6 +522,18 @@ describe("WebFetchTool registration", () => {
           save: ["https://docs.example.test", "https://docs.example.test/*"],
         },
       ])
+    }),
+  )
+
+  it.effect("does not follow a same-origin redirect to a denied resource", () =>
+    Effect.gen(function* () {
+      reset()
+      const registry = yield* Tool.Service
+      const source = "https://example.test/docs"
+      deniedRedirect = "https://example.test/internal"
+      respond = () => Effect.succeed(new Response(null, { status: 302, headers: { location: "/internal" } }))
+      expect(yield* executeTool(registry, call({ url: source, format: "text" }))).toMatchObject({ status: "error" })
+      expect(requests.map((request) => request.url)).toEqual([source])
     }),
   )
 

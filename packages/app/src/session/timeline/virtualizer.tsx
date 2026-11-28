@@ -193,8 +193,6 @@ export function createTimelineVirtualizer(input: Input) {
   let reportOffset: ((offset: number, scrolling: boolean) => void) | undefined
   let reportRect: ((rect: { width: number; height: number }) => void) | undefined
   let batchingColdSizes = false
-  let batchingSizes = false
-  let pendingScroll: (() => void) | undefined
 
   const virtualizer = createVirtualizer<HTMLDivElement, HTMLDivElement>({
     get count() {
@@ -272,13 +270,10 @@ export function createTimelineVirtualizer(input: Input) {
       if (!active()) return
 
       if (batchingColdSizes && input.pinned()) return
-      const write = () => {
-        setRendering("scrollAdjustment", 0)
-        if (virtualContent) virtualContent.style.height = `${instance.getTotalSize()}px`
-        elementScroll(offset, options, instance)
-      }
-      if (batchingSizes) pendingScroll = write
-      else write()
+      setRendering("scrollAdjustment", 0)
+
+      if (virtualContent) virtualContent.style.height = `${instance.getTotalSize()}px`
+      elementScroll(offset, options, instance)
     },
     get getItemKey() {
       return getItemKey()
@@ -333,7 +328,6 @@ export function createTimelineVirtualizer(input: Input) {
       // The hidden pinned mount needs one bottom write after the whole batch,
       // not a layout-forcing scroll adjustment for every measured row.
       batchingColdSizes = coldPending && input.pinned()
-      batchingSizes = true
       batch(() => {
         sizes.forEach(([index, value]) => {
           const row = rows()[index]
@@ -351,11 +345,7 @@ export function createTimelineVirtualizer(input: Input) {
           if (root) reportOffset?.(root.scrollTop, virtualizer.isScrolling)
         })
       })
-      batchingSizes = false
       batchingColdSizes = false
-      const write = pendingScroll
-      pendingScroll = undefined
-      write?.()
       pinAnchor()
 
       if (coldPending) pinColdBottom()

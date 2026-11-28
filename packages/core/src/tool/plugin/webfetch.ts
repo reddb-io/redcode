@@ -83,7 +83,7 @@ const execute = Effect.fnUntraced(function* (
   http: HttpClient.HttpClient,
   target: URL,
   format: Format,
-  approveRedirect: (target: URL) => Effect.Effect<void, Error>,
+  approveRedirect: (target: URL, sameOrigin: boolean) => Effect.Effect<void, Error>,
   userAgent = openCodeUserAgent,
 ) {
   let url = target
@@ -104,7 +104,7 @@ const execute = Effect.fnUntraced(function* (
       },
       catch: (cause) => new Error("Invalid HTTP redirect URL", { cause }),
     })
-    if (url.origin !== next.origin) yield* approveRedirect(next)
+    yield* approveRedirect(next, url.origin === next.origin)
     url = next
   }
 })
@@ -190,15 +190,22 @@ export const Plugin = {
               })
 
               const { body, contentType } = yield* Effect.gen(function* () {
-                const approveRedirect = (next: URL) =>
-                  vaulted.values.size > 0
-                    ? Effect.fail(new Error("A request using Vault values cannot redirect to another origin"))
-                    : permission.assert({
-                        ...permissionSource,
-                        resources: [next.href],
-                        save: approvalResources(next.href, next),
-                        metadata: { ...input, url: next.href },
-                      })
+                const approveRedirect = Effect.fnUntraced(function* (next: URL, sameOrigin: boolean) {
+                  if (!sameOrigin && vaulted.values.size > 0)
+                    return yield* Effect.fail(new Error("A request using Vault values cannot redirect to another origin"))
+                  const vault = yield* Vault.Current
+                  const destination = vault ? yield* vault.scrub(next.href) : next.href
+                  const redirected = {
+                    ...permissionSource,
+                    resources: [destination],
+                    save: approvalResources(destination, next),
+                    metadata: { ...input, url: destination },
+                  }
+                  if (!sameOrigin) return yield* permission.assert(redirected)
+                  // One approval covers normal same-origin navigation, subject to explicit path denials.
+                  if ((yield* permission.evaluate(redirected)) === "deny")
+                    return yield* Effect.fail(new Error("The webfetch permission blocks the redirect target"))
+                })
                 const response = yield* execute(http, target, input.format, approveRedirect).pipe(
                   Effect.catchIf(
                     (error) => "reason" in error && isCloudflareChallenge(error),
