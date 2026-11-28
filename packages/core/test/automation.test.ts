@@ -172,7 +172,8 @@ test("recovers a persisted conditional verdict after the scheduler restarts", as
 
 test("invalid conditions are rejected and probe errors pause the schedule without admitting work", async () => {
   await using tmp = await tmpdir()
-  const server = Bun.serve({ port: 0, hostname: "127.0.0.1", fetch: () => new Response("not json") })
+  let status = 503
+  const server = Bun.serve({ port: 0, hostname: "127.0.0.1", fetch: () => new Response("not json", { status }) })
   try {
     await Effect.runPromise(
       Effect.gen(function* () {
@@ -199,6 +200,10 @@ test("invalid conditions are rejected and probe errors pause the schedule withou
             when: "matches",
           },
         })
+        const transient = yield* automations.run(session.id, task.id, Automation.RunID.create())
+        expect(transient).toMatchObject({ status: "failed", delivery: "none" })
+        expect((yield* automations.list(session.id))[0].enabled).toBe(true)
+        status = 200
         const run = yield* automations.run(session.id, task.id, Automation.RunID.create())
         expect(run.status).toBe("failed")
         expect(run.error).toContain("body is not JSON")

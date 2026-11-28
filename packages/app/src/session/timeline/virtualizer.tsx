@@ -802,6 +802,7 @@ export function createTimelineVirtualizer(input: Input) {
       // Its observer reads the current index and delivers any actual size change.
       onCleanup(() => {
         if (contentMeasureFrame !== undefined) cancelAnimationFrame(contentMeasureFrame)
+        if (active() && element.contains(document.activeElement)) listRoot()?.focus({ preventScroll: true })
         queueMicrotask(() => virtualizer.measureElement(null))
       })
 

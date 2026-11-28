@@ -171,6 +171,7 @@ export interface Interface extends State.Transformable<Editor> {
     readonly server: ServerName | string
     readonly uri: string
   }) => Effect.Effect<ResourceContent | undefined, Error>
+  readonly skillServer: (name: string) => Effect.Effect<{ skills: McpClient.Skills; identity: string }, Error>
 }
 
 export class Service extends Context.Service<Service, Interface>()("@opencode/MCP") {}
@@ -730,6 +731,33 @@ export const layer = (options?: Options) =>
           return Array.from(entries)
             .toSorted(([a], [b]) => a.localeCompare(b))
             .map(([name, entry]): ServerInfo => ({ name, status: entry.status, integrationID: entry.integrationID }))
+        }),
+        skillServer: Effect.fn("MCP.skillServer")(function* (name) {
+          const target = yield* requireServer(name)
+          yield* target.entry.startup.await
+          const client = target.entry.client
+          const skills = client?.skills
+          if (!skills) return yield* Effect.fail(new Error(`MCP server "${name}" does not expose enabled skills`))
+          const credential = target.entry.integrationID
+            ? (yield* credentials.list(target.entry.integrationID)).at(-1)?.id
+            : undefined
+          const identity = createHash("sha256")
+            .update(JSON.stringify([name, target.entry.config, credential]))
+            .digest("hex")
+          const guarded = <A>(effect: Effect.Effect<A, Error>) =>
+            Effect.suspend(() =>
+              entries.get(target.name)?.client === client
+                ? effect
+                : Effect.fail(new Error(`MCP server "${name}" changed. Discover the skill again.`)),
+            )
+          return {
+            identity,
+            skills: {
+              list: () => guarded(skills.list()),
+              get: (uri: string) => guarded(skills.get(uri)),
+              read: (entry: McpClient.Skill, file?: string) => guarded(skills.read(entry, file)),
+            },
+          }
         }),
         add: Effect.fn("MCP.add")(function* (server, config) {
           const name = ServerName.make(server)

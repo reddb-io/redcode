@@ -10,6 +10,25 @@ import { openSession } from "../utils/workspace"
 
 const sessionID = "ses_session_queue_regression"
 
+test("stopping before an answer restores the sent message as a draft", async ({ page }) => {
+  const message = { id: "msg_take_back", type: "user" as const, text: "Reword this request", time: { created: 1 } }
+  const staged: string[] = []
+  const { editor } = await openSession(page, {
+    name: "Interrupt draft",
+    sessions: [{ id: sessionID, title: "Interrupt draft" }],
+    pageMessages: () => ({ items: [message] }),
+    sessionStatus: { [sessionID]: { type: "running" } },
+    onRevertStage: (input) => staged.push(input.messageID),
+  })
+  await page.route(`**/api/session/${sessionID}/interrupt*`, (route) =>
+    route.fulfill({ status: 200, json: { interrupted: true } }),
+  )
+  await expect(page.getByText(message.text, { exact: true })).toBeVisible()
+  await page.locator('[data-action="composer-submit"]').click()
+  await expect(editor).toContainText(message.text)
+  expect(staged).toEqual([message.id])
+})
+
 // The session.prompt payload, as the server's endpoint validates it.
 const PromptBody = Schema.Struct({
   id: SessionMessage.ID.pipe(Schema.optional),

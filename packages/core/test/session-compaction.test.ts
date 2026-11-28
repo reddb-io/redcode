@@ -703,9 +703,10 @@ it.effect("manual compaction summarizes short context instead of no-op", () =>
 
     expect(requests).toHaveLength(1)
     expect(requests[0]?.toolChoice?.type).toBe("none")
-    expect(requests[0]?.promptCacheKey).toBe(parentID)
+    const affinity = yield* SessionModelRequest.promptCacheAffinity(parentID, resolved.ref)
+    expect(requests[0]?.promptCacheKey).toBe(affinity)
     expect(requests[0]?.http?.headers).toEqual({
-      "x-session-affinity": sessionID,
+      "x-session-affinity": affinity,
       "X-Session-Id": sessionID,
       "x-parent-session-id": parentID,
       "User-Agent": App.useragent(App.make()),
@@ -854,7 +855,7 @@ it.effect("forked session compaction reuses the fork root prompt cache key", () 
     })
 
     expect(requests).toHaveLength(1)
-    expect(requests[0]?.promptCacheKey).toBe(rootID)
+    expect(requests[0]?.promptCacheKey).toBe(yield* SessionModelRequest.promptCacheAffinity(rootID, resolved.ref))
   }),
 )
 

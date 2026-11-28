@@ -7,6 +7,8 @@ import yaml
 
 root = Path.cwd()
 metadata = []
+# The catalog mirror is a scheduled publication, separate from quality CI.
+scheduled_publications = {"models-catalog.yml"}
 for path in [root / "package.json", *root.glob("packages/*/package.json"), *root.glob("apps/*/package.json")]:
     if path.is_file():
         json.loads(path.read_text(encoding="utf-8-sig"))
@@ -27,7 +29,7 @@ for path in sorted((root / ".github/workflows").glob("*.y*ml")):
         raise SystemExit(f"{path}: expected workflow triggers")
     if path.name == "quick-checks.yml":
         continue
-    if "schedule" in events:
+    if "schedule" in events and path.name not in scheduled_publications:
         raise SystemExit(f"{path}: schedules are opt-in; use workflow_dispatch")
     if path.name in metadata:
         continue

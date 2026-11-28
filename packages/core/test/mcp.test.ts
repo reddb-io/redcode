@@ -6,9 +6,11 @@ import {
   createMcpHandler,
   inputRequired,
   inputResponse,
+  McpServer,
   Server,
   WebStandardStreamableHTTPServerTransport,
 } from "@modelcontextprotocol/server"
+import { memorySkillFiles, SkillsExtension } from "@modelcontextprotocol/server/ext/skills"
 import { Document, Event, Info } from "@opencode/schema/config"
 import { ConfigMCP } from "@opencode/schema/config/mcp"
 import { ConfigPolicy } from "@opencode/schema/config/policy"
@@ -34,6 +36,7 @@ import { McpClient } from "@opencode/core/mcp/client"
 import { McpPool } from "@opencode/core/mcp/pool"
 import { McpStdio } from "@opencode/core/mcp/stdio"
 import { Permission } from "@opencode/core/permission"
+import { PermissionSaved } from "@opencode/core/permission/saved"
 import { AbsolutePath } from "@opencode/core/schema"
 import { Session } from "@opencode/core/session"
 import { State } from "@opencode/core/state"
@@ -561,13 +564,72 @@ const events = Layer.mock(Bus.Service, {
     Effect.succeed({ id: ID.create(), type: definition.type, data } as Payload<typeof definition>),
 })
 const it = testEffect(
-  AppNodeBuilder.build(LayerNode.group([Tool.node, McpTool.node]), [
+  AppNodeBuilder.build(LayerNode.group([Tool.node, McpTool.node, Location.node, PermissionSaved.node]), [
     Location.node.replace(tempLocationLayer),
     Mcp.node.replace(mcp),
     Permission.node.replace(permissions),
+    PermissionSaved.node.replace(Layer.mock(PermissionSaved.Service, { list: () => Effect.succeed([]) })),
     Bus.node.replace(events),
     Image.node.replace(imagePassthrough),
   ]),
+)
+
+it.live("only opted-in MCP clients can discover and read verified skills", () =>
+  Effect.gen(function* () {
+    const files = { "repo-guide/SKILL.md": "---\nname: repo-guide\ndescription: Example fixture\n---\n\nOriginal instructions" }
+    const catalog = yield* Effect.promise(() => SkillsExtension.load(memorySkillFiles(files)))
+    const server = yield* Effect.acquireRelease(
+      Effect.sync(() => {
+        const handler = createMcpHandler(() => {
+          const protocol = new McpServer({ name: "skill-fixture", version: "1" })
+          catalog.attach(protocol)
+          return protocol
+        }, { legacy: "reject" })
+        const http = Bun.serve({ port: 0, fetch: (request) => handler.fetch(request) })
+        return { http, handler }
+      }),
+      ({ http, handler }) => Effect.promise(async () => { await handler.close(); await http.stop(true) }),
+    )
+    const config = { type: "remote" as const, url: server.http.url.toString(), oauth: false as const, protocol: "2026-07-28" as const }
+    const normal = yield* connect("normal", new ConfigMCP.Remote(config), import.meta.dir)
+    expect(normal.skills).toBeUndefined()
+    const optedIn = yield* connect("skills", new ConfigMCP.Remote({ ...config, skills: true }), import.meta.dir)
+    const skills = optedIn.skills!
+    expect(skills).toBeDefined()
+    const [listed] = yield* skills.list()
+    expect(listed.frontmatter.name).toBe("repo-guide")
+    const entry = yield* skills.get(listed.uri)
+    const read = yield* skills.read(entry)
+    expect(read.verified).toBe(true)
+    expect(read.body?.trim()).toBe("Original instructions")
+
+    // Code Mode should ask the user for the particular version, even with a broad policy.
+    assertion = yield* Deferred.make<Permission.AssertInput>()
+    decision = Effect.void
+    yield* Effect.gen(function* () {
+      const service = yield* Mcp.Service
+      yield* settled(service)
+      yield* registerToolPlugin(McpResourceTools.Plugin).pipe(Effect.provide(permissions))
+      const tools = yield* Tool.Service
+      const toolSet = yield* tools.snapshot()
+      const result = yield* toolSet.execute({
+        sessionID: Session.ID.make("ses_mcp_skills"),
+        ...toolIdentity,
+        call: { type: "tool-call", id: "call_skill", name: "execute", input: {
+          code: `return await tools.opencode.mcp_skill({ server: "resources", uri: ${JSON.stringify(listed.uri)} })`,
+        } },
+      })
+      expect(JSON.parse(result.output.output)).toMatchObject({ content: "\nOriginal instructions" })
+      expect(yield* Deferred.await(assertion!)).toMatchObject({
+        action: "opencode_load_mcp_skill",
+        force: true,
+        metadata: { protected: "mcp-skill", name: "repo-guide" },
+      })
+    }).pipe(Effect.provide(resourceMcpLayer(new ConfigMCP.Remote({ ...config, skills: true }))))
+
+    files["repo-guide/SKILL.md"] = files["repo-guide/SKILL.md"].replace("Original", "Changed")
+    expect(Exit.isFailure(yield* Effect.exit(skills.read(entry)))).toBe(true)
+  }),
 )
 
 describe("MCP errors", () => {

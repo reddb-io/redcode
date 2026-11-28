@@ -29,6 +29,7 @@ import {
   type Transport,
   type VersionNegotiationOptions,
 } from "@modelcontextprotocol/client"
+import type { Skill, SkillFile } from "@modelcontextprotocol/client/ext/skills"
 import { Cause, Clock, Duration, Effect, Exit, Schedule, Schema } from "effect"
 import { ConfigMCP } from "@opencode/schema/config/mcp"
 import type { Session } from "@opencode/schema/session"
@@ -75,6 +76,13 @@ export const isTransient = (error: unknown) =>
 
 export type { GetPromptResult, Prompt, ReadResourceResult, Resource, Tool }
 export type ResourceTemplate = ResourceTemplateType
+export type { Skill, SkillFile }
+
+export interface Skills {
+  list(): Effect.Effect<Skill[], Error>
+  get(uri: string): Effect.Effect<Skill, Error>
+  read(entry: Skill, file?: string): Effect.Effect<SkillFile, Error>
+}
 
 // Use the SDK's negotiated-era schema so filtering never imposes a different protocol contract.
 class ToolCheckingClient extends Client {
@@ -142,6 +150,7 @@ export interface Connection {
   readonly instructions: string | undefined
   /** The name the server gave itself in `initialize`, which tells a server apart however it was registered. */
   readonly identity?: string
+  readonly skills?: Skills
   readonly tools: () => Effect.Effect<Tool[], Error>
   readonly prompts: () => Effect.Effect<Prompt[], Error>
   readonly resources: () => Effect.Effect<Resource[], Error>
@@ -179,6 +188,7 @@ export const connect = Effect.fnUntraced(function* (
   clientInfo: Implementation = { name: "opencode", version: "unknown" },
   pooled = false,
 ) {
+  const skillExtension = config.skills ? yield* Effect.promise(() => import("@modelcontextprotocol/client/ext/skills")) : undefined
   type ToolCall = { readonly sessionID?: Session.ID; readonly signal: AbortSignal }
   const current = new AsyncLocalStorage<ToolCall>()
   const calls = new Set<ToolCall>()
@@ -236,6 +246,7 @@ export const connect = Effect.fnUntraced(function* (
         // Legacy era only: roots are deprecated as of 2026-07-28 and modern servers cannot request them.
         // Some legacy servers refuse to run without one (https://github.com/anomalyco/opencode/issues/2308).
         ...(pooled ? {} : { roots: {} }),
+        ...(skillExtension ? { extensions: { [skillExtension.SKILLS_EXTENSION_ID]: {} } } : {}),
       },
       versionNegotiation: negotiation(protocol),
       listChanged: {
@@ -429,11 +440,26 @@ export const connect = Effect.fnUntraced(function* (
         Effect.tapError((error) => Effect.logWarning(`failed to ${what}`, { server, error: error.message })),
       )
     }
+    const skills = skillExtension && client.getServerCapabilities()?.resources
+      ? new skillExtension.SkillsClient(client, { skipInvalid: true })
+      : undefined
 
     return {
       modern: client.getProtocolEra() === "modern",
       instructions: client.getInstructions()?.trim() || undefined,
       identity: client.getServerVersion()?.name,
+      skills: skills?.supported
+        ? {
+            list: () => list("list MCP skills", (signal) => skills.list({}, { ...catalog, signal })).pipe(
+              Effect.map((result) => result.skills),
+            ),
+            get: (uri) => list("get MCP skill", (signal) => skills.get(uri, { ...catalog, signal })).pipe(
+              Effect.map((result) => result.skill),
+            ),
+            read: (entry, file?: string) =>
+              request("read MCP skill", (signal) => skills.read(entry, file, { ...catalog, signal })),
+          } satisfies Skills
+        : undefined,
       tools: () =>
         !client.getServerCapabilities()?.tools
           ? Effect.succeed([])

@@ -10,6 +10,7 @@ export const emptyMcp = Mcp.Service.of({
   transform: () => Effect.succeed({ dispose: Effect.void }),
   reload: () => Effect.void,
   servers: () => Effect.succeed([]),
+  skillServer: () => Effect.die("unused mcp.skillServer"),
   add: () => Effect.die("unused mcp.add"),
   connect: () => Effect.die("unused mcp.connect"),
   disconnect: () => Effect.die("unused mcp.disconnect"),

@@ -42,10 +42,17 @@ export function ModelListView(props: {
   }), [view.options, view.favorites, view.recent, view.provider, search])
   const options = useMemo(() => sections.flatMap((section) => section.items), [sections])
   const positions = useMemo(() => new Map(options.map((option, index) => [option.key, index + 1])), [options])
+  const navigationKeys = useMemo(
+    () => [...options.map((option) => option.key), ...(props.actions ?? []).map((action) => action.key)],
+    [options, props.actions],
+  )
   const rows = useMemo(() => sections.flatMap((section) => [
     ...(section.kind === "results" ? [] : [{ type: "heading" as const, section }]),
     ...section.items.map((option) => ({ type: "model" as const, option, section })),
   ]), [sections])
+  const modelRows = useMemo(() => new Map(rows.flatMap((row, index) =>
+    row.type === "model" ? [[row.option.key, index] as const] : [],
+  )), [rows])
   const virtual = useVirtualizer({
     count: props.menu ? rows.length : 0,
     getScrollElement: () => scroll.current,
@@ -71,9 +78,9 @@ export function ModelListView(props: {
   }
   useLayoutEffect(() => {
     if (!props.menu || !view.current) return
-    const index = rows.findIndex((row) => row.type === "model" && row.option.key === view.current)
-    if (index >= 0) virtual.scrollToIndex(index, { align: "auto" })
-  }, [props.menu, view.current, rows, virtual])
+    const index = modelRows.get(view.current)
+    if (index !== undefined) virtual.scrollToIndex(index, { align: "auto" })
+  }, [props.menu, view.current, modelRows, virtual])
   const select = props.select ?? props.services.select
   useEffect(() => {
     if (!props.menu) return
@@ -81,18 +88,19 @@ export function ModelListView(props: {
       handleDocumentSearchKeydown(input.current ?? undefined, event, search, filter)
     document.addEventListener("keydown", keydown, true)
     return () => document.removeEventListener("keydown", keydown, true)
-  }, [props.menu, search, view])
+  }, [props.menu, search])
   const move = (delta: 1 | -1) => {
     keyboardNavigation.current = true
-    const keys = [...options.map((option) => option.key), ...(props.actions ?? []).map((action) => action.key)]
+    const keys = navigationKeys
     if (!keys.length) return
-    const index = keys.indexOf(active)
+    const position = positions.get(active)
+    const index = position === undefined ? keys.indexOf(active) : position - 1
     const start = index === -1 ? (delta > 0 ? -1 : 0) : index
     const next = keys[(start + delta + keys.length) % keys.length]
     setActive(next)
     if (props.menu) {
-      const index = rows.findIndex((row) => row.type === "model" && row.option.key === next)
-      if (index >= 0) virtual.scrollToIndex(index, { align: "auto" })
+      const index = modelRows.get(next)
+      if (index !== undefined) virtual.scrollToIndex(index, { align: "auto" })
       return
     }
     scroll.current

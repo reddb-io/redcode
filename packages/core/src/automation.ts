@@ -128,7 +128,9 @@ export const make = Effect.gen(function* () {
                 status: "failed" as const,
                 delivery: "none" as const,
                 error: `Condition failed: ${observation.failure.message}`.slice(0, 1000),
-                pause: true,
+                pause: !(
+                  observation.failure instanceof AutomationCondition.ObservationError && observation.failure.transient
+                ),
               }
             // Serialize transition state and the verdict: concurrent manual and scheduled runs
             // cannot both claim the same change, and recovery never repeats a recorded decision.
